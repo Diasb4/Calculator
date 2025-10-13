@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Калькулятор итоговой оценки</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 28px;
+        }
+
+        .input-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            color: #555;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .result {
+            margin-top: 30px;
+            padding: 25px;
+            border-radius: 15px;
+            display: none;
+        }
+
+        .result.show {
+            display: block;
+            animation: slideIn 0.5s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result.success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+        }
+
+        .result.warning {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+        }
+
+        .result.danger {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+        }
+
+        .result h2 {
+            margin-bottom: 15px;
+            font-size: 22px;
+        }
+
+        .result.success h2 {
+            color: #155724;
+        }
+
+        .result.warning h2 {
+            color: #856404;
+        }
+
+        .result.danger h2 {
+            color: #721c24;
+        }
+
+        .result p {
+            margin: 8px 0;
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        .result.success p {
+            color: #155724;
+        }
+
+        .result.warning p {
+            color: #856404;
+        }
+
+        .result.danger p {
+            color: #721c24;
+        }
+
+        .score {
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        .warning-text {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+            font-size: 13px;
+            color: #856404;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>📚 Калькулятор оценок</h1>
+
+        <div class="input-group">
+            <label for="regmid">РегМид (0-100)</label>
+            <input type="number" id="regmid" min="0" max="100" placeholder="Введите оценку">
+        </div>
+
+        <div class="input-group">
+            <label for="regend">РегЭнд (0-100)</label>
+            <input type="number" id="regend" min="0" max="100" placeholder="Введите оценку">
+        </div>
+
+        <div class="input-group">
+            <label for="final">Файнал (0-100)</label>
+            <input type="number" id="final" min="0" max="100" placeholder="Введите оценку">
+        </div>
+
+        <button onclick="calculate()">Рассчитать</button>
+
+        <div class="warning-text">
+            ⚠️ <strong>Важно:</strong> Списывание ведёт к отчислению!
+        </div>
+
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        function calculate() {
+            const regmid = parseFloat(document.getElementById('regmid').value);
+            const regend = parseFloat(document.getElementById('regend').value);
+            const final = parseFloat(document.getElementById('final').value);
+            const resultDiv = document.getElementById('result');
+
+            if (isNaN(regmid) || isNaN(regend) || isNaN(final)) {
+                resultDiv.className = 'result danger show';
+                resultDiv.innerHTML = '<h2>❌ Ошибка</h2><p>Пожалуйста, заполните все поля!</p>';
+                return;
+            }
+
+            if (regmid < 0 || regmid > 100 || regend < 0 || regend > 100 || final < 0 || final > 100) {
+                resultDiv.className = 'result danger show';
+                resultDiv.innerHTML = '<h2>❌ Ошибка</h2><p>Оценки должны быть от 0 до 100!</p>';
+                return;
+            }
+
+            const regterm = (regmid + regend) / 2;
+
+            // Если файнал = 0, показываем прогноз
+            if (final === 0) {
+                let status = 'warning';
+                let message = '<h2>📊 Прогноз оценок</h2>';
+                let details = [];
+
+                details.push(`<p class="score">РегТерм: ${regterm.toFixed(2)}</p>`);
+
+                // Проверяем критические условия
+                if (regmid < 25) {
+                    status = 'danger';
+                    message = '<h2>❌ Уже летник</h2>';
+                    details.push('<p><strong>Причина:</strong> РегМид меньше 25. Файнал уже не поможет.</p>');
+                } else if (regend < 25) {
+                    status = 'danger';
+                    message = '<h2>❌ Уже летник</h2>';
+                    details.push('<p><strong>Причина:</strong> РегЭнд меньше 25. Файнал уже не поможет.</p>');
+                } else if (regterm < 50) {
+                    status = 'danger';
+                    message = '<h2>❌ Уже летник</h2>';
+                    details.push('<p><strong>Причина:</strong> РегТерм меньше 50. Файнал уже не поможет.</p>');
+                } else {
+                    // Рассчитываем необходимые баллы
+                    const regScore = (regmid * 0.3) + (regend * 0.3);
+
+                    // Для избежания летника (Тотал >= 50)
+                    const minForPassCalc = (50 - regScore) / 0.4;
+
+                    // Для получения стипендии (Тотал >= 70)
+                    const minForScholarship = (70 - regScore) / 0.4;
+
+                    // Минимум файнала всегда 50 для прохода без пересдачи
+                    const minForPass = Math.max(50, minForPassCalc);
+
+                    details.push('<p><strong>📈 Необходимые баллы на Файнал:</strong></p>');
+                    details.push(`<p>🟡 Минимум для прохода без пересдачи: <strong>${minForPass.toFixed(1)}</strong></p>`);
+
+                    if (minForScholarship <= 100) {
+                        details.push(`<p>🟢 Для стипендии: <strong>${Math.max(50, minForScholarship).toFixed(1)}</strong></p>`);
+                    } else {
+                        details.push(`<p>🟢 Для стипендии: <strong>Невозможно</strong> (нужно ${minForScholarship.toFixed(1)} > 100)</p>`);
+                    }
+
+                    details.push('<p style="margin-top: 15px; padding-top: 15px; border-top: 2px solid #ddd;"><strong>💡 Памятка:</strong></p>');
+                    details.push('<p>• Файнал < 25 → Летник</p>');
+                    details.push('<p>• Файнал 25-49 → Пересдача</p>');
+                    details.push('<p>• Файнал ≥ 50 и Тотал < 50 → Летник</p>');
+                    details.push('<p>• Файнал ≥ 50 и Тотал < 70 → Без стипендии</p>');
+                    details.push('<p>• Тотал ≥ 70 → Со стипендией! 🎉</p>');
+                }
+
+                resultDiv.className = `result ${status} show`;
+                resultDiv.innerHTML = message + details.join('');
+                return;
+            }
+
+            // Обычный расчёт с реальным Файналом
+            const total = (regmid * 0.3) + (regend * 0.3) + (final * 0.4);
+
+            let status = 'success';
+            let message = '<h2>✅ Отличный результат!</h2>';
+            let details = [];
+
+            details.push(`<p class="score">Тотал: ${total.toFixed(2)}</p>`);
+            details.push(`<p class="score">РегТерм: ${regterm.toFixed(2)}</p>`);
+
+            if (regmid < 25) {
+                status = 'danger';
+                message = '<h2>Летник</h2>';
+                details.push('<p><strong>Причина:</strong> РегМид меньше 25</p>');
+            } else if (regend < 25) {
+                status = 'danger';
+                message = '<h2>Летник</h2>';
+                details.push('<p><strong>Причина:</strong> РегЭнд меньше 25</p>');
+            } else if (regterm < 50) {
+                status = 'danger';
+                message = '<h2>Летник</h2>';
+                details.push('<p><strong>Причина:</strong> РегТерм меньше 50</p>');
+            } else if (final < 25) {
+                status = 'danger';
+                message = '<h2>Летник</h2>';
+                details.push('<p><strong>Причина:</strong> Файнал меньше 25</p>');
+            } else if (total < 50) {
+                status = 'danger';
+                message = '<h2>Летник</h2>';
+                details.push('<p><strong>Причина:</strong> Тотал меньше 50</p>');
+            } else if (final >= 25 && final < 50) {
+                status = 'warning';
+                message = '<h2>Пересдача</h2>';
+                details.push('<p><strong>Причина:</strong> Файнал от 25 до 50</p>');
+            } else if (total < 70) {
+                status = 'warning';
+                message = '<h2>Без стипендии</h2>';
+                details.push('<p>Вы прошли, но Тотал меньше 70 — стипендии не будет</p>');
+            } else {
+                details.push('<p>Поздравляем! Вы успешно прошли курс со стипендией! 🎉</p>');
+            }
+
+            resultDiv.className = `result ${status} show`;
+            resultDiv.innerHTML = message + details.join('');
+        }
+
+        document.querySelectorAll('input').forEach(input => {
+            input.addEventListener('keypress', function (e) {
+                if (e.key === 'Enter') {
+                    calculate();
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
