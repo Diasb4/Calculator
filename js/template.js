@@ -2,7 +2,7 @@
 const templates = {
     // 1 курс
     "1": {
-        "Computer Science": {
+        "Software Engineering": {
             "Calculus 1": {
                 type: "calculus",
                 midterm: {
