@@ -347,6 +347,12 @@ function calculate() {
 function pick(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
 }
+function isValidNumberString(str) {
+    if (str.trim() === "") {
+        return true;
+    }
+    return /^\d*\.?\d*$/.test(str) && !isNaN(parseFloat(str));
+}
 
 document.querySelectorAll('input').forEach(input => {
     input.addEventListener('keypress', function (e) {

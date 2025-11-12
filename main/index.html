@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GradeMaster - Калькулятор оценок</title>
+    <link rel="stylesheet" href="../style/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>🎓 GradeMaster</h1>
+        <p class="subtitle">Выберите тип калькулятора</p>
+
+        <div class="calculator-options">
+            <div class="option-card">
+                <h3>🚀 Калькулятор Итоговой Оценки</h3>
+                <p>Калькулятор помогающий понять как сильно надо готовиться</p>
+                <ul class="features">
+                    <li>• Максимальная прозрачность</li>
+                    <li>• Ручной ввод всех параметров</li>
+                    <li>• Подходит для любых предметов</li>
+                </ul>
+                <button onclick="window.location.href='TotalCalculator.html'">
+                    <p>Перейти</p>
+                </button>
+            </div>
+
+            <div class="option-card">
+                <h3>📚 Предметные шаблоны</h3>
+                <p>Готовые настройки для популярных направлений</p>
+                <ul class="features">
+                    <li>• Быстрый старт</li>
+                    <li>• Популярные предметы</li>
+                    <li>• Предустановленные веса</li>
+                </ul>
+                <button onclick="window.location.href='templated_calculator.html'">
+                    <p>Перейти</p>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        &copy; 2025 Not_404. In case of any bug contact via Telegram <a href="https://t.me/Qrudos"
+            target="_blank">@Qrudos</a>.
+    </footer>
+
+    <script>
+        // Добавляем анимацию появления карточек
+        document.addEventListener('DOMContentLoaded', function () {
+            const cards = document.querySelectorAll('.option-card');
+            cards.forEach((card, index) => {
+                card.style.opacity = '0';
+                card.style.transform = 'translateY(20px)';
+
+                setTimeout(() => {
+                    card.style.transition = 'all 0.5s ease';
+                    card.style.opacity = '1';
+                    card.style.transform = 'translateY(0)';
+                }, index * 200);
+            });
+        });
+    </script>
+</body>
+
+</html>
