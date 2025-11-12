@@ -322,10 +322,10 @@
                 status = 'warning';
                 message = '<h2>Без стипендии</h2>';
                 details.push('<p>Вы прошли, но Тотал меньше 70 — стипендии не будет</p>');
-            } else if (total == 70) {
-                details.push('<p>Поздравляем! Вы успешно прошли курс со стипендией! 🎉</p>');
-            } else {
+            } else if (total >= 90) {
                 details.push('<p>Поздравляем! Вы успешно прошли курс с повышенной стипендией! 🎉')
+            } else {
+                details.push('<p>Поздравляем! Вы успешно прошли курс со стипендией! 🎉</p>');
             }
 
             resultDiv.className = `result ${status} show`;
