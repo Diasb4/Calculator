@@ -1,34 +1,17 @@
 
 let mode = "standard";
 
-const modeDescriptions = {
-    serious: "Формальный подход. Только цифры, факты и объективная оценка результатов.",
-    standard: "Обычный калькулятор без лишних комментариев. Просто факты и результаты.",
-    evil: "Саркастичные комментарии от старшекурсника, который всё это уже прошёл. Юмор и довольно черный."
+const modeNames = {
+    serious: "Серьёзный режим",
+    standard: "Стандартный режим",
+    evil: "Злой старшекурсник"
 };
-
-function updateDescription() {
-    const select = document.getElementById("modeSelect");
-    const desc = document.getElementById("modeDescription");
-    desc.textContent = modeDescriptions[select.value];
-}
-
-function startApp() {
-    mode = document.getElementById("modeSelect").value;
-    document.getElementById("modeModal").style.display = "none";
-    document.getElementById("modeMenu").style.display = "block";
-    document.getElementById("modeChange").value = mode;
-
-    const greetings = {
-        serious: "Добро пожаловать. Начнём расчёты.",
-        standard: "Калькулятор оценок готов к работе.",
-        evil: "Что ж, посмотрим, кто из нас сегодня будет плакать. Спойлер: не я."
-    };
-    showComment(greetings[mode], 'warning');
-}
 
 function changeMode(newMode) {
     mode = newMode;
+    updateModeDisplay();
+    closeModeDropdown();
+
     const phrases = {
         serious: "Режим серьёзного аналитика.",
         standard: "Стандартный режим. Всё по делу.",
@@ -37,11 +20,59 @@ function changeMode(newMode) {
     showComment(phrases[newMode], 'warning');
 }
 
+function updateModeDisplay() {
+    const display = document.getElementById('currentModeDisplay');
+    display.textContent = `Текущий режим: ${modeNames[mode]}`;
+}
+
 function showComment(text, type = 'warning') {
     const resultDiv = document.getElementById('result');
     resultDiv.className = `result ${type} show`;
     resultDiv.innerHTML = `<p>${text}</p>`;
 }
+
+// Функции для управления выпадающим меню
+function toggleModeDropdown() {
+    const dropdown = document.getElementById('modeDropdown');
+    dropdown.classList.toggle('show');
+}
+
+function closeModeDropdown() {
+    const dropdown = document.getElementById('modeDropdown');
+    dropdown.classList.remove('show');
+}
+
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', function () {
+    updateModeDisplay();
+
+    // Обработчики для выпадающего меню режимов
+    const modeToggle = document.getElementById('mode-toggle');
+    const modeOptions = document.querySelectorAll('.mode-option');
+
+    modeToggle.addEventListener('click', function (e) {
+        e.stopPropagation();
+        toggleModeDropdown();
+    });
+
+    modeOptions.forEach(option => {
+        option.addEventListener('click', function () {
+            const newMode = this.getAttribute('data-mode');
+            changeMode(newMode);
+        });
+    });
+
+    // Закрытие выпадающего меню при клике вне его
+    document.addEventListener('click', function () {
+        closeModeDropdown();
+    });
+
+    // Предотвращение закрытия при клике на само меню
+    const dropdown = document.getElementById('modeDropdown');
+    dropdown.addEventListener('click', function (e) {
+        e.stopPropagation();
+    });
+});
 
 function calculate() {
     const regmid = parseFloat(document.getElementById('regmid').value);

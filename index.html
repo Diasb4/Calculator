@@ -9,32 +9,22 @@
 </head>
 
 <body>
-    <div id="modeModal">
-        <div class="modal-content">
-            <h3>🎭 Выберите режим работы</h3>
-            <select id="modeSelect" onchange="updateDescription()">
-                <option value="serious">Серьёзный режим</option>
-                <option value="standard" selected>Стандартный режим</option>
-                <option value="evil">Злой старшекурсник</option>
-            </select>
-            <div class="mode-description" id="modeDescription">
-                Обычный калькулятор без лишних комментариев. Просто факты и результаты.
+    <nav class="navbar">
+        <div class="nav-buttons">
+            <div class="mode-dropdown">
+                <button id="mode-toggle" class="nav-button">Сменить режим</button>
+                <div class="mode-dropdown-content" id="modeDropdown">
+                    <div class="mode-option" data-mode="serious">Серьёзный режим</div>
+                    <div class="mode-option" data-mode="standard">Стандартный режим</div>
+                    <div class="mode-option" data-mode="evil">Злой старшекурсник</div>
+                </div>
             </div>
-            <button onclick="startApp()">Начать</button>
         </div>
-    </div>
-
-    <div id="modeMenu">
-        <label for="modeChange">Режим:</label>
-        <select id="modeChange" onchange="changeMode(this.value)">
-            <option value="serious">Серьёзный</option>
-            <option value="standard">Стандартный</option>
-            <option value="evil">Злой старшекурсник</option>
-        </select>
-    </div>
+    </nav>
 
     <div class="container">
         <h1>📚 Калькулятор оценок</h1>
+        <div class="current-mode" id="currentModeDisplay">Текущий режим: Стандартный</div>
 
         <div class="input-group">
             <label for="regmid">РегМид (0-100)</label>
@@ -59,13 +49,13 @@
 
         <div id="result" class="result"></div>
     </div>
+
+    <footer>
+        &copy; 2025 Not_404. In case of any bug contact via Telegram <a href="https://t.me/Qrudos"
+            target="_blank">@Qrudos</a>.
+    </footer>
     <script src="commands.js"></script>
 
-    <footer class="mt-auto text-center py-1 my-footer">
-        <div class="container-fluid">
-            <p>&copy; 2025 Not_404. In case of any bug contact via Telegram @Qrudos.</p>
-        </div>
-    </footer>
 </body>
 
 </html>
