@@ -1,4 +1,3 @@
-
 // База данных шаблонов
 const templates = {
     // 1 курс
@@ -88,7 +87,8 @@ function loadTemplate() {
         currentTemplate = templates[course][program][subject];
         displayTemplateInfo();
         createInputFields();
-        document.getElementById('calculateBtn').disabled = false;
+        // Показываем группу кнопок для calculus
+        document.getElementById('buttonGroup').style.display = 'flex';
     } else {
         resetCalculator();
     }
@@ -230,15 +230,132 @@ function resetCalculator() {
         '<div style="text-align: center; color: #666; padding: 40px;">Выберите предмет в боковой панели чтобы начать расчет</div>';
     document.getElementById('templateInfo').style.display = 'none';
     document.getElementById('currentTemplate').textContent = 'Выберите шаблон для начала работы';
-    document.getElementById('calculateBtn').disabled = true;
+    // Скрываем группу кнопок
+    document.getElementById('buttonGroup').style.display = 'none';
     document.getElementById('result').className = 'result';
     currentTemplate = null;
 }
 
-function calculate() {
-    if (!currentTemplate) return;
+function calculateMid() {
+    if (!currentTemplate || currentTemplate.type !== "calculus") return;
 
     const resultDiv = document.getElementById('result');
+
+    // Расчет РегМида
+    let regMid = 0;
+    let midFilled = true;
+
+    // Assignments для Midterm
+    currentTemplate.midterm.assignments.forEach(assignment => {
+        const input = document.getElementById(assignment.name);
+        const value = parseFloat(input.value);
+
+        if (isNaN(value) || value < 0 || value > 100) {
+            midFilled = false;
+        } else {
+            regMid += value * (assignment.weight / 100);
+        }
+    });
+
+    // Quizzes для Midterm
+    currentTemplate.midterm.quizzes.forEach(quiz => {
+        const input = document.getElementById(quiz.name);
+        const value = parseFloat(input.value);
+
+        if (isNaN(value) || value < 0 || value > 100) {
+            midFilled = false;
+        } else {
+            regMid += value * (quiz.weight / 100);
+        }
+    });
+
+    // Exam для Midterm
+    const midExamInput = document.getElementById(currentTemplate.midterm.exam.name);
+    const midExamValue = parseFloat(midExamInput.value);
+
+    if (isNaN(midExamValue) || midExamValue < 0 || midExamValue > 100) {
+        midFilled = false;
+    } else {
+        regMid += midExamValue * (currentTemplate.midterm.exam.weight / 100);
+    }
+
+    if (!midFilled) {
+        resultDiv.className = 'result danger show';
+        resultDiv.innerHTML = '<h2>❌ Ошибка</h2><p>Пожалуйста, заполните все оценки РегМида от 0 до 100</p>';
+        return;
+    }
+
+    resultDiv.className = 'result success show';
+    resultDiv.innerHTML = `
+        <h2>📊 Расчет РегМида завершен</h2>
+        <p><strong>РегМид:</strong> ${regMid.toFixed(2)}</p>
+        <p style="margin-top: 15px; font-size: 14px; color: #666;">
+            Используйте это значение в основном калькуляторе для расчета итоговой оценки с файналом.
+        </p>
+    `;
+}
+
+function calculateEnd() {
+    if (!currentTemplate || currentTemplate.type !== "calculus") return;
+
+    const resultDiv = document.getElementById('result');
+
+    // Расчет РегЭнда
+    let regEnd = 0;
+    let endFilled = true;
+
+    // Assignments для Endterm
+    currentTemplate.endterm.assignments.forEach(assignment => {
+        const input = document.getElementById(assignment.name);
+        const value = parseFloat(input.value);
+
+        if (isNaN(value) || value < 0 || value > 100) {
+            endFilled = false;
+        } else {
+            regEnd += value * (assignment.weight / 100);
+        }
+    });
+
+    // Quizzes для Endterm
+    currentTemplate.endterm.quizzes.forEach(quiz => {
+        const input = document.getElementById(quiz.name);
+        const value = parseFloat(input.value);
+
+        if (isNaN(value) || value < 0 || value > 100) {
+            endFilled = false;
+        } else {
+            regEnd += value * (quiz.weight / 100);
+        }
+    });
+
+    // Exam для Endterm
+    const endExamInput = document.getElementById(currentTemplate.endterm.exam.name);
+    const endExamValue = parseFloat(endExamInput.value);
+
+    if (isNaN(endExamValue) || endExamValue < 0 || endExamValue > 100) {
+        endFilled = false;
+    } else {
+        regEnd += endExamValue * (currentTemplate.endterm.exam.weight / 100);
+    }
+
+    if (!endFilled) {
+        resultDiv.className = 'result danger show';
+        resultDiv.innerHTML = '<h2>❌ Ошибка</h2><p>Пожалуйста, заполните все оценки РегЭнда от 0 до 100</p>';
+        return;
+    }
+
+    resultDiv.className = 'result success show';
+    resultDiv.innerHTML = `
+        <h2>📊 Расчет РегЭнда завершен</h2>
+        <p><strong>РегЭнд:</strong> ${regEnd.toFixed(2)}</p>
+        <p style="margin-top: 15px; font-size: 14px; color: #666;">
+            Используйте это значение в основном калькуляторе для расчета итоговой оценки с файналом.
+        </p>
+    `;
+}
+
+function calculateBoth() {
+    if (!currentTemplate) return;
 
     if (currentTemplate.type === "calculus") {
         calculateCalculus();
@@ -398,8 +515,8 @@ function calculateRegular() {
 // Обработка Enter в полях ввода
 document.addEventListener('DOMContentLoaded', function () {
     document.addEventListener('keypress', function (e) {
-        if (e.key === 'Enter' && !document.getElementById('calculateBtn').disabled) {
-            calculate();
+        if (e.key === 'Enter' && document.getElementById('buttonGroup').style.display !== 'none') {
+            calculateBoth();
         }
     });
 });
