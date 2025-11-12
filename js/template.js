@@ -5,7 +5,7 @@ const templates = {
     "1": {
         "Computer Science": {
             "Calculus 1": {
-                type: "calculus1",
+                type: "calculus",
                 midterm: {
                     assignments: [
                         { name: "Assignment 1", weight: 20 },
@@ -101,7 +101,7 @@ function displayTemplateInfo() {
 
     weightList.innerHTML = '';
 
-    if (currentTemplate.type === "calculus1") {
+    if (currentTemplate.type === "calculus") {
         // Для Calculus 1
         const liMid = document.createElement('li');
         liMid.innerHTML = `<strong>РегМид:</strong> Assignments (40%) + Quiz (20%) + Midterm (40%)`;
@@ -127,7 +127,7 @@ function createInputFields() {
     const inputFields = document.getElementById('inputFields');
     inputFields.innerHTML = '';
 
-    if (currentTemplate.type === "calculus1") {
+    if (currentTemplate.type === "calculus") {
         // Создаем поля для Calculus 1
         createCalculusFields();
     } else {
@@ -240,7 +240,7 @@ function calculate() {
 
     const resultDiv = document.getElementById('result');
 
-    if (currentTemplate.type === "calculus1") {
+    if (currentTemplate.type === "calculus") {
         calculateCalculus();
     } else {
         calculateRegular();
