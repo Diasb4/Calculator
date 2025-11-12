@@ -6,6 +6,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Калькулятор итоговой оценки</title>
     <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --primary-gradient-dark: linear-gradient(135deg, #5568d4 0%, #5a3a7a 100%);
+            --text-color: #333;
+            --label-color: #555;
+            --warning-color: #856404;
+            --bg-color: #fff;
+            --border-color: #e0e0e0;
+            --focus-color: #667eea;
+            --shadow-color: rgba(0, 0, 0, 0.3);
+            --navbar-bg: rgba(255, 255, 255, 0.95);
+            --modal-bg: white;
+            --input-bg: white;
+            --button-text: white;
+        }
+
+        body.dark-mode {
+            --text-color: #ddd;
+            --label-color: #ccc;
+            --warning-color: #ffc107;
+            --bg-color: #2b2b3d;
+            --border-color: #555;
+            --navbar-bg: #2b2b3d;
+            --modal-bg: #2b2b3d;
+            --input-bg: #3b3b4d;
+            --shadow-color: rgba(0, 0, 0, 0.5);
+            --primary-gradient: linear-gradient(135deg, #1a237e 0%, #4a148c 100%);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -14,25 +43,106 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--primary-gradient);
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
             padding: 20px;
+            padding-top: 80px;
+            color: var(--text-color);
+            transition: background 0.3s ease;
+        }
+
+        nav.navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 1000;
+            padding: 15px 20px;
+            background: var(--navbar-bg);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .nav-button {
+            padding: 8px 16px;
+            background: var(--primary-gradient);
+            color: var(--button-text);
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .nav-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .mode-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .mode-dropdown-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background: var(--modal-bg);
+            min-width: 200px;
+            border-radius: 10px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+            z-index: 1001;
+            margin-top: 5px;
+            border: 1px solid var(--border-color);
+        }
+
+        .mode-dropdown-content.show {
+            display: block;
+        }
+
+        .mode-option {
+            padding: 12px 16px;
+            color: var(--text-color);
+            text-decoration: none;
+            display: block;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .mode-option:last-child {
+            border-bottom: none;
+        }
+
+        .mode-option:hover {
+            background: var(--focus-color);
+            color: white;
         }
 
         .container {
-            background: white;
+            background: var(--bg-color);
             border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 20px 60px var(--shadow-color);
             padding: 40px;
             max-width: 500px;
             width: 100%;
         }
 
         h1 {
-            color: #333;
+            color: var(--text-color);
             margin-bottom: 30px;
             text-align: center;
             font-size: 28px;
@@ -44,32 +154,36 @@
 
         label {
             display: block;
-            color: #555;
+            color: var(--label-color);
             font-weight: 600;
             margin-bottom: 8px;
             font-size: 14px;
         }
 
-        input {
+        input,
+        select {
             width: 100%;
             padding: 12px 15px;
-            border: 2px solid #e0e0e0;
+            border: 2px solid var(--border-color);
             border-radius: 10px;
             font-size: 16px;
             transition: all 0.3s;
+            background: var(--input-bg);
+            color: var(--text-color);
         }
 
-        input:focus {
+        input:focus,
+        select:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: var(--focus-color);
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
         button {
             width: 100%;
             padding: 15px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: var(--primary-gradient);
+            color: var(--button-text);
             border: none;
             border-radius: 10px;
             font-size: 18px;
@@ -93,11 +207,11 @@
             padding: 25px;
             border-radius: 15px;
             display: none;
+            animation: slideIn 0.5s ease;
         }
 
         .result.show {
             display: block;
-            animation: slideIn 0.5s ease;
         }
 
         @keyframes slideIn {
@@ -115,33 +229,42 @@
         .result.success {
             background: #d4edda;
             border: 2px solid #28a745;
+            color: #155724;
         }
 
         .result.warning {
             background: #fff3cd;
             border: 2px solid #ffc107;
+            color: #856404;
         }
 
         .result.danger {
             background: #f8d7da;
             border: 2px solid #dc3545;
+            color: #721c24;
+        }
+
+        body.dark-mode .result.success {
+            background: #14532d;
+            border-color: #28a745;
+            color: #d4edda;
+        }
+
+        body.dark-mode .result.warning {
+            background: #51412a;
+            border-color: #ffc107;
+            color: #fff3cd;
+        }
+
+        body.dark-mode .result.danger {
+            background: #58181c;
+            border-color: #dc3545;
+            color: #f8d7da;
         }
 
         .result h2 {
             margin-bottom: 15px;
             font-size: 22px;
-        }
-
-        .result.success h2 {
-            color: #155724;
-        }
-
-        .result.warning h2 {
-            color: #856404;
-        }
-
-        .result.danger h2 {
-            color: #721c24;
         }
 
         .result p {
@@ -156,40 +279,13 @@
         }
 
         .warning-text {
-            background: #fff3cd;
-            border-left: 4px solid #ffc107;
+            background: rgba(255, 193, 7, 0.1);
+            border-left: 4px solid var(--warning-color);
             padding: 15px;
             margin-top: 20px;
             border-radius: 5px;
             font-size: 13px;
-            color: #856404;
-        }
-
-        #modeMenu {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 10px;
-            padding: 15px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            display: none;
-            z-index: 100;
-        }
-
-        #modeMenu label {
-            font-size: 12px;
-            margin-bottom: 5px;
-            color: #666;
-        }
-
-        #modeMenu select {
-            padding: 8px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 14px;
-            cursor: pointer;
-            background: white;
+            color: var(--warning-color);
         }
 
         #modeModal {
@@ -206,7 +302,7 @@
         }
 
         .modal-content {
-            background: white;
+            background: var(--modal-bg);
             padding: 40px;
             border-radius: 15px;
             text-align: center;
@@ -216,25 +312,9 @@
         }
 
         .modal-content h3 {
-            color: #333;
+            color: var(--text-color);
             margin-bottom: 20px;
             font-size: 22px;
-        }
-
-        .modal-content select {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 10px;
-            font-size: 16px;
-            margin-top: 10px;
-            cursor: pointer;
-            transition: border-color 0.3s;
-        }
-
-        .modal-content select:focus {
-            outline: none;
-            border-color: #667eea;
         }
 
         .mode-description {
@@ -246,10 +326,37 @@
             color: #666;
             text-align: left;
         }
+
+        body.dark-mode .mode-description {
+            background: #3b3b4d;
+            color: #ccc;
+        }
+
+        .current-mode {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-top: 5px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 
 <body>
+    <nav class="navbar">
+        <div class="nav-buttons">
+            <button id="theme-toggle" class="nav-button">dark mode &#x263E</button>
+            <div class="mode-dropdown">
+                <button id="mode-toggle" class="nav-button">Сменить режим</button>
+                <div class="mode-dropdown-content" id="modeDropdown">
+                    <div class="mode-option" data-mode="serious">Серьёзный режим</div>
+                    <div class="mode-option" data-mode="standard">Стандартный режим</div>
+                    <div class="mode-option" data-mode="evil">Злой старшекурсник</div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
     <div id="modeModal">
         <div class="modal-content">
             <h3>🎭 Выберите режим работы</h3>
@@ -265,17 +372,9 @@
         </div>
     </div>
 
-    <div id="modeMenu">
-        <label for="modeChange">Режим:</label>
-        <select id="modeChange" onchange="changeMode(this.value)">
-            <option value="serious">Серьёзный</option>
-            <option value="standard">Стандартный</option>
-            <option value="evil">Злой старшекурсник</option>
-        </select>
-    </div>
-
     <div class="container">
         <h1>📚 Калькулятор оценок</h1>
+        <div class="current-mode" id="currentModeDisplay">Текущий режим: Стандартный</div>
 
         <div class="input-group">
             <label for="regmid">РегМид (0-100)</label>
@@ -304,6 +403,12 @@
     <script>
         let mode = "standard";
 
+        const modeNames = {
+            serious: "Серьёзный режим",
+            standard: "Стандартный режим",
+            evil: "Злой старшекурсник"
+        };
+
         const modeDescriptions = {
             serious: "Формальный подход. Только цифры, факты и объективная оценка результатов.",
             standard: "Обычный калькулятор без лишних комментариев. Просто факты и результаты.",
@@ -319,8 +424,7 @@
         function startApp() {
             mode = document.getElementById("modeSelect").value;
             document.getElementById("modeModal").style.display = "none";
-            document.getElementById("modeMenu").style.display = "block";
-            document.getElementById("modeChange").value = mode;
+            updateModeDisplay();
 
             const greetings = {
                 serious: "Добро пожаловать. Начнём расчёты.",
@@ -332,6 +436,9 @@
 
         function changeMode(newMode) {
             mode = newMode;
+            updateModeDisplay();
+            closeModeDropdown();
+
             const phrases = {
                 serious: "Режим серьёзного аналитика.",
                 standard: "Стандартный режим. Всё по делу.",
@@ -340,11 +447,59 @@
             showComment(phrases[newMode], 'warning');
         }
 
+        function updateModeDisplay() {
+            const display = document.getElementById('currentModeDisplay');
+            display.textContent = `Текущий режим: ${modeNames[mode]}`;
+        }
+
         function showComment(text, type = 'warning') {
             const resultDiv = document.getElementById('result');
             resultDiv.className = `result ${type} show`;
             resultDiv.innerHTML = `<p>${text}</p>`;
         }
+
+        // Функции для управления выпадающим меню
+        function toggleModeDropdown() {
+            const dropdown = document.getElementById('modeDropdown');
+            dropdown.classList.toggle('show');
+        }
+
+        function closeModeDropdown() {
+            const dropdown = document.getElementById('modeDropdown');
+            dropdown.classList.remove('show');
+        }
+
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function () {
+            updateModeDisplay();
+
+            // Обработчики для выпадающего меню режимов
+            const modeToggle = document.getElementById('mode-toggle');
+            const modeOptions = document.querySelectorAll('.mode-option');
+
+            modeToggle.addEventListener('click', function (e) {
+                e.stopPropagation();
+                toggleModeDropdown();
+            });
+
+            modeOptions.forEach(option => {
+                option.addEventListener('click', function () {
+                    const newMode = this.getAttribute('data-mode');
+                    changeMode(newMode);
+                });
+            });
+
+            // Закрытие выпадающего меню при клике вне его
+            document.addEventListener('click', function () {
+                closeModeDropdown();
+            });
+
+            // Предотвращение закрытия при клике на само меню
+            const dropdown = document.getElementById('modeDropdown');
+            dropdown.addEventListener('click', function (e) {
+                e.stopPropagation();
+            });
+        });
 
         function calculate() {
             const regmid = parseFloat(document.getElementById('regmid').value);
@@ -619,6 +774,26 @@
         function pick(arr) {
             return arr[Math.floor(Math.random() * arr.length)];
         }
+
+        const toggle = document.getElementById("theme-toggle");
+        const body = document.body;
+
+        if (localStorage.getItem("theme") === "dark") {
+            body.classList.add("dark-mode");
+            toggle.textContent = "light mode \u{263C}";
+        }
+
+        toggle.addEventListener("click", () => {
+            body.classList.toggle("dark-mode");
+
+            if (body.classList.contains("dark-mode")) {
+                toggle.textContent = "light mode \u{263C}";
+                localStorage.setItem("theme", "dark");
+            } else {
+                toggle.textContent = "dark mode \u{263E}";
+                localStorage.setItem("theme", "light");
+            }
+        });
 
         document.querySelectorAll('input').forEach(input => {
             input.addEventListener('keypress', function (e) {
