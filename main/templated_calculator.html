@@ -4,77 +4,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Калькулятор оценок - Шаблоны</title>
+    <title>Калькулятор оценок - Структурированный</title>
     <link rel="stylesheet" href="../style/styleForTempl.css">
 </head>
 
 <body>
     <nav class="navbar">
-        <a href="../index.html" class="nav-button">← На главную</a>
+        <a href="index.html" class="nav-button">← На главную</a>
     </nav>
 
-    <div class="main-container">
-        <!-- Боковая панель с выбором шаблона -->
-        <div class="template-sidebar">
-            <h2>🎯 Выбор шаблона</h2>
+    <div class="container">
+        <h1>📚 Структурированный калькулятор</h1>
 
-            <div class="input-group">
-                <label for="course">Курс</label>
-                <select id="course" onchange="updatePrograms()">
-                    <option value="">Выберите курс</option>
-                    <option value="1">1 курс</option>
-                    <option value="2">2 курс</option>
-                    <option value="3">3 курс</option>
-                    <option value="master">Магистратура</option>
-                </select>
-            </div>
-
-            <div class="input-group">
-                <label for="program">Образовательная программа</label>
-                <select id="program" onchange="updateSubjects()" disabled>
-                    <option value="">Сначала выберите курс</option>
-                </select>
-            </div>
-
-            <div class="input-group">
-                <label for="subject">Предмет</label>
-                <select id="subject" onchange="loadTemplate()" disabled>
-                    <option value="">Сначала выберите программу</option>
-                </select>
-            </div>
-
-            <div class="template-info" id="templateInfo" style="display: none;">
-                <h4>📊 Структура оценок</h4>
-                <ul class="weight-list" id="weightList">
-                    <!-- Динамически заполняется -->
-                </ul>
-            </div>
-        </div>
-
-        <!-- Основной калькулятор -->
-        <div class="calculator">
-            <h1>📚 Калькулятор оценок</h1>
-            <div class="current-template" id="currentTemplate">Выберите шаблон для начала работы</div>
-
-            <div id="inputFields">
-                <!-- Поля ввода будут добавляться динамически -->
-                <div style="text-align: center; color: #666; padding: 40px;">
-                    Выберите предмет в боковой панели чтобы начать расчет
+        <!-- Assignments Section -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">📝 Assignments</div>
+                <div class="section-weight">
+                    Вес: <input type="number" class="weight-input" id="assignmentsWeight" min="0" max="100" value="40">%
                 </div>
             </div>
-
-            <div class="button-group" id="buttonGroup" style="display: none;">
-                <button onclick="calculateMid()" id="calculateMidBtn">Рассчитать РегМид</button>
-                <button onclick="calculateEnd()" id="calculateEndBtn">Рассчитать РегЭнд</button>
-                <button onclick="calculateBoth()" class="calculate-both">Рассчитать оба</button>
+            <div class="components-list" id="assignmentsList">
+                <div class="component-item">
+                    <input type="text" class="component-name" placeholder="Assignment 1" value="Assignment 1">
+                    <input type="number" class="component-grade" placeholder="Оценка (0-100)" min="0" max="100">
+                    <button class="remove-btn" onclick="removeComponent(this)">×</button>
+                </div>
+                <div class="component-item">
+                    <input type="text" class="component-name" placeholder="Assignment 2" value="Assignment 2">
+                    <input type="number" class="component-grade" placeholder="Оценка (0-100)" min="0" max="100">
+                    <button class="remove-btn" onclick="removeComponent(this)">×</button>
+                </div>
             </div>
-
-            <div class="warning-text">
-                ⚠️ <strong>Важно:</strong> Списывание ведёт к отчислению!
-            </div>
-
-            <div id="result" class="result"></div>
+            <button class="add-btn" onclick="addComponent('assignmentsList')">+ Добавить Assignment</button>
         </div>
+
+        <!-- Quizzes Section -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">📋 Quizzes</div>
+                <div class="section-weight">
+                    Вес: <input type="number" class="weight-input" id="quizzesWeight" min="0" max="100" value="20">%
+                </div>
+            </div>
+            <div class="components-list" id="quizzesList">
+                <div class="component-item">
+                    <input type="text" class="component-name" placeholder="Quiz 1" value="Quiz 1">
+                    <input type="number" class="component-grade" placeholder="Оценка (0-100)" min="0" max="100">
+                    <button class="remove-btn" onclick="removeComponent(this)">×</button>
+                </div>
+            </div>
+            <button class="add-btn" onclick="addComponent('quizzesList')">+ Добавить Quiz</button>
+        </div>
+
+        <!-- Exams Section -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">📊 Midterm/Endterm</div>
+                <div class="section-weight">
+                    Вес: <input type="number" class="weight-input" id="examsWeight" min="0" max="100" value="40">%
+                </div>
+            </div>
+            <div class="components-list" id="examsList">
+                <div class="component-item">
+                    <input type="text" class="component-name" placeholder="Midterm" value="Midterm">
+                    <input type="number" class="component-grade" placeholder="Оценка (0-100)" min="0" max="100">
+                    <button class="remove-btn" onclick="removeComponent(this)">×</button>
+                </div>
+                <div class="component-item">
+                    <input type="text" class="component-name" placeholder="Endterm" value="Endterm">
+                    <input type="number" class="component-grade" placeholder="Оценка (0-100)" min="0" max="100">
+                    <button class="remove-btn" onclick="removeComponent(this)">×</button>
+                </div>
+            </div>
+            <button class="add-btn" onclick="addComponent('examsList')">+ Добавить Exam</button>
+        </div>
+
+        <!-- Totals Section -->
+        <div class="total-section">
+            <h3>📈 Итоговые значения</h3>
+            <div class="total-display" id="assignmentsTotal">Assignments: 0.00</div>
+            <div class="total-display" id="quizzesTotal">Quizzes: 0.00</div>
+            <div class="total-display" id="examsTotal">Exams: 0.00</div>
+            <div class="total-display" style="margin-top: 10px; font-size: 20px; color: #333;" id="overallTotal">
+                Общий результат: 0.00
+            </div>
+        </div>
+
+        <button class="calculate-btn" onclick="calculateAll()">Рассчитать итоговую оценку</button>
+
+        <div class="warning-text">
+            ⚠️ <strong>Важно:</strong> Сумма весов всех секций должна быть равна 100%
+            <div class="weight-error" id="weightError">
+                Текущая сумма весов: <span id="currentWeight">0</span>%
+            </div>
+        </div>
+
+        <div id="result" class="result"></div>
     </div>
 
     <footer>
@@ -82,7 +108,7 @@
             target="_blank">@Qrudos</a>.
     </footer>
 
-    <script src="../js/template.js"></script>
+
 </body>
 
 </html>
