@@ -1,3 +1,27 @@
+// Управление темной темой
+const toggle = document.getElementById("theme-toggle");
+const body = document.body;
+
+// Проверяем сохраненную тему
+if (localStorage.getItem("theme") === "dark") {
+    body.classList.add("dark-mode");
+    toggle.textContent = "☀️ Тема";
+} else {
+    toggle.textContent = "🌙 Тема";
+}
+
+// Обработчик переключения темы
+toggle.addEventListener("click", () => {
+    body.classList.toggle("dark-mode");
+
+    if (body.classList.contains("dark-mode")) {
+        toggle.textContent = "☀️ Тема";
+        localStorage.setItem("theme", "dark");
+    } else {
+        toggle.textContent = "🌙 Тема";
+        localStorage.setItem("theme", "light");
+    }
+});
 
 // Добавление нового компонента
 function addComponent(sectionId) {
@@ -18,6 +42,7 @@ function addComponent(sectionId) {
 function removeComponent(button) {
     const componentItem = button.parentElement;
     componentItem.remove();
+    calculateAll(); // Пересчет после удаления
 }
 
 // Получение префикса для имени компонента

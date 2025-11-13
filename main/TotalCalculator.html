@@ -15,6 +15,7 @@
 
         <!-- Контейнер для кнопок справа -->
         <div class="nav-buttons">
+            <button id="theme-toggle" class="nav-button">🌙 Тема</button>
             <div class="mode-dropdown">
                 <button id="mode-toggle" class="nav-button">Сменить режим</button>
                 <div class="mode-dropdown-content" id="modeDropdown">
@@ -58,7 +59,146 @@
         &copy; 2025 Not_404. In case of any bug contact via Telegram <a href="https://t.me/Qrudos"
             target="_blank">@Qrudos</a>.
     </footer>
-    <script src="../js/commands.js"></script>
+
+    <script>
+        // Управление темной темой
+        const toggle = document.getElementById("theme-toggle");
+        const body = document.body;
+
+        // Проверяем сохраненную тему
+        if (localStorage.getItem("theme") === "dark") {
+            body.classList.add("dark-mode");
+            toggle.textContent = "☀️ Тема";
+        } else {
+            toggle.textContent = "🌙 Тема";
+        }
+
+        // Обработчик переключения темы
+        toggle.addEventListener("click", () => {
+            body.classList.toggle("dark-mode");
+
+            if (body.classList.contains("dark-mode")) {
+                toggle.textContent = "☀️ Тема";
+                localStorage.setItem("theme", "dark");
+            } else {
+                toggle.textContent = "🌙 Тема";
+                localStorage.setItem("theme", "light");
+            }
+        });
+
+        // Функции для выпадающего меню режимов
+        function toggleModeDropdown() {
+            const dropdown = document.getElementById('modeDropdown');
+            dropdown.classList.toggle('show');
+        }
+
+        function closeModeDropdown() {
+            const dropdown = document.getElementById('modeDropdown');
+            dropdown.classList.remove('show');
+        }
+
+        // Инициализация выпадающего меню
+        document.addEventListener('DOMContentLoaded', function () {
+            const modeToggle = document.getElementById('mode-toggle');
+            const modeOptions = document.querySelectorAll('.mode-option');
+
+            modeToggle.addEventListener('click', function (e) {
+                e.stopPropagation();
+                toggleModeDropdown();
+            });
+
+            modeOptions.forEach(option => {
+                option.addEventListener('click', function () {
+                    const newMode = this.getAttribute('data-mode');
+                    changeMode(newMode);
+                });
+            });
+
+            // Закрытие выпадающего меню при клике вне его
+            document.addEventListener('click', function () {
+                closeModeDropdown();
+            });
+
+            // Предотвращение закрытия при клике на само меню
+            const dropdown = document.getElementById('modeDropdown');
+            dropdown.addEventListener('click', function (e) {
+                e.stopPropagation();
+            });
+        });
+
+        let mode = "standard";
+
+        const modeNames = {
+            serious: "Серьёзный режим",
+            standard: "Стандартный режим",
+            evil: "Злой старшекурсник"
+        };
+
+        function changeMode(newMode) {
+            mode = newMode;
+            updateModeDisplay();
+            closeModeDropdown();
+
+            const phrases = {
+                serious: "Режим серьёзного аналитика.",
+                standard: "Стандартный режим. Всё по делу.",
+                evil: "Режим злого старшекурсника."
+            };
+            showComment(phrases[newMode], 'warning');
+        }
+
+        function updateModeDisplay() {
+            const display = document.getElementById('currentModeDisplay');
+            display.textContent = `Текущий режим: ${modeNames[mode]}`;
+        }
+
+        function showComment(text, type = 'warning') {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type} show`;
+            resultDiv.innerHTML = `<p>${text}</p>`;
+        }
+
+        // Обработка Enter в полях ввода
+        document.querySelectorAll('input').forEach(input => {
+            input.addEventListener('keypress', function (e) {
+                if (e.key === 'Enter') {
+                    calculate();
+                }
+            });
+        });
+
+        // Здесь должна быть функция calculate() из commands.js
+        // Для примера добавлю базовую версию
+        function calculate() {
+            const regmid = parseFloat(document.getElementById('regmid').value);
+            const regend = parseFloat(document.getElementById('regend').value);
+            const finalInput = document.getElementById('final').value;
+            const final = finalInput === '' ? 0 : parseFloat(finalInput);
+            const resultDiv = document.getElementById('result');
+
+            // Базовая валидация
+            if (isNaN(regmid) || isNaN(regend)) {
+                resultDiv.className = 'result danger show';
+                resultDiv.innerHTML = '<h2>❌ Ошибка</h2><p>Пожалуйста, введите РегМид и РегЭнд</p>';
+                return;
+            }
+
+            if (regmid < 0 || regmid > 100 || regend < 0 || regend > 100 || final < 0 || final > 100) {
+                resultDiv.className = 'result danger show';
+                resultDiv.innerHTML = '<h2>❌ Ошибка</h2><p>Оценки должны быть от 0 до 100</p>';
+                return;
+            }
+
+            // Простой расчет для примера
+            const total = (regmid * 0.3) + (regend * 0.3) + (final * 0.4);
+
+            resultDiv.className = 'result success show';
+            resultDiv.innerHTML = `
+                <h2>📊 Расчет завершен</h2>
+                <p>Итоговый балл: ${total.toFixed(2)}</p>
+            `;
+        }
+    </script>
 </body>
 
 </html>
