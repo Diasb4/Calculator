@@ -391,6 +391,71 @@ toggle.addEventListener("click", () => {
         localStorage.setItem("theme", "light");
     }
 });
+function revealSecret() {
+    const secrets = [
+        "Пасхалка! Ты нашел секрет! 🥚",
+        "Разработчик этого калькулятора тоже иногда заваливает экзамены 😅",
+        "Знаешь ли ты, что первый калькулятор был создан в 17 веке?",
+        "Этот калькулятор был сделан с ♥ и большим количеством кофе ☕",
+        "Секретный совет: всегда проверяйте расчеты вручную!",
+        "Ты - 1 из 1000 пользователей, который нашел эту пасхалку!",
+        "Мои поздравления пасхантер, может и на других страницах что то есть?)",
+        "Внимание! Обнаружена утечка: файнал составляет 40% от оценки!",
+        "Хакерский совет: чтобы сдать экзамен, нужно на него прийти 😉",
+        "Секрет успеха: 10% везение, 20% навыки, 70% этот калькулятор!",
+        "Предупреждение: чрезмерное использование калькулятора может привести к... хорошим оценкам!",
+        "Знаете разницу между студентом и этим калькулятором? Калькулятор всегда считает правильно!",
+        "Поздравляю! Вы нашли оправдание не готовиться к экзамену!",
+        "Инсайдерская информация: преподы тоже пользуются калькуляторами!",
+        "Секретный ингредиент хорошей оценки - уверенность (и этот калькулятор)",
+        "Функция 'автопропуск пар' временно отключена... к сожалению",
+        "Знаете, что общего у этого калькулятора и хорошей оценки? Оба требуют правильных входных данных!",
+        "Внимание! Обнаружена корреляция между использованием калькулятора и снижением уровня паники!"
+    ];
+
+    const randomSecret = secrets[Math.floor(Math.random() * secrets.length)];
+
+    // Создаем красивый тост
+    const toast = document.createElement('div');
+    toast.textContent = randomSecret;
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #333;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 10px;
+        z-index: 10000;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        animation: toastSlideIn 0.5s ease;
+        max-width: 300px;
+        text-align: center;
+    `;
+
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.animation = 'toastSlideOut 0.5s ease forwards';
+        setTimeout(() => {
+            document.body.removeChild(toast);
+        }, 500);
+    }, 4000);
+}
+
+// Добавьте анимации для тоста
+const toastStyles = `
+@keyframes toastSlideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes toastSlideOut {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(100%); opacity: 0; }
+}
+`;
+document.head.insertAdjacentHTML('beforeend', `<style>${toastStyles}</style>`);
 
 document.querySelectorAll('input').forEach(input => {
     input.addEventListener('keypress', function (e) {
