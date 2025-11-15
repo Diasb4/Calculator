@@ -125,6 +125,39 @@
             color: #cccccc !important;
         }
 
+        /* Стили для блока предсказаний в темной теме */
+        body.dark-mode .prediction-block {
+            background: #1a1a1a !important;
+            border: 1px solid #333333 !important;
+            color: #ffffff !important;
+        }
+
+        body.dark-mode .prediction-block p {
+            color: #ffffff !important;
+        }
+
+        body.dark-mode .prediction-block strong {
+            color: #ffffff !important;
+        }
+
+        body.dark-mode .prediction-block hr {
+            border-color: #444444 !important;
+        }
+
+        /* Переопределение инлайновых стилей для блока прогноза */
+        body.dark-mode .result.warning div[style*="background: #f8f9fa"] {
+            background: #1a1a1a !important;
+            color: #ffffff !important;
+        }
+
+        body.dark-mode .result.warning div[style*="background: #f8f9fa"] p {
+            color: #ffffff !important;
+        }
+
+        body.dark-mode .result.warning div[style*="background: #f8f9fa"] strong {
+            color: #ffffff !important;
+        }
+
         nav.navbar {
             position: fixed;
             top: 0;

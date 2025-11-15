@@ -233,7 +233,7 @@ function calculate() {
         if (regterm < 50) {
             resultDiv.className = 'result danger show';
             const msg = mode === 'evil'
-                ? "РегТерм < 50. Поздравляю, вы провалили семестр ДО экзамена! 😏"
+                ? "РегТерм < 50. Поздравляю, ты даже до файнала не добрался а уже летка!"
                 : mode === 'serious'
                     ? "РегТерм ниже минимального порога. Курс не может быть сдан."
                     : "РегТерм меньше 50. Летник неизбежен.";
@@ -253,8 +253,7 @@ function calculate() {
 
         resultDiv.className = 'result warning show';
 
-        predictionHTML += '<div style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">';
-
+        predictionHTML += '<div class="prediction-block" style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">';
         // Для прохода
         predictionHTML += `<p style="margin-bottom: 10px;"><strong>📝 Для прохода курса:</strong></p>`;
         if (minForPass <= 100) {
