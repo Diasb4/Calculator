@@ -4,8 +4,487 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Калькулятор итоговой оценки</title>
-    <link rel="stylesheet" href="../style/styleForTotal.css">
+    <title>Калькулятор посещаемости</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            height: 100%;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 80px 20px 70px;
+            color: #333;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        /* Монохромный черный режим */
+        body.dark-mode {
+            background: #000000 !important;
+            color: #ffffff !important;
+        }
+
+        body.dark-mode .container {
+            background: #111111 !important;
+            color: #ffffff !important;
+            border: 1px solid #333333 !important;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5) !important;
+        }
+
+        body.dark-mode nav.navbar {
+            background: #111111 !important;
+            border-bottom: 1px solid #333333 !important;
+        }
+
+        body.dark-mode .nav-button {
+            background: #222222 !important;
+            color: #ffffff !important;
+            border: 1px solid #333333 !important;
+        }
+
+        body.dark-mode .nav-button:hover {
+            background: #333333 !important;
+        }
+
+        body.dark-mode input,
+        body.dark-mode select {
+            background: #0a0a0a !important;
+            color: #ffffff !important;
+            border: 1px solid #333333 !important;
+        }
+
+        body.dark-mode input:focus,
+        body.dark-mode select:focus {
+            border-color: #666666 !important;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1) !important;
+        }
+
+        body.dark-mode button:not(.nav-button) {
+            background: #222222 !important;
+            color: #ffffff !important;
+            border: 1px solid #333333 !important;
+        }
+
+        body.dark-mode button:hover:not(.nav-button) {
+            background: #333333 !important;
+        }
+
+        body.dark-mode .result.success {
+            background: #002200 !important;
+            border: 1px solid #004400 !important;
+            color: #90ee90 !important;
+        }
+
+        body.dark-mode .result.warning {
+            background: #222200 !important;
+            border: 1px solid #444400 !important;
+            color: #ffff99 !important;
+        }
+
+        body.dark-mode .result.danger {
+            background: #220000 !important;
+            border: 1px solid #440000 !important;
+            color: #ff9999 !important;
+        }
+
+        body.dark-mode .warning-text {
+            background: #222200 !important;
+            border-left: 4px solid #444400 !important;
+            color: #ffff99 !important;
+        }
+
+        body.dark-mode footer {
+            background: #111111 !important;
+            border-top: 1px solid #333333 !important;
+            color: #ffffff !important;
+        }
+
+        body.dark-mode footer a {
+            color: #cccccc !important;
+        }
+
+        body.dark-mode .mode-dropdown-content {
+            background: #111111 !important;
+            border: 1px solid #333333 !important;
+        }
+
+        body.dark-mode .mode-option {
+            color: #ffffff !important;
+            border-bottom: 1px solid #333333 !important;
+        }
+
+        body.dark-mode .mode-option:hover {
+            background: #333333 !important;
+        }
+
+        body.dark-mode .current-mode {
+            color: #cccccc !important;
+        }
+
+        /* Стили для блока предсказаний в темной теме */
+        body.dark-mode .prediction-block {
+            background: #1a1a1a !important;
+            border: 1px solid #333333 !important;
+            color: #ffffff !important;
+        }
+
+        body.dark-mode .prediction-block p {
+            color: #ffffff !important;
+        }
+
+        body.dark-mode .prediction-block strong {
+            color: #ffffff !important;
+        }
+
+        body.dark-mode .prediction-block hr {
+            border-color: #444444 !important;
+        }
+
+        body.dark-mode .result.warning div[style*="background: #f8f9fa"] {
+            background: #1a1a1a !important;
+            color: #ffffff !important;
+        }
+
+        body.dark-mode .result.warning div[style*="background: #f8f9fa"] p {
+            color: #ffffff !important;
+        }
+
+        body.dark-mode .result.warning div[style*="background: #f8f9fa"] strong {
+            color: #ffffff !important;
+        }
+
+        body.dark-mode .calculation {
+            background: #1a1a1a !important;
+            border-left: 5px solid #333333 !important;
+            color: #ffffff !important;
+        }
+
+        body.dark-mode .calculation h3 {
+            color: #cccccc !important;
+        }
+
+        body.dark-mode .info {
+            background: #222222 !important;
+            color: #cccccc !important;
+        }
+
+        body.dark-mode .highlight {
+            color: #ff9999 !important;
+        }
+
+        nav.navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 1000;
+            padding: 15px 20px;
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .nav-button {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+        }
+
+        .nav-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .mode-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .mode-dropdown-content {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background: white;
+            min-width: 200px;
+            border-radius: 10px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+            z-index: 1001;
+            margin-top: 5px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .mode-dropdown-content.show {
+            display: block;
+        }
+
+        .mode-option {
+            padding: 12px 16px;
+            color: #333;
+            text-decoration: none;
+            display: block;
+            border-bottom: 1px solid #e0e0e0;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .mode-option:last-child {
+            border-bottom: none;
+        }
+
+        .mode-option:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            margin: auto;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 28px;
+        }
+
+        .description {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #7f8c8d;
+            line-height: 1.6;
+        }
+
+        .input-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            color: #555;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        body.dark-mode label {
+            color: #cccccc !important;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+            background: white;
+            color: #333;
+        }
+
+        input:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .result {
+            margin-top: 30px;
+            padding: 25px;
+            border-radius: 15px;
+            display: none;
+            animation: slideIn 0.5s ease;
+        }
+
+        .result.show {
+            display: block;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result.success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+
+        .result.warning {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            color: #856404;
+        }
+
+        .result.danger {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+        }
+
+        .result h2 {
+            margin-bottom: 15px;
+            font-size: 22px;
+        }
+
+        .result p {
+            margin: 8px 0;
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        .score {
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        .warning-text {
+            background: rgba(255, 193, 7, 0.1);
+            border-left: 4px solid #856404;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+            font-size: 13px;
+            color: #856404;
+        }
+
+        .current-mode {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-top: 5px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .calculation {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            border-left: 5px solid #3498db;
+        }
+
+        .calculation h3 {
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+
+        .calculation p {
+            margin: 8px 0;
+        }
+
+        .highlight {
+            font-weight: bold;
+            color: #e74c3c;
+        }
+
+        .info {
+            background: #e1f5fe;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px 20px;
+            text-align: center;
+            font-size: 14px;
+            color: #555;
+            border-top: 1px solid #e0e0e0;
+            z-index: 1000;
+        }
+
+        footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 25px;
+            }
+
+            h1 {
+                font-size: 26px;
+            }
+        }
+    </style>
 </head>
 
 <body>
@@ -28,28 +507,28 @@
     </nav>
 
     <div class="container">
-        <h1>📚 Калькулятор оценок</h1>
+        <h1>📚 Калькулятор посещаемости</h1>
         <div class="current-mode" id="currentModeDisplay">Текущий режим: Стандартный</div>
 
+        <p class="description">
+            Этот калькулятор поможет вам определить, сколько пар можно пропустить за 10 недель семестра,
+            не превышая допустимый лимит пропусков.
+        </p>
+
         <div class="input-group">
-            <label for="regmid">РегМид (0-100)</label>
-            <input type="number" id="regmid" min="0" max="100" placeholder="Введите оценку">
+            <label for="lessonsPerWeek">Количество пар в неделю:</label>
+            <input type="number" id="lessonsPerWeek" min="1" max="50" placeholder="Введите число от 1 до 50">
         </div>
 
         <div class="input-group">
-            <label for="regend">РегЭнд (0-100)</label>
-            <input type="number" id="regend" min="0" max="100" placeholder="Введите оценку">
+            <label for="allowedPercentage">Допустимый процент пропусков (%):</label>
+            <input type="number" id="allowedPercentage" min="1" max="100" value="25" placeholder="Введите процент">
         </div>
 
-        <div class="input-group">
-            <label for="final">Файнал (0-100)</label>
-            <input type="number" id="final" min="0" max="100" placeholder="Оставьте пустым для прогноза">
-        </div>
-
-        <button onclick="calculate()">Рассчитать</button>
+        <button onclick="calculateAttendance()">Рассчитать</button>
 
         <div class="warning-text">
-            ⚠️ <strong>Важно:</strong> Списывание ведёт к отчислению!
+            ⚠️ <strong>Важно:</strong> Регулярные пропуски могут привести к отчислению!
         </div>
 
         <div id="result" class="result"></div>
@@ -60,7 +539,236 @@
             target="_blank">@Qrudos</a>.
     </footer>
 
-    <script src="../js/commands.js"></script>
+    <script>
+        let mode = "standard";
+
+        const modeNames = {
+            serious: "Серьёзный режим",
+            standard: "Стандартный режим",
+            evil: "Злой старшекурсник"
+        };
+
+        function changeMode(newMode) {
+            mode = newMode;
+            updateModeDisplay();
+            closeModeDropdown();
+
+            const phrases = {
+                serious: "Режим серьёзного аналитика.",
+                standard: "Стандартный режим. Всё по делу.",
+                evil: "Режим злого старшекурсника."
+            };
+            showComment(phrases[newMode], 'warning');
+        }
+
+        function updateModeDisplay() {
+            const display = document.getElementById('currentModeDisplay');
+            display.textContent = `Текущий режим: ${modeNames[mode]}`;
+        }
+
+        function showComment(text, type = 'warning') {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type} show`;
+            resultDiv.innerHTML = `<p>${text}</p>`;
+        }
+
+        // Функции для управления выпадающим меню
+        function toggleModeDropdown() {
+            const dropdown = document.getElementById('modeDropdown');
+            dropdown.classList.toggle('show');
+        }
+
+        function closeModeDropdown() {
+            const dropdown = document.getElementById('modeDropdown');
+            dropdown.classList.remove('show');
+        }
+
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function () {
+            updateModeDisplay();
+
+            // Обработчики для выпадающего меню режимов
+            const modeToggle = document.getElementById('mode-toggle');
+            const modeOptions = document.querySelectorAll('.mode-option');
+
+            modeToggle.addEventListener('click', function (e) {
+                e.stopPropagation();
+                toggleModeDropdown();
+            });
+
+            modeOptions.forEach(option => {
+                option.addEventListener('click', function () {
+                    const newMode = this.getAttribute('data-mode');
+                    changeMode(newMode);
+                });
+            });
+
+            // Закрытие выпадающего меню при клике вне его
+            document.addEventListener('click', function () {
+                closeModeDropdown();
+            });
+
+            // Предотвращение закрытия при клике на само меню
+            const dropdown = document.getElementById('modeDropdown');
+            dropdown.addEventListener('click', function (e) {
+                e.stopPropagation();
+            });
+
+            // Управление темной темой
+            const toggle = document.getElementById("theme-toggle");
+            const body = document.body;
+
+            // Проверяем сохраненную тему
+            if (localStorage.getItem("theme") === "dark") {
+                body.classList.add("dark-mode");
+                toggle.textContent = "☀️ Тема";
+            } else {
+                toggle.textContent = "🌙 Тема";
+            }
+
+            // Обработчик переключения темы
+            toggle.addEventListener("click", () => {
+                body.classList.toggle("dark-mode");
+
+                if (body.classList.contains("dark-mode")) {
+                    toggle.textContent = "☀️ Тема";
+                    localStorage.setItem("theme", "dark");
+                } else {
+                    toggle.textContent = "🌙 Тема";
+                    localStorage.setItem("theme", "light");
+                }
+            });
+
+            // Обработчик нажатия Enter в полях ввода
+            document.querySelectorAll('input').forEach(input => {
+                input.addEventListener('keypress', function (e) {
+                    if (e.key === 'Enter') {
+                        calculateAttendance();
+                    }
+                });
+            });
+        });
+
+        function calculateAttendance() {
+            // Получаем значения из полей ввода
+            const lessonsPerWeek = parseInt(document.getElementById('lessonsPerWeek').value);
+            const allowedPercentage = parseInt(document.getElementById('allowedPercentage').value);
+            const resultDiv = document.getElementById('result');
+
+            const comments = {
+                serious: {
+                    empty: [
+                        "Пожалуйста, введите все значения для расчёта.",
+                        "Все поля должны быть заполнены для точного результата."
+                    ],
+                    invalid: [
+                        "Введите корректные значения (пары: 1-50, процент: 1-100).",
+                        "Некорректные данные, проверяйте диапазон значений."
+                    ],
+                    pass: [
+                        "Расчёт выполнен успешно.",
+                        "Пропуски рассчитаны в соответствии с допустимыми пределами."
+                    ],
+                    fail: [
+                        "Внимание: процент пропусков слишком высок.",
+                        "С такими пропусками могут возникнуть проблемы с аттестацией."
+                    ]
+                },
+                standard: {
+                    empty: [
+                        "Заполните все поля для расчёта.",
+                        "Не забудьте ввести все значения."
+                    ],
+                    invalid: [
+                        "Пары должны быть от 1 до 50, процент от 1 до 100.",
+                        "Некорректное значение, проверяйте диапазон."
+                    ],
+                    pass: [
+                        "Расчёт завершён.",
+                        "Пропуски рассчитаны."
+                    ],
+                    fail: [
+                        "Высокий процент пропусков, будьте осторожны.",
+                        "Слишком много пропусков, могут быть проблемы."
+                    ]
+                },
+                evil: {
+                    empty: [
+                        "Ты серьёзно забыл ввести числа? Или это тоже нужно объяснять?",
+                        "Ничего не введено. Серьёзно?"
+                    ],
+                    invalid: [
+                        "Пары от 1 до 50, процент от 1 до 100. Математику учили?",
+                        "Некорректные данные. Ты точно на этом курсе?"
+                    ],
+                    pass: [
+                        "Ну, посчитал. Надеюсь, ты не будешь пропускать всё подряд.",
+                        "Вот твои пропуски. Не злоупотребляй."
+                    ],
+                    fail: [
+                        "С такими пропусками тебя точно отчислят. Поздравляю!",
+                        "Ты планируешь вообще ходить на пары? Или сразу на пересдачу?"
+                    ]
+                }
+            };
+
+            // Проверяем корректность введенных данных
+            if (isNaN(lessonsPerWeek) || isNaN(allowedPercentage)) {
+                resultDiv.className = 'result danger show';
+                resultDiv.innerHTML = `<h2>❌ Ошибка</h2><p>${pick(comments[mode].empty)}</p>`;
+                return;
+            }
+
+            if (lessonsPerWeek < 1 || lessonsPerWeek > 50 || allowedPercentage < 1 || allowedPercentage > 100) {
+                resultDiv.className = 'result danger show';
+                resultDiv.innerHTML = `<h2>❌ Ошибка</h2><p>${pick(comments[mode].invalid)}</p>`;
+                return;
+            }
+
+            // Выполняем расчеты
+            const totalLessons = lessonsPerWeek * 10;
+            const allowedMissed = Math.floor(totalLessons * (allowedPercentage / 100));
+
+            // Определяем тип результата
+            let status = 'success';
+            let message = '<h2>✅ Расчет завершен</h2>';
+
+            if (allowedPercentage > 30) {
+                status = 'warning';
+                message = '<h2>⚠️ Внимание</h2>';
+            }
+
+            if (allowedPercentage > 50) {
+                status = 'danger';
+                message = '<h2>❌ Высокий риск</h2>';
+            }
+
+            // Формируем результат
+            resultDiv.className = `result ${status} show`;
+
+            let resultHTML = message;
+            resultHTML += `<p>За 10 недель семестра при <span class="highlight">${lessonsPerWeek}</span> парах в неделю:</p>`;
+            resultHTML += `<p>Вы можете пропустить <span class="highlight">${allowedMissed}</span> пар.</p>`;
+
+            resultHTML += '<div class="calculation">';
+            resultHTML += '<h3>Как это рассчитывается:</h3>';
+            resultHTML += `<p>1. Всего пар за 10 недель: <span class="highlight">${lessonsPerWeek} × 10 = ${totalLessons}</span></p>`;
+            resultHTML += `<p>2. Допустимый процент пропусков: <span class="highlight">${allowedPercentage}%</span></p>`;
+            resultHTML += `<p>3. Расчет: <span class="highlight">${totalLessons} × ${allowedPercentage}% = ${(totalLessons * (allowedPercentage / 100)).toFixed(2)}</span></p>`;
+            resultHTML += `<p>4. Округление до целого числа: <span class="highlight">${allowedMissed}</span></p>`;
+            resultHTML += '</div>';
+
+            resultHTML += '<div class="info">';
+            resultHTML += `<strong>Примечание:</strong> ${pick(comments[mode].pass)} Это приблизительный расчет. Фактическое количество допустимых пропусков может зависеть от правил вашего учебного заведения.`;
+            resultHTML += '</div>';
+
+            resultDiv.innerHTML = resultHTML;
+        }
+
+        function pick(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+    </script>
 </body>
 
 </html>
