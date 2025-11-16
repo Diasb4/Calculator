@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
     <title>Калькулятор оценок - Структурированный</title>
     <link rel="stylesheet" href="../style/styleForTempl.css">
     <!-- Google tag (gtag.js) -->
@@ -15,6 +15,7 @@
 
         gtag('config', 'G-4DVBKX599T');
     </script>
+    <link rel="stylesheet" href="../style/styleForTempl.css">
 </head>
 
 <body>
@@ -103,7 +104,7 @@
             </div>
         </div>
 
-        <button class="calculate-btn" onclick="calculateAll()">Рассчитать итоговую оценку</button>
+        <button class="calculate-btn" id="calculate-all-btn">Рассчитать итоговую оценку</button>
 
         <div class="warning-text">
             ⚠️ <strong>Важно:</strong> Сумма весов всех секций должна быть равна 100%
@@ -123,8 +124,8 @@
         </div>
     </footer>
 
-
-    <script src="../js/template.js">
+    <script src="../js/template.js"></script>
+    <script>
 
     </script>
 </body>

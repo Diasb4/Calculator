@@ -228,3 +228,79 @@ document.head.insertAdjacentHTML('beforeend', `<style>${toastStyles}</style>`);
 document.addEventListener('DOMContentLoaded', function () {
     calculateAll();
 });
+// Дополнительные исправления для мобильных устройств
+document.addEventListener('DOMContentLoaded', function () {
+    // Улучшенные обработчики для кнопок на мобильных
+    const calculateBtn = document.getElementById('calculate-all-btn');
+    if (calculateBtn) {
+        calculateBtn.addEventListener('touchstart', function (e) {
+            e.preventDefault();
+            calculateAll();
+        });
+    }
+
+    // Улучшенные обработчики для кнопок добавления
+    document.querySelectorAll('.add-btn').forEach(btn => {
+        btn.addEventListener('touchstart', function (e) {
+            e.preventDefault();
+            const listId = this.getAttribute('onclick').match(/'([^']+)'/)[1];
+            addComponent(listId);
+        });
+    });
+
+    // Улучшенные обработчики для кнопок удаления
+    document.querySelectorAll('.remove-btn').forEach(btn => {
+        btn.addEventListener('touchstart', function (e) {
+            e.preventDefault();
+            removeComponent(this);
+        });
+    });
+
+    // Улучшенные обработчики для полей ввода
+    document.querySelectorAll('input').forEach(input => {
+        input.addEventListener('touchstart', function (e) {
+            // Позволяет полям ввода получать фокус на мобильных
+            this.focus();
+        });
+    });
+
+    // Управление темной темой
+    const toggle = document.getElementById("theme-toggle");
+    const body = document.body;
+
+    // Проверяем сохраненную тему
+    if (localStorage.getItem("theme") === "dark") {
+        body.classList.add("dark-mode");
+        toggle.textContent = "☀️ Тема";
+    } else {
+        toggle.textContent = "🌙 Тема";
+    }
+
+    // Обработчик переключения темы
+    toggle.addEventListener("click", () => {
+        body.classList.toggle("dark-mode");
+
+        if (body.classList.contains("dark-mode")) {
+            toggle.textContent = "☀️ Тема";
+            localStorage.setItem("theme", "dark");
+        } else {
+            toggle.textContent = "🌙 Тема";
+            localStorage.setItem("theme", "light");
+        }
+    });
+
+    // Обработчик touch для переключения темы
+    toggle.addEventListener('touchstart', function (e) {
+        e.preventDefault();
+        body.classList.toggle("dark-mode");
+
+        if (body.classList.contains("dark-mode")) {
+            toggle.textContent = "☀️ Тема";
+            localStorage.setItem("theme", "dark");
+        } else {
+            toggle.textContent = "🌙 Тема";
+            localStorage.setItem("theme", "light");
+        }
+    });
+});
+document.head.insertAdjacentHTML('beforeend', `<style>${toastStyles}</style>`);

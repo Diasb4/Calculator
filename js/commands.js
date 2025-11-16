@@ -1,4 +1,3 @@
-
 let mode = "standard";
 
 const modeNames = {
@@ -50,13 +49,23 @@ document.addEventListener('DOMContentLoaded', function () {
     const modeToggle = document.getElementById('mode-toggle');
     const modeOptions = document.querySelectorAll('.mode-option');
 
+    // Улучшенные обработчики для мобильных устройств
     modeToggle.addEventListener('click', function (e) {
         e.stopPropagation();
+        e.preventDefault();
         toggleModeDropdown();
     });
 
     modeOptions.forEach(option => {
-        option.addEventListener('click', function () {
+        option.addEventListener('click', function (e) {
+            e.preventDefault();
+            const newMode = this.getAttribute('data-mode');
+            changeMode(newMode);
+        });
+
+        // Добавляем обработчик touch для лучшей реакции на мобильных
+        option.addEventListener('touchstart', function (e) {
+            e.preventDefault();
             const newMode = this.getAttribute('data-mode');
             changeMode(newMode);
         });
@@ -69,8 +78,63 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Предотвращение закрытия при клике на само меню
     const dropdown = document.getElementById('modeDropdown');
-    dropdown.addEventListener('click', function (e) {
-        e.stopPropagation();
+    if (dropdown) {
+        dropdown.addEventListener('click', function (e) {
+            e.stopPropagation();
+        });
+    }
+
+    // Управление темной темой
+    const toggle = document.getElementById("theme-toggle");
+    const body = document.body;
+
+    // Проверяем сохраненную тему
+    if (localStorage.getItem("theme") === "dark") {
+        body.classList.add("dark-mode");
+        toggle.textContent = "☀️ Тема";
+    } else {
+        toggle.textContent = "🌙 Тема";
+    }
+
+    // Обработчик переключения темы
+    toggle.addEventListener("click", () => {
+        body.classList.toggle("dark-mode");
+
+        if (body.classList.contains("dark-mode")) {
+            toggle.textContent = "☀️ Тема";
+            localStorage.setItem("theme", "dark");
+        } else {
+            toggle.textContent = "🌙 Тема";
+            localStorage.setItem("theme", "light");
+        }
+    });
+
+    // Обработчик для кнопки расчета
+    const calculateBtn = document.getElementById('calculate-btn');
+    if (calculateBtn) {
+        calculateBtn.addEventListener('click', calculate);
+        // Добавляем обработчик touch для мобильных
+        calculateBtn.addEventListener('touchstart', function (e) {
+            e.preventDefault();
+            calculate();
+        });
+    }
+
+    // Обработчик нажатия Enter в полях ввода
+    document.querySelectorAll('input').forEach(input => {
+        input.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                calculate();
+            }
+        });
+    });
+
+    // Улучшенный обработчик для полей ввода на мобильных
+    document.querySelectorAll('input').forEach(input => {
+        input.addEventListener('touchstart', function (e) {
+            // Позволяет полям ввода получать фокус на мобильных
+            this.focus();
+        });
     });
 });
 
@@ -253,7 +317,8 @@ function calculate() {
 
         resultDiv.className = 'result warning show';
 
-        predictionHTML += '<div class="prediction-block" style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">';
+        predictionHTML += '<div style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">';
+
         // Для прохода
         predictionHTML += `<p style="margin-bottom: 10px;"><strong>📝 Для прохода курса:</strong></p>`;
         if (minForPass <= 100) {
@@ -346,51 +411,6 @@ function calculate() {
 function pick(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
 }
-function isValidNumberString(str) {
-    if (str.trim() === "") {
-        return true;
-    }
-    return /^\d*\.?\d*$/.test(str) && !isNaN(parseFloat(str));
-}
-// Добавляем анимацию появления карточек
-document.addEventListener('DOMContentLoaded', function () {
-    const cards = document.querySelectorAll('.option-card');
-    cards.forEach((card, index) => {
-        card.style.opacity = '0';
-        card.style.transform = 'translateY(20px)';
-
-        setTimeout(() => {
-            card.style.transition = 'all 0.5s ease';
-            card.style.opacity = '1';
-            card.style.transform = 'translateY(0)';
-        }, index * 200);
-    });
-});
-
-// Управление темной темой
-const toggle = document.getElementById("theme-toggle");
-const body = document.body;
-
-// Проверяем сохраненную тему
-if (localStorage.getItem("theme") === "dark") {
-    body.classList.add("dark-mode");
-    toggle.textContent = "☀️ Тема";
-} else {
-    toggle.textContent = "🌙 Тема";
-}
-
-// Обработчик переключения темы
-toggle.addEventListener("click", () => {
-    body.classList.toggle("dark-mode");
-
-    if (body.classList.contains("dark-mode")) {
-        toggle.textContent = "☀️ Тема";
-        localStorage.setItem("theme", "dark");
-    } else {
-        toggle.textContent = "🌙 Тема";
-        localStorage.setItem("theme", "light");
-    }
-});
 function revealSecret() {
     const secrets = [
         "Пасхалка! Ты нашел секрет! 🥚",
@@ -455,12 +475,3 @@ const toastStyles = `
     to { transform: translateX(100%); opacity: 0; }
 }
 `;
-document.head.insertAdjacentHTML('beforeend', `<style>${toastStyles}</style>`);
-
-document.querySelectorAll('input').forEach(input => {
-    input.addEventListener('keypress', function (e) {
-        if (e.key === 'Enter') {
-            calculate();
-        }
-    });
-});

@@ -3,18 +3,9 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Калькулятор итоговой оценки</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
+    <title>GradeMaster - Калькулятор оценок</title>
     <link rel="stylesheet" href="../style/styleForTotal.css">
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-4DVBKX599T"></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag() { dataLayer.push(arguments); }
-        gtag('js', new Date());
-
-        gtag('config', 'G-4DVBKX599T');
-    </script>
 </head>
 
 <body>
@@ -55,7 +46,7 @@
             <input type="number" id="final" min="0" max="100" placeholder="Оставьте пустым для прогноза">
         </div>
 
-        <button onclick="calculate()">Рассчитать</button>
+        <button id="calculate-btn">Рассчитать</button>
 
         <div class="warning-text">
             ⚠️ <strong>Важно:</strong> Списывание ведёт к отчислению!
@@ -67,13 +58,11 @@
     <footer>
         &copy; 2025 Not_404. In case of any bug contact via Telegram <a href="https://t.me/Qrudos"
             target="_blank">@Qrudos</a>.
-        <div style="opacity: 0.01; position: absolute; bottom: 5px; right: 5px; width: 10px; height: 10px; cursor: pointer;"
-            onclick="revealSecret()" title="ssshhh...">
-        </div>
     </footer>
 
+    <script src="../js/commands.js">
 
-    <script src="../js/commands.js"></script>
+    </script>
 </body>
 
 </html>
