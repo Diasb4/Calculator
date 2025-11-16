@@ -46,7 +46,7 @@ async function handleFeedbackSubmit(e) {
             showStatus('✅ Сообщение успешно отправлено! Спасибо за вашу обратную связь!', 'success');
             document.getElementById('feedbackForm').reset();
         } else {
-            showStatus('❌ Ошибка при отправке. Попробуйте еще раз или напишите напрямую в Telegram.', 'error');
+            showStatus('❌ Ошибка при отправке. Попробуйте еще раз.', 'error');
         }
     } catch (error) {
         console.error('Ошибка:', error);
