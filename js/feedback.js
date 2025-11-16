@@ -1,3 +1,42 @@
+// Управление темной темой
+const toggle = document.getElementById("theme-toggle");
+const body = document.body;
+
+// Проверяем сохраненную тему
+if (localStorage.getItem("theme") === "dark") {
+    body.classList.add("dark-mode");
+    toggle.textContent = "☀️ Тема";
+} else {
+    toggle.textContent = "🌙 Тема";
+}
+
+// Обработчик переключения темы
+toggle.addEventListener("click", () => {
+    body.classList.toggle("dark-mode");
+
+    if (body.classList.contains("dark-mode")) {
+        toggle.textContent = "☀️ Тема";
+        localStorage.setItem("theme", "dark");
+    } else {
+        toggle.textContent = "🌙 Тема";
+        localStorage.setItem("theme", "light");
+    }
+});
+
+// Обработчик touch для переключения темы на мобильных
+toggle.addEventListener('touchstart', function (e) {
+    e.preventDefault();
+    body.classList.toggle("dark-mode");
+
+    if (body.classList.contains("dark-mode")) {
+        toggle.textContent = "☀️ Тема";
+        localStorage.setItem("theme", "dark");
+    } else {
+        toggle.textContent = "🌙 Тема";
+        localStorage.setItem("theme", "light");
+    }
+});
+
 // БЕЗОПАСНАЯ конфигурация - без токенов!
 const API_ENDPOINT = 'https://calculator-not-404.vercel.app/api/telegram';
 
@@ -5,15 +44,7 @@ const API_ENDPOINT = 'https://calculator-not-404.vercel.app/api/telegram';
 const typeEmojis = { suggestion: '💡', bug: '🐛', feature: '🚀', other: '📝' };
 const typeTitles = { suggestion: 'Предложение', bug: 'Багрепорт', feature: 'Запрос функции', other: 'Обращение' };
 
-// Ждем загрузки DOM
-document.addEventListener('DOMContentLoaded', function () {
-    const form = document.getElementById('feedbackForm');
-    if (form) {
-        form.addEventListener('submit', handleFeedbackSubmit);
-    }
-});
-
-async function handleFeedbackSubmit(e) {
+document.getElementById('feedbackForm').addEventListener('submit', async function (e) {
     e.preventDefault();
 
     const submitBtn = document.getElementById('submitBtn');
@@ -46,7 +77,7 @@ async function handleFeedbackSubmit(e) {
             showStatus('✅ Сообщение успешно отправлено! Спасибо за вашу обратную связь!', 'success');
             document.getElementById('feedbackForm').reset();
         } else {
-            showStatus('❌ Ошибка при отправке. Попробуйте еще раз.', 'error');
+            showStatus('❌ Ошибка при отправке. Попробуйте еще раз или напишите напрямую в Telegram.', 'error');
         }
     } catch (error) {
         console.error('Ошибка:', error);
@@ -56,7 +87,7 @@ async function handleFeedbackSubmit(e) {
         submitBtn.disabled = false;
         submitBtn.textContent = '📨 Отправить сообщение';
     }
-}
+});
 
 function formatMessage(userName, type, message, contact) {
     const emoji = typeEmojis[type] || '📝';
@@ -94,7 +125,7 @@ async function sendFeedback(message) {
         });
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            throw new Error('Network response was not ok');
         }
 
         const data = await response.json();
@@ -107,11 +138,8 @@ async function sendFeedback(message) {
 
 function showStatus(message, type) {
     const statusElement = document.getElementById('statusMessage');
-    if (!statusElement) return;
-
     statusElement.textContent = message;
     statusElement.className = `status-message ${type}`;
-    statusElement.style.display = 'block';
 
     // Автоскрытие успешных сообщений
     if (type === 'success') {
@@ -123,20 +151,10 @@ function showStatus(message, type) {
 
 // Функция для быстрого фидбека
 window.quickFeedback = function (type, presetMessage = '') {
-    const typeElement = document.getElementById('feedbackType');
-    const messageElement = document.getElementById('message');
-
-    if (typeElement) typeElement.value = type;
-    if (messageElement && presetMessage) {
-        messageElement.value = presetMessage;
+    document.getElementById('feedbackType').value = type;
+    if (presetMessage) {
+        document.getElementById('message').value = presetMessage;
     }
-
-    const form = document.getElementById('feedbackForm');
-    if (form) {
-        form.scrollIntoView({ behavior: 'smooth' });
-    }
-
-    if (messageElement) {
-        messageElement.focus();
-    }
+    document.getElementById('feedbackForm').scrollIntoView({ behavior: 'smooth' });
+    document.getElementById('message').focus();
 };

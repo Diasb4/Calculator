@@ -9,9 +9,21 @@
 </head>
 
 <body>
+    <!-- Навбар -->
+    <nav class="navbar">
+        <a href="../index.html" class="nav-button">← На главную</a>
+        <div class="nav-buttons">
+            <button id="theme-toggle" class="nav-button">🌙 Тема</button>
+        </div>
+    </nav>
+
+    <!-- Контейнер обратной связи -->
     <div class="feedback-container">
         <h1>💬 Обратная связь</h1>
-        <p class="subtitle">Есть идеи для улучшения? Нашли баг? Напишите нам!</p>
+        <p class="subtitle">
+            Есть идеи для улучшения калькулятора? Нашли баг?<br>
+            Напишите нам - мы ценим ваше мнение!
+        </p>
 
         <form class="feedback-form" id="feedbackForm">
             <div class="form-group">
@@ -39,13 +51,16 @@
                 <input type="text" id="contact" placeholder="Telegram, email или др.">
             </div>
 
-            <button type="submit" class="submit-btn" id="submitBtn">📨 Отправить сообщение</button>
+            <button type="submit" class="submit-btn" id="submitBtn">
+                📨 Отправить сообщение
+            </button>
         </form>
 
         <div class="status-message" id="statusMessage"></div>
     </div>
 
     <script src="../js/feedback.js">
+
     </script>
 </body>
 
