@@ -167,6 +167,10 @@ function calculate() {
                 "Поздравляем! Вы получаете стипендию.",
                 "Стипендия у ваших ног, молодец!"
             ],
+            highScholarship: [
+                "Превосходно! Вы получаете повышенную стипендию!",
+                "Высший результат! Повышенная стипендия гарантирована!"
+            ],
             high: [
                 "Отличный результат! Вы показали высокий уровень знаний.",
                 "Превосходно! Так держать."
@@ -201,6 +205,10 @@ function calculate() {
                 "Стипендия! Хорошая работа.",
                 "Поздравляем, вы получаете стипендию."
             ],
+            highScholarship: [
+                "Отлично! Повышенная стипендия твоя!",
+                "Вау! Повышенная стипендия обеспечена!"
+            ],
             high: [
                 "Отлично! Высокий балл.",
                 "Замечательный результат!"
@@ -234,6 +242,10 @@ function calculate() {
             scholarship: [
                 "Со стипендией! Не растрать её на кофе в первый же день.",
                 "Поздравляю, стипендия твоя!"
+            ],
+            highScholarship: [
+                "Серьёзно? Повышенная стипендия? Ты точно не списывал?",
+                "Ого! Повышенная стипендия! Может, поделишься? Шучу... или нет."
             ],
             high: [
                 "Серьёзно? Такой балл? Ты точно не списывал? Шучу... или нет.",
@@ -312,8 +324,11 @@ function calculate() {
         // Для прохода (Total >= 50 и Final >= 50)
         const minForPass = Math.max(50, (50 - regScore) / 0.4);
 
-        // Для стипендии (Total >= 70)
+        // Для обычной стипендии (Total >= 70)
         const minForScholarship = (70 - regScore) / 0.4;
+
+        // Для повышенной стипендии (Total >= 90)
+        const minForHighScholarship = (90 - regScore) / 0.4;
 
         resultDiv.className = 'result warning show';
 
@@ -335,8 +350,8 @@ function calculate() {
 
         predictionHTML += '<hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;">';
 
-        // Для стипендии
-        predictionHTML += `<p style="margin-bottom: 10px;"><strong>💰 Для стипендии:</strong></p>`;
+        // Для обычной стипендии
+        predictionHTML += `<p style="margin-bottom: 10px;"><strong>💰 Для обычной стипендии:</strong></p>`;
         if (minForScholarship <= 100) {
             const schEmoji = minForScholarship >= 95 ? '💎' : minForScholarship >= 80 ? '⭐' : '✨';
             const schComment = mode === 'evil'
@@ -350,6 +365,25 @@ function calculate() {
                 ? "Нужно больше 100 баллов. Может, попробуешь взятку? Шучу... или нет 🤔"
                 : "Невозможно получить стипендию при текущих результатах.";
             predictionHTML += `<p>❌ ${impossibleMsg}</p>`;
+        }
+
+        predictionHTML += '<hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;">';
+
+        // Для повышенной стипендии
+        predictionHTML += `<p style="margin-bottom: 10px;"><strong>💎 Для повышенной стипендии:</strong></p>`;
+        if (minForHighScholarship <= 100) {
+            const highSchEmoji = minForHighScholarship >= 95 ? '🚀' : minForHighScholarship >= 85 ? '💎' : '⭐';
+            const highSchComment = mode === 'evil'
+                ? (minForHighScholarship >= 95 ? ' (Это уже из области фантастики!)' : minForHighScholarship >= 85 ? ' (На грани возможного!)' : ' (Потребуются невероятные усилия)')
+                : mode === 'serious'
+                    ? (minForHighScholarship >= 95 ? ' (экстремально сложно)' : minForHighScholarship >= 85 ? ' (очень высокая сложность)' : ' (высокая сложность)')
+                    : (minForHighScholarship >= 95 ? ' (практически нереально)' : minForHighScholarship >= 85 ? ' (очень сложно)' : ' (сложно, но возможно)');
+            predictionHTML += `<p>${highSchEmoji} Минимум <strong>${Math.max(50, minForHighScholarship).toFixed(1)}</strong> баллов${highSchComment}</p>`;
+        } else {
+            const impossibleHighMsg = mode === 'evil'
+                ? "Повышенная стипендия? С такими оценками? Мечтать не вредно! 😂"
+                : "Невозможно получить повышенную стипендию при текущих результатах.";
+            predictionHTML += `<p>❌ ${impossibleHighMsg}</p>`;
         }
 
         predictionHTML += '</div>';
@@ -393,10 +427,12 @@ function calculate() {
         message = '<h2>⚠️ Без стипендии</h2>';
         comment = pick(comments[mode].pass);
     } else if (total >= 90) {
-        message = '<h2>✅ Отличный результат! У вас повышка!</h2>';
-        comment = pick(comments[mode].high);
-    } else {
-        message = '<h2>✅ Успех!</h2>';
+        status = 'success';
+        message = '<h2>💎 Превосходно! Повышенная стипендия!</h2>';
+        comment = pick(comments[mode].highScholarship);
+    } else if (total >= 70) {
+        status = 'success';
+        message = '<h2>✅ Успех! Обычная стипендия!</h2>';
         comment = pick(comments[mode].scholarship);
     }
 
@@ -411,6 +447,7 @@ function calculate() {
 function pick(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
 }
+
 function revealSecret() {
     const secrets = [
         "Пасхалка! Ты нашел секрет! 🥚",
