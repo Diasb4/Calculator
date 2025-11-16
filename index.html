@@ -6,6 +6,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GradeMaster - Калькулятор оценок</title>
     <link rel="stylesheet" href="style/style.css">
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-4DVBKX599T"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+
+        gtag('config', 'G-4DVBKX599T');
+    </script>
 </head>
 
 <body>
@@ -27,7 +36,8 @@
                     <li>• Ручной ввод всех параметров</li>
                     <li>• Подходит для любых предметов</li>
                 </ul>
-                <button onclick="window.location.href='../main/TotalCalculator.html'">
+                <button
+                    onclick="trackNavigation('Итоговая оценка'); window.location.href='../main/TotalCalculator.html'">
                     <p>Перейти</p>
                 </button>
             </div>
@@ -40,7 +50,8 @@
                     <li>• Популярные предметы</li>
                     <li>• Предустановленные веса</li>
                 </ul>
-                <button onclick="window.location.href='../main/templated_calculator.html'">
+                <button
+                    onclick="trackNavigation('Предметные шаблоны'); window.location.href='../main/templated_calculator.html'">
                     <p>Перейти</p>
                 </button>
             </div>
@@ -52,7 +63,8 @@
                     <li>• Читаемый интерфейс</li>
                     <li>• Понятный метод подсчета</li>
                 </ul>
-                <button onclick="window.location.href='../main/AttendanceCalculator.html'">
+                <button
+                    onclick="trackNavigation('Посещаемость'); window.location.href='../main/AttendanceCalculator.html'">
                     <p>Перейти</p>
                 </button>
             </div>
@@ -63,14 +75,25 @@
         &copy; 2025 Not_404. In case of any bug contact via Telegram <a href="https://t.me/Qrudos"
             target="_blank">@Qrudos</a>.
         <div style="opacity: 0.01; position: absolute; bottom: 5px; right: 5px; width: 10px; height: 10px; cursor: pointer;"
-            onclick="revealSecret()" title="ssshhh...">
+            onclick="trackEasterEgg(); revealSecret()" title="ssshhh...">
         </div>
     </footer>
 
-
-    <script src="../js/main.js">
-
+    <!-- Встроенный скрипт для отслеживания событий -->
+    <script>
+        // Функции для отслеживания в Google Analytics
+        function trackNavigation(page) {
+            if (typeof gtag !== 'undefined') {
+                gtag('event', 'navigation', {
+                    'event_category': 'navigation',
+                    'event_label': page,
+                    'value': 1
+                });
+            }
+        }
     </script>
+
+    <script src="../js/main.js"></script>
 </body>
 
 </html>
