@@ -393,7 +393,7 @@ function calculate() {
         message = '<h2>⚠️ Без стипендии</h2>';
         comment = pick(comments[mode].pass);
     } else if (total >= 90) {
-        message = '<h2>✅ Отличный результат!</h2>';
+        message = '<h2>✅ Отличный результат! У вас повышка!</h2>';
         comment = pick(comments[mode].high);
     } else {
         message = '<h2>✅ Успех!</h2>';
