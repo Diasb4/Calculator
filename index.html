@@ -15,6 +15,20 @@
 
         gtag('config', 'G-4DVBKX599T');
     </script>
+    <style>
+        /* Исправление перекрытия навбаром */
+        .container {
+            margin-top: 80px;
+            /* Добавляем отступ сверху равный высоте навбара */
+        }
+
+        /* Для мобильных устройств можно уменьшить отступ */
+        @media (max-width: 768px) {
+            .container {
+                margin-top: 70px;
+            }
+        }
+    </style>
 </head>
 
 <body>
@@ -87,6 +101,17 @@
                 gtag('event', 'navigation', {
                     'event_category': 'navigation',
                     'event_label': page,
+                    'value': 1
+                });
+            }
+        }
+
+        // Функция для отслеживания пасхалок
+        function trackEasterEgg() {
+            if (typeof gtag !== 'undefined') {
+                gtag('event', 'easter_egg', {
+                    'event_category': 'engagement',
+                    'event_label': 'main_page_secret',
                     'value': 1
                 });
             }
