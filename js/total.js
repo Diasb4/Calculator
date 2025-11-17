@@ -141,6 +141,8 @@ document.addEventListener('DOMContentLoaded', function () {
 function calculate() {
     const regmid = parseFloat(document.getElementById('regmid').value);
     const regend = parseFloat(document.getElementById('regend').value);
+    const regtermInput = document.getElementById('regterm').value;
+    const regtermDirect = regtermInput === '' ? null : parseFloat(regtermInput);
     const finalInput = document.getElementById('final').value;
     const final = finalInput === '' ? 0 : parseFloat(finalInput);
     const resultDiv = document.getElementById('result');
@@ -262,48 +264,70 @@ function calculate() {
         }
     };
 
-    if (isNaN(regmid) || isNaN(regend)) {
-        resultDiv.className = 'result danger show';
-        resultDiv.innerHTML = `<h2>❌ Ошибка</h2><p>${pick(comments[mode].empty)}</p>`;
-        return;
-    }
+    // Определяем РегТерм - либо напрямую, либо вычисляем из РегМида и РегЭнда
+    let regterm;
+    let regtermSource = "";
 
-    if (regmid < 0 || regmid > 100 || regend < 0 || regend > 100 || final < 0 || final > 100) {
-        resultDiv.className = 'result danger show';
-        resultDiv.innerHTML = `<h2>❌ Ошибка</h2><p>${pick(comments[mode].invalid)}</p>`;
-        return;
-    }
+    if (regtermDirect !== null && !isNaN(regtermDirect)) {
+        // Используем прямой ввод РегТерма
+        regterm = regtermDirect;
+        regtermSource = " (введён напрямую)";
 
-    const regterm = (regmid + regend) / 2;
+        // Проверяем валидность прямого ввода РегТерма
+        if (regterm < 0 || regterm > 100) {
+            resultDiv.className = 'result danger show';
+            resultDiv.innerHTML = `<h2>❌ Ошибка</h2><p>${pick(comments[mode].invalid)}</p>`;
+            return;
+        }
+    } else {
+        // Вычисляем РегТерм из РегМида и РегЭнда
+        if (isNaN(regmid) || isNaN(regend)) {
+            resultDiv.className = 'result danger show';
+            resultDiv.innerHTML = `<h2>❌ Ошибка</h2><p>${pick(comments[mode].empty)}</p>`;
+            return;
+        }
+
+        if (regmid < 0 || regmid > 100 || regend < 0 || regend > 100) {
+            resultDiv.className = 'result danger show';
+            resultDiv.innerHTML = `<h2>❌ Ошибка</h2><p>${pick(comments[mode].invalid)}</p>`;
+            return;
+        }
+
+        regterm = (regmid + regend) / 2;
+        regtermSource = " (вычислен из РегМида и РегЭнда)";
+    }
 
     // РЕЖИМ ПРОГНОЗА
     if (final === 0 || finalInput === '') {
         let predictionHTML = `<h2>🔮 ${pick(comments[mode].prediction)}</h2>`;
-        predictionHTML += `<p style="margin-bottom: 15px;"><strong>РегТерм: ${regterm.toFixed(2)}</strong></p>`;
+        predictionHTML += `<p style="margin-bottom: 15px;"><strong>РегТерм: ${regterm.toFixed(2)}${regtermSource}</strong></p>`;
 
         // Проверка критических условий
-        if (regmid < 25) {
-            resultDiv.className = 'result danger show';
-            const msg = mode === 'evil'
-                ? "РегМид < 25? Серьёзно? Вы вообще на пары ходили? 💀"
-                : mode === 'serious'
-                    ? "РегМид ниже минимального порога. Курс не может быть сдан."
-                    : "РегМид меньше 25. Летник без вариантов.";
-            predictionHTML += `<p>${msg}</p><p><strong>${comments[mode].alreadyFailed}</strong></p>`;
-            resultDiv.innerHTML = predictionHTML;
-            return;
-        }
+        if (regtermDirect === null) {
+            // Только при вычислении из РегМида и РегЭнда проверяем отдельные компоненты
+            if (regmid < 25) {
+                resultDiv.className = 'result danger show';
+                const msg = mode === 'evil'
+                    ? "РегМид < 25? Серьёзно? Вы вообще на пары ходили? 💀"
+                    : mode === 'serious'
+                        ? "РегМид ниже минимального порога. Курс не может быть сдан."
+                        : "РегМид меньше 25. Летник без вариантов.";
+                predictionHTML += `<p>${msg}</p><p><strong>${comments[mode].alreadyFailed}</strong></p>`;
+                resultDiv.innerHTML = predictionHTML;
+                return;
+            }
 
-        if (regend < 25) {
-            resultDiv.className = 'result danger show';
-            const msg = mode === 'evil'
-                ? "РегЭнд < 25... Кажется, кто-то пропустил пару важных лекций. Или все."
-                : mode === 'serious'
-                    ? "РегЭнд ниже минимального порога. Курс не может быть сдан."
-                    : "РегЭнд меньше 25. Летник без вариантов.";
-            predictionHTML += `<p>${msg}</p><p><strong>${comments[mode].alreadyFailed}</strong></p>`;
-            resultDiv.innerHTML = predictionHTML;
-            return;
+            if (regend < 25) {
+                resultDiv.className = 'result danger show';
+                const msg = mode === 'evil'
+                    ? "РегЭнд < 25... Кажется, кто-то пропустил пару важных лекций. Или все."
+                    : mode === 'serious'
+                        ? "РегЭнд ниже минимального порога. Курс не может быть сдан."
+                        : "РегЭнд меньше 25. Летник без вариантов.";
+                predictionHTML += `<p>${msg}</p><p><strong>${comments[mode].alreadyFailed}</strong></p>`;
+                resultDiv.innerHTML = predictionHTML;
+                return;
+            }
         }
 
         if (regterm < 50) {
@@ -319,7 +343,14 @@ function calculate() {
         }
 
         // Расчёт необходимых баллов
-        const regScore = (regmid * 0.3) + (regend * 0.3);
+        let regScore;
+        if (regtermDirect !== null) {
+            // Если РегТерм введён напрямую, используем его для расчёта
+            regScore = regterm * 0.6; // 30% + 30% = 60%
+        } else {
+            // Если РегТерм вычислен, используем исходные компоненты
+            regScore = (regmid * 0.3) + (regend * 0.3);
+        }
 
         // Для прохода (Total >= 50 и Final >= 50)
         const minForPass = Math.max(50, (50 - regScore) / 0.4);
@@ -402,13 +433,30 @@ function calculate() {
     }
 
     // ОБЫЧНЫЙ РАСЧЁТ С РЕАЛЬНЫМ ФАЙНАЛОМ
-    const total = (regmid * 0.3) + (regend * 0.3) + (final * 0.4);
+    let total;
+    if (regtermDirect !== null) {
+        // Если РегТерм введён напрямую
+        total = (regterm * 0.6) + (final * 0.4);
+    } else {
+        // Если РегТерм вычислен из РегМида и РегЭнда
+        total = (regmid * 0.3) + (regend * 0.3) + (final * 0.4);
+    }
 
     let status = 'success';
     let message = '<h2>✅ Отличный результат!</h2>';
     let comment = "";
 
-    if (regmid < 25 || regend < 25 || regterm < 50 || final < 25 || total < 50) {
+    // Проверка условий сдачи
+    let failed = false;
+
+    if (regtermDirect === null) {
+        // Проверяем отдельные компоненты только если они были введены
+        if (regmid < 25 || regend < 25) {
+            failed = true;
+        }
+    }
+
+    if (regterm < 50 || final < 25 || total < 50 || failed) {
         status = 'danger';
         message = '<h2>❌ Летник</h2>';
         comment = pick(comments[mode].fail);
@@ -437,12 +485,13 @@ function calculate() {
     }
 
     const detailsText = mode === 'serious'
-        ? `Детали расчёта: РегТерм = ${regterm.toFixed(2)}, Итоговый балл = ${total.toFixed(2)}`
-        : `РегТерм: ${regterm.toFixed(2)} | Итого: ${total.toFixed(2)}`;
+        ? `Детали расчёта: РегТерм = ${regterm.toFixed(2)}${regtermSource}, Итоговый балл = ${total.toFixed(2)}`
+        : `РегТерм: ${regterm.toFixed(2)}${regtermSource} | Итого: ${total.toFixed(2)}`;
 
     resultDiv.className = `result ${status} show`;
     resultDiv.innerHTML = message + `<p>${comment}</p><p class="score">${detailsText}</p>`;
 }
+
 
 function pick(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
