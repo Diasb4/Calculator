@@ -136,6 +136,160 @@ document.addEventListener('DOMContentLoaded', function () {
             this.focus();
         });
     });
+    // Добавьте эту переменную в начало файла с другими переменными
+    let shareLinks = JSON.parse(localStorage.getItem('gradeMaster_shareLinks') || '{}');
+
+    // Функция для создания уникального ID
+    function generateShareId() {
+        return 'share_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    // Функция для создания ссылки общего доступа
+    function createShareLink() {
+        const regmid = document.getElementById('regmid').value;
+        const regend = document.getElementById('regend').value;
+        const regterm = document.getElementById('regterm').value;
+        const final = document.getElementById('final').value;
+
+        // Собираем данные для сохранения
+        const shareData = {
+            regmid: regmid || null,
+            regend: regend || null,
+            regterm: regterm || null,
+            final: final || null,
+            mode: mode,
+            timestamp: Date.now(),
+            expires: Date.now() + (24 * 60 * 60 * 1000) // 24 часа
+        };
+
+        // Генерируем уникальный ID
+        const shareId = generateShareId();
+
+        // Сохраняем в localStorage
+        shareLinks[shareId] = shareData;
+        localStorage.setItem('gradeMaster_shareLinks', JSON.stringify(shareLinks));
+
+        // Создаем ссылку
+        const shareUrl = `${window.location.origin}${window.location.pathname}?share=${shareId}`;
+
+        // Показываем ссылку пользователю
+        document.getElementById('share-link').value = shareUrl;
+        document.getElementById('shareSection').style.display = 'block';
+
+        // Прокручиваем к разделу с ссылкой
+        document.getElementById('shareSection').scrollIntoView({ behavior: 'smooth' });
+
+        showComment('✅ Ссылка создана! Она будет активна 24 часа.', 'success');
+    }
+
+    // Функция для загрузки данных из ссылки
+    function loadFromShareLink() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const shareId = urlParams.get('share');
+
+        if (!shareId) return false;
+
+        const shareData = shareLinks[shareId];
+
+        if (!shareData) {
+            showComment('❌ Ссылка недействительна или устарела', 'danger');
+            return false;
+        }
+
+        // Проверяем срок действия
+        if (Date.now() > shareData.expires) {
+            delete shareLinks[shareId];
+            localStorage.setItem('gradeMaster_shareLinks', JSON.stringify(shareLinks));
+            showComment('❌ Срок действия ссылки истёк', 'danger');
+            return false;
+        }
+
+        // Заполняем поля данными из ссылки
+        if (shareData.regmid) document.getElementById('regmid').value = shareData.regmid;
+        if (shareData.regend) document.getElementById('regend').value = shareData.regend;
+        if (shareData.regterm) document.getElementById('regterm').value = shareData.regterm;
+        if (shareData.final) document.getElementById('final').value = shareData.final;
+
+        // Устанавливаем режим
+        if (shareData.mode) {
+            changeMode(shareData.mode);
+        }
+
+        showComment('📥 Данные загружены из общей ссылки!', 'success');
+
+        // Автоматически рассчитываем если есть достаточно данных
+        const hasRegData = (shareData.regmid && shareData.regend) || shareData.regterm;
+        if (hasRegData) {
+            setTimeout(() => {
+                calculate();
+            }, 1000);
+        }
+
+        return true;
+    }
+
+    // Функция для копирования ссылки в буфер обмена
+    function copyShareLink() {
+        const shareLinkInput = document.getElementById('share-link');
+        shareLinkInput.select();
+        shareLinkInput.setSelectionRange(0, 99999); // Для мобильных устройств
+
+        try {
+            navigator.clipboard.writeText(shareLinkInput.value).then(() => {
+                showComment('✅ Ссылка скопирована в буфер обмена!', 'success');
+            }).catch(() => {
+                // Fallback для старых браузеров
+                document.execCommand('copy');
+                showComment('✅ Ссылка скопирована в буфер обмена!', 'success');
+            });
+        } catch (err) {
+            // Резервный вариант
+            document.execCommand('copy');
+            showComment('✅ Ссылка скопирована в буфер обмена!', 'success');
+        }
+    }
+
+    // Функция для очистки устаревших ссылок
+    function cleanupExpiredLinks() {
+        const now = Date.now();
+        let updated = false;
+
+        Object.keys(shareLinks).forEach(shareId => {
+            if (now > shareLinks[shareId].expires) {
+                delete shareLinks[shareId];
+                updated = true;
+            }
+        });
+
+        if (updated) {
+            localStorage.setItem('gradeMaster_shareLinks', JSON.stringify(shareLinks));
+        }
+    }
+    // Очистка устаревших ссылок
+    cleanupExpiredLinks();
+
+    // Загрузка данных из share-ссылки если есть
+    loadFromShareLink();
+
+    // Обработчики для кнопок общего доступа
+    const shareBtn = document.getElementById('share-btn');
+    const copyLinkBtn = document.getElementById('copy-link-btn');
+
+    if (shareBtn) {
+        shareBtn.addEventListener('click', createShareLink);
+        shareBtn.addEventListener('touchstart', function (e) {
+            e.preventDefault();
+            createShareLink();
+        });
+    }
+
+    if (copyLinkBtn) {
+        copyLinkBtn.addEventListener('click', copyShareLink);
+        copyLinkBtn.addEventListener('touchstart', function (e) {
+            e.preventDefault();
+            copyShareLink();
+        });
+    }
 });
 
 function calculate() {
@@ -548,6 +702,7 @@ function revealSecret() {
         }, 500);
     }, 4000);
 }
+
 
 // Добавьте анимации для тоста
 const toastStyles = `

@@ -53,6 +53,20 @@
 
         <button id="calculate-btn">Рассчитать</button>
 
+        <!-- НОВАЯ КНОПКА ДЛЯ СОЗДАНИЯ ССЫЛКИ -->
+        <button id="share-btn" class="share-button">🔗 Создать ссылку для друга</button>
+
+        <div class="share-section" id="shareSection" style="display: none;">
+            <div class="input-group">
+                <label for="share-link">Ссылка для общего доступа:</label>
+                <div class="share-link-container">
+                    <input type="text" id="share-link" readonly class="share-link-input">
+                    <button id="copy-link-btn" class="copy-button">Копировать</button>
+                </div>
+            </div>
+            <p class="share-info">Эта ссылка будет активна 24 часа и сохранит все введённые данные</p>
+        </div>
+
         <div class="warning-text">
             ⚠️ <strong>Важно:</strong> Списывание ведёт к отчислению!
         </div>

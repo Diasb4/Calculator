@@ -579,6 +579,98 @@ footer a:hover {
     text-decoration: underline;
 }
 
+/* Стили для кнопки и раздела общего доступа */
+.share-button {
+    width: 100%;
+    padding: 12px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
+    margin: 10px 0;
+    transition: all 0.3s ease;
+}
+
+.share-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.share-section {
+    margin: 20px 0;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    border: 2px dashed #dee2e6;
+    animation: fadeIn 0.5s ease;
+}
+
+.share-link-container {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.share-link-input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background: white;
+    font-size: 14px;
+    color: #333;
+}
+
+.copy-button {
+    padding: 10px 20px;
+    background: #28a745;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+    white-space: nowrap;
+}
+
+.copy-button:hover {
+    background: #218838;
+}
+
+.share-info {
+    font-size: 12px;
+    color: #6c757d;
+    margin-top: 10px;
+    text-align: center;
+    font-style: italic;
+}
+
+/* Анимация появления */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Темная тема */
+.dark-mode .share-section {
+    background: #2d3748;
+    border-color: #4a5568;
+}
+
+.dark-mode .share-link-input {
+    background: #1a202c;
+    border-color: #4a5568;
+    color: #e2e8f0;
+}
+
 /* Специальные исправления для iOS */
 @supports (-webkit-touch-callout: none) {
 
