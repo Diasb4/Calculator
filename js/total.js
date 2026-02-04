@@ -109,16 +109,30 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // Обработчик для кнопки расчета
-    const calculateBtn = document.getElementById('calculate-btn');
-    if (calculateBtn) {
-        calculateBtn.addEventListener('click', calculate);
-        // Добавляем обработчик touch для мобильных
-        calculateBtn.addEventListener('touchstart', function (e) {
+    // Устойчивый обработчик нажатий для мобильных и десктопа
+    let lastTouchTime = 0;
+
+    function addTapHandler(element, handler) {
+        if (!element) return;
+
+        element.addEventListener('touchend', function (e) {
             e.preventDefault();
-            calculate();
+            lastTouchTime = Date.now();
+            handler();
+        });
+
+        element.addEventListener('click', function (e) {
+            if (Date.now() - lastTouchTime < 500) {
+                e.preventDefault();
+                return;
+            }
+            handler();
         });
     }
+
+    // Обработчик для кнопки расчета
+    const calculateBtn = document.getElementById('calculate-btn');
+    addTapHandler(calculateBtn, calculate);
 
     // Обработчик нажатия Enter в полях ввода
     document.querySelectorAll('input').forEach(input => {
@@ -275,21 +289,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const shareBtn = document.getElementById('share-btn');
     const copyLinkBtn = document.getElementById('copy-link-btn');
 
-    if (shareBtn) {
-        shareBtn.addEventListener('click', createShareLink);
-        shareBtn.addEventListener('touchstart', function (e) {
-            e.preventDefault();
-            createShareLink();
-        });
-    }
-
-    if (copyLinkBtn) {
-        copyLinkBtn.addEventListener('click', copyShareLink);
-        copyLinkBtn.addEventListener('touchstart', function (e) {
-            e.preventDefault();
-            copyShareLink();
-        });
-    }
+    addTapHandler(shareBtn, createShareLink);
+    addTapHandler(copyLinkBtn, copyShareLink);
 });
 
 function calculate() {
