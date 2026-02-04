@@ -127,27 +127,27 @@ function showResult(totalScore) {
 
     if (totalScore >= 90) {
         status = 'success';
-        message = '✅ Отлично!';
-        comment = 'Превосходный результат!';
+        message = `✅ ${getTranslation('template_excellent')}`;
+        comment = getTranslation('template_excellent_comment');
     } else if (totalScore >= 70) {
         status = 'success';
-        message = '✅ Хорошо';
-        comment = 'Курс успешно сдан!';
+        message = `✅ ${getTranslation('template_good')}`;
+        comment = getTranslation('template_good_comment');
     } else if (totalScore >= 50) {
         status = 'warning';
-        message = '⚠️ Удовлетворительно';
-        comment = 'Курс сдан, но есть куда расти';
+        message = `⚠️ ${getTranslation('template_satisfactory')}`;
+        comment = getTranslation('template_satisfactory_comment');
     } else {
         status = 'danger';
-        message = '❌ Неудовлетворительно';
-        comment = 'Необходима пересдача';
+        message = `❌ ${getTranslation('template_unsatisfactory')}`;
+        comment = getTranslation('template_unsatisfactory_comment');
     }
 
     resultDiv.className = `result ${status} show`;
     resultDiv.innerHTML = `
                 <h2>${message}</h2>
                 <p>${comment}</p>
-                <p class="score">Итоговый балл: ${totalScore.toFixed(2)}</p>
+                <p class="score">${getTranslation('template_overall_result')} ${totalScore.toFixed(2)}</p>
             `;
 }
 
@@ -160,24 +160,24 @@ document.addEventListener('input', function (e) {
 });
 function revealSecret() {
     const secrets = [
-        "Секретный совет: всегда проверяйте расчеты вручную!",
-        "Ты - 1 из 1000 пользователей, который нашел эту пасхалку!",
-        "Мои поздравления пасхантер, может и на других страницах что то есть?)",
-        "Функция 'автоматического прохождения экзамена' еще в разработке...",
-        "Знаете, почему калькулятор такой точный? Он не списывал на экзаменах!",
-        "Если бы этот калькулятор был студентом, у него была бы стипендия!",
+        getTranslation('secret_manual_check'),
+        getTranslation('secret_rare_user'),
+        getTranslation('secret_easter_egg'),
+        getTranslation('secret_auto_passing'),
+        getTranslation('secret_calculator_student'),
+        getTranslation('secret_calculator_scholarship'),
         "Интересный факт: 87% студентов находят пасхалки во время подготовки к экзаменам",
         "Пссс... между нами, РегМид весит 30%, но все делают вид, что это не так",
         "Разработчик рекомендует: одна пасхалка в день - и сессия не страшна!",
-        "Внимание! Обнаружена утечка: файнал составляет 40% от оценки!",
-        "Хакерский совет: чтобы сдать экзамен, нужно на него прийти 😉",
-        "Секрет успеха: 10% везение, 20% навыки, 70% этот калькулятор!",
-        "Предупреждение: чрезмерное использование калькулятора может привести к... хорошим оценкам!",
-        "Знаете разницу между студентом и этим калькулятором? Калькулятор всегда считает правильно!",
+        getTranslation('secret_leak'),
+        getTranslation('secret_hack'),
+        getTranslation('secret_success'),
+        getTranslation('secret_warning'),
+        getTranslation('secret_difference'),
         "Факт: 100% пользователей этого калькулятора успешно отвлекаются от учебы!",
         "Секретная формула: сон + еда + этот калькулятор = успешная сессия!",
         "Пасхалка уровня 'я должен был учиться, но ищу пасхалки'",
-        "Поздравляю! Вы нашли оправдание не готовиться к экзамену!",
+        getTranslation('secret_excuse')
     ];
 
     const randomSecret = secrets[Math.floor(Math.random() * secrets.length)];

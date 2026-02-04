@@ -1,7 +1,8 @@
 // Переключение темы
 document.getElementById('theme-toggle').addEventListener('click', function () {
     document.body.classList.toggle('dark-mode');
-    this.textContent = document.body.classList.contains('dark-mode') ? '☀️ Тема' : '🌙 Тема';
+    const darkModeText = getTranslation ? (document.body.classList.contains('dark-mode') ? '☀️ Theme' : '🌙 Theme') : (document.body.classList.contains('dark-mode') ? '☀️ Тема' : '🌙 Тема');
+    this.textContent = darkModeText;
 
     // Сохраняем настройку темы в localStorage
     localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
@@ -10,7 +11,8 @@ document.getElementById('theme-toggle').addEventListener('click', function () {
 // Загружаем сохраненную тему
 if (localStorage.getItem('theme') === 'dark') {
     document.body.classList.add('dark-mode');
-    document.getElementById('theme-toggle').textContent = '☀️ Тема';
+    const darkModeTextButton = getTranslation ? '☀️ Theme' : '☀️ Тема';
+    document.getElementById('theme-toggle').textContent = darkModeTextButton;
 }
 
 // Функция для определения GPA по проценту
@@ -35,7 +37,7 @@ document.getElementById('generate-subjects').addEventListener('click', function 
     const container = document.getElementById('subjects-container');
 
     if (isNaN(subjectsCount) || subjectsCount < 1 || subjectsCount > 20) {
-        showResult('❌ Пожалуйста, введите корректное количество предметов (1-20)', 'error');
+        showResult(getTranslation('gpa_correct_count'), 'error');
         return;
     }
 
@@ -139,12 +141,12 @@ document.getElementById('calculate-gpa').addEventListener('click', function () {
     resultsHTML += `</tbody></table></div>`;
 
     if (hasErrors) {
-        showResult('❌ Пожалуйста, проверьте введенные данные. Все поля должны быть заполнены корректно.', 'error');
+        showResult(getTranslation('gpa_fill_all'), 'error');
         return;
     }
 
     if (totalCredits === 0) {
-        showResult('❌ Недостаточно данных для расчета. Добавьте хотя бы один предмет с кредитами и оценкой.', 'error');
+        showResult(getTranslation('gpa_insufficient'), 'error');
         return;
     }
 
@@ -153,7 +155,7 @@ document.getElementById('calculate-gpa').addEventListener('click', function () {
     // Добавляем общий GPA к результатам
     resultsHTML += `
                 <div class="total-gpa">
-                    <h3>Общий GPA (средневзвешенный):</h3>
+                    <h3>${getTranslation('gpa_overall')}</h3>
                     <div class="gpa-value">${overallGPA.toFixed(2)}</div>
                     <p>Σ(GPA × кредиты) = ${totalWeightedGPA.toFixed(2)}</p>
                     <p>Σ(кредиты) = ${totalCredits}</p>

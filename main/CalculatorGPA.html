@@ -10,43 +10,45 @@
 
 <body>
     <nav class="navbar">
-        <a href="../index.html" class="nav-button">← На главную</a>
-        <div class="nav-buttons">
-            <button id="theme-toggle" class="nav-button">🌙 Тема</button>
-        </div>
+    <a href="../index.html" class="nav-button" data-translate="nav_home">← Home</a>
+    <div class="nav-buttons">
+        <button id="language-toggle" class="nav-button">🌐 English</button>
+        <button id="theme-toggle" class="nav-button" data-translate="nav_theme">🌙 Theme</button>
+    </div>
     </nav>
 
     <div class="container">
-        <h1>📊 GPA Calculator</h1>
-        <div class="current-mode">Расчет средневзвешенного GPA с учетом кредитов</div>
+        <h1 data-translate="gpa_title">📊 GPA Calculator</h1>
+        <div class="current-mode" data-translate="gpa_description">Расчет средневзвешенного GPA с учетом кредитов</div>
 
-        <div class="formula">
+        <div class="formula" data-translate="gpa_formula">
             GPA = Σ(GPA<sub>предмета</sub> × кредиты) / Σ(кредиты)
         </div>
 
         <div class="input-group">
-            <label for="subjects-count">Количество предметов:</label>
+            <label for="subjects-count" data-translate="subjects_count">Количество предметов:</label>
             <input type="number" id="subjects-count" min="1" max="20" value="6">
         </div>
 
-        <button id="generate-subjects" class="calculate-btn">Сгенерировать форму для предметов</button>
+        <button id="generate-subjects" class="calculate-btn" data-translate="generate_subjects">Сгенерировать форму для предметов</button>
 
         <div id="subjects-container"></div>
 
         <button id="calculate-gpa" class="calculate-btn" style="display: none;">Рассчитать GPA</button>
 
-        <div class="warning-text">
-            ⚠️ <strong>Важно:</strong> Введите корректные данные для всех предметов!
+        <div class="warning-text" data-translate="gpa_warning">
+            ⚠️ Важно: Введите корректные данные для всех предметов!
         </div>
 
         <div id="result" class="result"></div>
     </div>
 
     <footer>
-        &copy; 2025 Not_404. In case of any bug contact via Telegram <a href="https://t.me/Qrudos"
-            target="_blank">@Qrudos</a>.
+        <span data-translate="footer_copyright">&copy; 2025 Not_404. In case of any bug contact via Telegram</span>
+        <a href="https://t.me/Qrudos" target="_blank">@Qrudos</a>.
     </footer>
 
+    <script src="../js/language.js"></script>
     <script src="../js/gpa.js"></script>
 </body>
 

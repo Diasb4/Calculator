@@ -5,9 +5,11 @@ const body = document.body;
 // Проверяем сохраненную тему
 if (localStorage.getItem("theme") === "dark") {
     body.classList.add("dark-mode");
-    toggle.textContent = "☀️ Тема";
+    const darkModeText = getTranslation ? '☀️ Theme' : '☀️ Тема';
+    toggle.textContent = darkModeText;
 } else {
-    toggle.textContent = "🌙 Тема";
+    const lightModeText = getTranslation ? '🌙 Theme' : '🌙 Тема';
+    toggle.textContent = lightModeText;
 }
 
 // Обработчик переключения темы
@@ -15,10 +17,12 @@ toggle.addEventListener("click", () => {
     body.classList.toggle("dark-mode");
 
     if (body.classList.contains("dark-mode")) {
-        toggle.textContent = "☀️ Тема";
+        const darkModeText = getTranslation ? '☀️ Theme' : '☀️ Тема';
+        toggle.textContent = darkModeText;
         localStorage.setItem("theme", "dark");
     } else {
-        toggle.textContent = "🌙 Тема";
+        const lightModeText = getTranslation ? '🌙 Theme' : '🌙 Тема';
+        toggle.textContent = lightModeText;
         localStorage.setItem("theme", "light");
     }
 });
@@ -29,10 +33,12 @@ toggle.addEventListener('touchstart', function (e) {
     body.classList.toggle("dark-mode");
 
     if (body.classList.contains("dark-mode")) {
-        toggle.textContent = "☀️ Тема";
+        const darkModeText = getTranslation ? '☀️ Theme' : '☀️ Тема';
+        toggle.textContent = darkModeText;
         localStorage.setItem("theme", "dark");
     } else {
-        toggle.textContent = "🌙 Тема";
+        const lightModeText = getTranslation ? '🌙 Theme' : '🌙 Тема';
+        toggle.textContent = lightModeText;
         localStorage.setItem("theme", "light");
     }
 });
@@ -42,7 +48,7 @@ const API_ENDPOINT = 'https://calculator-not-404.vercel.app/api/telegram';
 
 // Эмодзи и тексты
 const typeEmojis = { suggestion: '💡', bug: '🐛', feature: '🚀', other: '📝' };
-const typeTitles = { suggestion: 'Предложение', bug: 'Багрепорт', feature: 'Запрос функции', other: 'Обращение' };
+const typeTitles = { suggestion: getTranslation('feedback_type_suggestion'), bug: getTranslation('feedback_type_bug'), feature: getTranslation('feedback_type_feature'), other: getTranslation('feedback_type_other') };
 
 document.getElementById('feedbackForm').addEventListener('submit', async function (e) {
     e.preventDefault();
@@ -58,13 +64,13 @@ document.getElementById('feedbackForm').addEventListener('submit', async functio
 
     // Валидация
     if (!message) {
-        showStatus('Пожалуйста, напишите ваше сообщение', 'error');
+        showStatus(getTranslation('standard_empty_1'), 'error');
         return;
     }
 
     // Блокируем кнопку
     submitBtn.disabled = true;
-    submitBtn.textContent = '📤 Отправка...';
+    submitBtn.textContent = '📄 ' + getTranslation('feedback_sending');
 
     try {
         // Формируем сообщение
@@ -74,10 +80,10 @@ document.getElementById('feedbackForm').addEventListener('submit', async functio
         const success = await sendFeedback(formattedMessage);
 
         if (success) {
-            showStatus('✅ Сообщение успешно отправлено! Спасибо за вашу обратную связь!', 'success');
+            showStatus('✅ ' + getTranslation('feedback_success') + ' ' + getTranslation('feedback_success_contact'), 'success');
             document.getElementById('feedbackForm').reset();
         } else {
-            showStatus('❌ Ошибка при отправке. Попробуйте еще раз или напишите напрямую в Telegram.', 'error');
+            showStatus('❌ ' + getTranslation('feedback_error'), 'error');
         }
     } catch (error) {
         console.error('Ошибка:', error);

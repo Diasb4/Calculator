@@ -1,27 +1,27 @@
 let mode = "standard";
 
-const modeNames = {
-    serious: "Серьёзный режим",
-    standard: "Стандартный режим",
-    evil: "Злой старшекурсник"
-};
-
 function changeMode(newMode) {
     mode = newMode;
     updateModeDisplay();
     closeModeDropdown();
 
-    const phrases = {
-        serious: "Режим серьёзного аналитика.",
-        standard: "Стандартный режим. Всё по делу.",
-        evil: "Режим злого старшекурсника."
+    const modeKeys = {
+        serious: 'mode_serious_msg',
+        standard: 'mode_standard_msg',
+        evil: 'mode_evil_msg'
     };
-    showComment(phrases[newMode], 'warning');
+    showComment(getTranslation(modeKeys[newMode]), 'warning');
 }
 
 function updateModeDisplay() {
     const display = document.getElementById('currentModeDisplay');
-    display.textContent = `Текущий режим: ${modeNames[mode]}`;
+    const modeKeys = {
+        serious: 'mode_serious',
+        standard: 'mode_standard',
+        evil: 'mode_evil'
+    };
+    const currentMode = getTranslation(modeKeys[mode]);
+    display.textContent = `${getTranslation('current_mode')} ${currentMode}`;
 }
 
 function showComment(text, type = 'warning') {
@@ -91,9 +91,11 @@ document.addEventListener('DOMContentLoaded', function () {
     // Проверяем сохраненную тему
     if (localStorage.getItem("theme") === "dark") {
         body.classList.add("dark-mode");
-        toggle.textContent = "☀️ Тема";
+        const darkModeText = getTranslation ? '☀️ Theme' : '☀️ Тема';
+        toggle.textContent = darkModeText;
     } else {
-        toggle.textContent = "🌙 Тема";
+        const lightModeText = getTranslation ? '🌙 Theme' : '🌙 Тема';
+        toggle.textContent = lightModeText;
     }
 
     // Обработчик переключения темы
@@ -101,10 +103,12 @@ document.addEventListener('DOMContentLoaded', function () {
         body.classList.toggle("dark-mode");
 
         if (body.classList.contains("dark-mode")) {
-            toggle.textContent = "☀️ Тема";
+            const darkModeText = getTranslation ? '☀️ Theme' : '☀️ Тема';
+            toggle.textContent = darkModeText;
             localStorage.setItem("theme", "dark");
         } else {
-            toggle.textContent = "🌙 Тема";
+            const lightModeText = getTranslation ? '🌙 Theme' : '🌙 Тема';
+            toggle.textContent = lightModeText;
             localStorage.setItem("theme", "light");
         }
     });
@@ -293,6 +297,20 @@ document.addEventListener('DOMContentLoaded', function () {
     addTapHandler(copyLinkBtn, copyShareLink);
 });
 
+// Функция для получения случайного перевода из набора ключей
+function getRandomTranslation(keys) {
+    const randomKey = keys[Math.floor(Math.random() * keys.length)];
+    return getTranslation(randomKey);
+}
+
+// Функция для выбора случайного элемента из массива
+function pick(arr) {
+    if (Array.isArray(arr)) {
+        return arr[Math.floor(Math.random() * arr.length)];
+    }
+    return arr;
+}
+
 function calculate() {
     const regmid = parseFloat(document.getElementById('regmid').value);
     const regend = parseFloat(document.getElementById('regend').value);
@@ -304,118 +322,74 @@ function calculate() {
 
     const comments = {
         serious: {
-            empty: [
-                "Пожалуйста, введите все значения для расчёта.",
-                "Все поля должны быть заполнены для точного результата."
-            ],
-            invalid: [
-                "Введите корректные значения от 0 до 100.",
-                "Некорректные данные, проверяйте диапазон оценок."
-            ],
-            pass: [
-                "Вы прошли курс. Итоговая оценка в пределах нормы.",
-                "Курс сдан успешно, поздравляем!"
-            ],
-            fail: [
-                "К сожалению, результат ниже проходного балла.",
-                "Летник неизбежен, пора пересдавать."
-            ],
-            scholarship: [
-                "Поздравляем! Вы получаете стипендию.",
-                "Стипендия у ваших ног, молодец!"
-            ],
-            highScholarship: [
-                "Превосходно! Вы получаете повышенную стипендию!",
-                "Высший результат! Повышенная стипендия гарантирована!"
-            ],
-            high: [
-                "Отличный результат! Вы показали высокий уровень знаний.",
-                "Превосходно! Так держать."
-            ],
-            alreadyFailed: [
-                "По текущим результатам сдать курс невозможно.",
-                "Даже идеальный файнал не спасёт ситуацию."
-            ],
-            prediction: [
-                "Прогноз необходимых баллов на финальном экзамене.",
-                "Смотрим, сколько нужно набрать на файнале."
-            ]
+            empty: ['empty_msg_1', 'empty_msg_2'],
+            invalid: ['invalid_msg_1', 'invalid_msg_2'],
+            pass: ['pass_msg_1', 'pass_msg_2'],
+            fail: ['standard_fail_1', 'standard_fail_2'],
+            scholarship: ['standard_scholarship_1', 'standard_scholarship_2'],
+            highScholarship: ['standard_high_scholarship_1', 'standard_high_scholarship_2'],
+            high: ['standard_high_1', 'standard_high_2'],
+            alreadyFailed: ['already_failed_1', 'already_failed_2'],
+            prediction: ['prediction_msg_1', 'prediction_msg_2']
         },
         standard: {
-            empty: [
-                "Заполните все поля для расчёта.",
-                "Не забудьте ввести все оценки."
-            ],
-            invalid: [
-                "Оценки должны быть от 0 до 100.",
-                "Некорректное значение, проверяйте диапазон."
-            ],
-            pass: [
-                "Прошли, но без стипендии.",
-                "Курс сдан, но пока без бонусов."
-            ],
-            fail: [
-                "Летник. Придётся пересдавать.",
-                "Результат ниже нормы, готовьтесь к пересдаче."
-            ],
-            scholarship: [
-                "Стипендия! Хорошая работа.",
-                "Поздравляем, вы получаете стипендию."
-            ],
-            highScholarship: [
-                "Отлично! Повышенная стипендия твоя!",
-                "Вау! Повышенная стипендия обеспечена!"
-            ],
-            high: [
-                "Отлично! Высокий балл.",
-                "Замечательный результат!"
-            ],
-            alreadyFailed: [
-                "Даже 100 на файнале не спасёт. Летник неизбежен.",
-                "С текущими оценками пересдача гарантирована."
-            ],
-            prediction: [
-                "Расчёт необходимых баллов:",
-                "Сколько нужно набрать на файнале:"
-            ]
+            empty: ['standard_empty_1', 'standard_empty_2'],
+            invalid: ['standard_invalid_1', 'standard_invalid_2'],
+            pass: ['standard_pass_1', 'standard_pass_2'],
+            fail: ['standard_fail_1', 'standard_fail_2'],
+            scholarship: ['standard_scholarship_1', 'standard_scholarship_2'],
+            highScholarship: ['standard_high_scholarship_1', 'standard_high_scholarship_2'],
+            high: ['standard_high_1', 'standard_high_2'],
+            alreadyFailed: ['already_failed_1', 'already_failed_2'],
+            prediction: ['prediction_msg_1', 'prediction_msg_2']
         },
         evil: {
-            empty: [
-                "Ты серьёзно забыл ввести числа? Или это тоже нужно объяснять?",
-                "Ничего не введено. Серьёзно?"
-            ],
-            invalid: [
-                "Оценки от 0 до 100, а не от минус бесконечности до 200. Математику учили?",
-                "Некорректные данные. Ты точно на этом курсе?"
-            ],
-            pass: [
-                "Выжил. Едва, но выжил. Поздравляю с минимальным результатом.",
-                "Ну, ты сдал. Почти чудо."
-            ],
-            fail: [
-                "Летник. Не плачь, я просто посчитал. Встретимся на пересдаче!",
-                "Ты провалился. На счастье это было предсказуемо."
-            ],
-            scholarship: [
-                "Со стипендией! Не растрать её на кофе в первый же день.",
-                "Поздравляю, стипендия твоя!"
-            ],
-            highScholarship: [
-                "Серьёзно? Повышенная стипендия? Ты точно не списывал?",
-                "Ого! Повышенная стипендия! Может, поделишься? Шучу... или нет."
-            ],
-            high: [
-                "Серьёзно? Такой балл? Ты точно не списывал? Шучу... или нет.",
-                "Ого! Настоящий зверь."
-            ],
-            alreadyFailed: [
-                "Поздравляю, ты провалился ДО экзамена! Это талант.",
-                "Летник гарантирован. Но похвалю за настойчивость."
-            ],
-            prediction: [
-                "ПРЕДСКАЗЫВАЮ ТВОЮ СУДЬБУ...",
-                "Хмм, давай посмотрим, как плохо может быть."
-            ]
+            empty: ['evil_empty_1', 'evil_empty_2'],
+            invalid: ['evil_invalid_1', 'evil_invalid_2'],
+            pass: ['evil_pass_1', 'evil_pass_2'],
+            fail: ['evil_fail_1', 'evil_fail_2'],
+            scholarship: ['evil_scholarship_1', 'evil_scholarship_2'],
+            highScholarship: ['evil_high_scholarship_1', 'evil_high_scholarship_2'],
+            high: ['evil_high_1', 'evil_high_2'],
+            alreadyFailed: ['evil_already_failed_1', 'evil_already_failed_2'],
+            prediction: ['prediction_msg_1', 'prediction_msg_2']
+        }
+    };
+
+    // Создаем объект для перевода ключей в текст
+    const commentTexts = {
+        serious: {
+            empty: [getTranslation('empty_msg_1'), getTranslation('empty_msg_2')],
+            invalid: [getTranslation('invalid_msg_1'), getTranslation('invalid_msg_2')],
+            pass: [getTranslation('pass_msg_1'), getTranslation('pass_msg_2')],
+            fail: [getTranslation('standard_fail_1'), getTranslation('standard_fail_2')],
+            scholarship: [getTranslation('standard_scholarship_1'), getTranslation('standard_scholarship_2')],
+            highScholarship: [getTranslation('standard_high_scholarship_1'), getTranslation('standard_high_scholarship_2')],
+            high: [getTranslation('standard_high_1'), getTranslation('standard_high_2')],
+            alreadyFailed: [getTranslation('already_failed_1'), getTranslation('already_failed_2')],
+            prediction: [getTranslation('prediction_msg_1'), getTranslation('prediction_msg_2')]
+        },
+        standard: {
+            empty: [getTranslation('standard_empty_1'), getTranslation('standard_empty_2')],
+            invalid: [getTranslation('standard_invalid_1'), getTranslation('standard_invalid_2')],
+            pass: [getTranslation('standard_pass_1'), getTranslation('standard_pass_2')],
+            fail: [getTranslation('standard_fail_1'), getTranslation('standard_fail_2')],
+            scholarship: [getTranslation('standard_scholarship_1'), getTranslation('standard_scholarship_2')],
+            highScholarship: [getTranslation('standard_high_scholarship_1'), getTranslation('standard_high_scholarship_2')],
+            high: [getTranslation('standard_high_1'), getTranslation('standard_high_2')],
+            alreadyFailed: [getTranslation('already_failed_1'), getTranslation('already_failed_2')],
+            prediction: [getTranslation('prediction_msg_1'), getTranslation('prediction_msg_2')]
+        },
+        evil: {
+            empty: [getTranslation('evil_empty_1'), getTranslation('evil_empty_2')],
+            invalid: [getTranslation('evil_invalid_1'), getTranslation('evil_invalid_2')],
+            pass: [getTranslation('evil_pass_1'), getTranslation('evil_pass_2')],
+            fail: [getTranslation('evil_fail_1'), getTranslation('evil_fail_2')],
+            scholarship: [getTranslation('evil_scholarship_1'), getTranslation('evil_scholarship_2')],
+            highScholarship: [getTranslation('evil_high_scholarship_1'), getTranslation('evil_high_scholarship_2')],
+            high: [getTranslation('evil_high_1'), getTranslation('evil_high_2')],
+            alreadyFailed: [getTranslation('evil_already_failed_1'), getTranslation('evil_already_failed_2')],
+            prediction: [getTranslation('prediction_msg_1'), getTranslation('prediction_msg_2')]
         }
     };
 
@@ -431,20 +405,20 @@ function calculate() {
         // Проверяем валидность прямого ввода РегТерма
         if (regterm < 0 || regterm > 100) {
             resultDiv.className = 'result danger show';
-            resultDiv.innerHTML = `<h2>❌ Ошибка</h2><p>${pick(comments[mode].invalid)}</p>`;
+            resultDiv.innerHTML = `<h2>❌ Ошибка</h2><p>${pick(commentTexts[mode].invalid)}</p>`;
             return;
         }
     } else {
         // Вычисляем РегТерм из РегМида и РегЭнда
         if (isNaN(regmid) || isNaN(regend)) {
             resultDiv.className = 'result danger show';
-            resultDiv.innerHTML = `<h2>❌ Ошибка</h2><p>${pick(comments[mode].empty)}</p>`;
+            resultDiv.innerHTML = `<h2>❌ Ошибка</h2><p>${pick(commentTexts[mode].empty)}</p>`;
             return;
         }
 
         if (regmid < 0 || regmid > 100 || regend < 0 || regend > 100) {
             resultDiv.className = 'result danger show';
-            resultDiv.innerHTML = `<h2>❌ Ошибка</h2><p>${pick(comments[mode].invalid)}</p>`;
+            resultDiv.innerHTML = `<h2>❌ Ошибка</h2><p>${pick(commentTexts[mode].invalid)}</p>`;
             return;
         }
 
@@ -454,7 +428,7 @@ function calculate() {
 
     // РЕЖИМ ПРОГНОЗА
     if (final === 0 || finalInput === '') {
-        let predictionHTML = `<h2>🔮 ${pick(comments[mode].prediction)}</h2>`;
+        let predictionHTML = `<h2>🔮 ${pick(commentTexts[mode].prediction)}</h2>`;
         predictionHTML += `<p style="margin-bottom: 15px;"><strong>РегТерм: ${regterm.toFixed(2)}${regtermSource}</strong></p>`;
 
         // Проверка критических условий
@@ -462,24 +436,26 @@ function calculate() {
             // Только при вычислении из РегМида и РегЭнда проверяем отдельные компоненты
             if (regmid < 25) {
                 resultDiv.className = 'result danger show';
-                const msg = mode === 'evil'
-                    ? "РегМид < 25? Серьёзно? Вы вообще на пары ходили? 💀"
+                const msgKey = mode === 'evil'
+                    ? 'regmid_below_25'
                     : mode === 'serious'
-                        ? "РегМид ниже минимального порога. Курс не может быть сдан."
-                        : "РегМид меньше 25. Летник без вариантов.";
-                predictionHTML += `<p>${msg}</p><p><strong>${comments[mode].alreadyFailed}</strong></p>`;
+                        ? 'regmid_below_minimum'
+                        : 'regmid_below_25_standard';
+                const msg = getTranslation(msgKey);
+                predictionHTML += `<p>${msg}</p><p><strong>${pick(commentTexts[mode].alreadyFailed)}</strong></p>`;
                 resultDiv.innerHTML = predictionHTML;
                 return;
             }
 
             if (regend < 25) {
                 resultDiv.className = 'result danger show';
-                const msg = mode === 'evil'
-                    ? "РегЭнд < 25... Кажется, кто-то пропустил пару важных лекций. Или все."
+                const msgKey = mode === 'evil'
+                    ? 'regend_below_25_evil'
                     : mode === 'serious'
-                        ? "РегЭнд ниже минимального порога. Курс не может быть сдан."
-                        : "РегЭнд меньше 25. Летник без вариантов.";
-                predictionHTML += `<p>${msg}</p><p><strong>${comments[mode].alreadyFailed}</strong></p>`;
+                        ? 'regend_below_25_serious'
+                        : 'regend_below_25_standard';
+                const msg = getTranslation(msgKey);
+                predictionHTML += `<p>${msg}</p><p><strong>${pick(commentTexts[mode].alreadyFailed)}</strong></p>`;
                 resultDiv.innerHTML = predictionHTML;
                 return;
             }
@@ -487,12 +463,13 @@ function calculate() {
 
         if (regterm < 50) {
             resultDiv.className = 'result danger show';
-            const msg = mode === 'evil'
-                ? "РегТерм < 50. Поздравляю, ты даже до файнала не добрался а уже летка!"
+            const msgKey = mode === 'evil'
+                ? 'regterm_below_50'
                 : mode === 'serious'
-                    ? "РегТерм ниже минимального порога. Курс не может быть сдан."
-                    : "РегТерм меньше 50. Летник неизбежен.";
-            predictionHTML += `<p>${msg}</p><p><strong>${pick(comments[mode].alreadyFailed)}</strong></p>`;
+                    ? 'regterm_below_50_serious'
+                    : 'regterm_below_50_standard';
+            const msg = getTranslation(msgKey);
+            predictionHTML += `<p>${msg}</p><p><strong>${pick(commentTexts[mode].alreadyFailed)}</strong></p>`;
             resultDiv.innerHTML = predictionHTML;
             return;
         }
@@ -524,11 +501,18 @@ function calculate() {
         predictionHTML += `<p style="margin-bottom: 10px;"><strong>📝 Для прохода курса:</strong></p>`;
         if (minForPass <= 100) {
             const passEmoji = minForPass >= 90 ? '🔥' : minForPass >= 70 ? '🟡' : '🟢';
-            const passComment = mode === 'evil'
-                ? (minForPass >= 90 ? ' (Ого! Это будет СЛОЖНО)' : minForPass >= 70 ? ' (Готовься жить в библиотеке)' : ' (Вполне реально)')
-                : mode === 'serious'
-                    ? ''
-                    : (minForPass >= 90 ? ' (очень сложно)' : minForPass >= 70 ? ' (нужна хорошая подготовка)' : ' (достижимо)');
+            let passComment = '';
+            if (mode === 'evil') {
+                if (minForPass >= 90) passComment = getTranslation('evil_pass_comment_hard');
+                else if (minForPass >= 70) passComment = getTranslation('evil_pass_comment_medium');
+                else passComment = getTranslation('evil_pass_comment_easy');
+            } else if (mode === 'serious') {
+                passComment = getTranslation('serious_pass_comment');
+            } else {
+                if (minForPass >= 90) passComment = getTranslation('standard_pass_comment_hard');
+                else if (minForPass >= 70) passComment = getTranslation('standard_pass_comment_medium');
+                else passComment = getTranslation('standard_pass_comment_easy');
+            }
             predictionHTML += `<p>${passEmoji} Минимум <strong>${minForPass.toFixed(1)}</strong> баллов${passComment}</p>`;
         } else {
             predictionHTML += `<p>❌ Невозможно (нужно ${minForPass.toFixed(1)} > 100)</p>`;
@@ -540,16 +524,24 @@ function calculate() {
         predictionHTML += `<p style="margin-bottom: 10px;"><strong>💰 Для обычной стипендии:</strong></p>`;
         if (minForScholarship <= 100) {
             const schEmoji = minForScholarship >= 95 ? '💎' : minForScholarship >= 80 ? '⭐' : '✨';
-            const schComment = mode === 'evil'
-                ? (minForScholarship >= 95 ? ' (Начинай молиться 🙏)' : minForScholarship >= 80 ? ' (Выучи ВСЁ!)' : ' (Это реально!)')
-                : mode === 'serious'
-                    ? ''
-                    : (minForScholarship >= 95 ? ' (очень высокая планка)' : minForScholarship >= 80 ? ' (серьёзная подготовка)' : ' (хороший шанс)');
+            let schComment = '';
+            if (mode === 'evil') {
+                if (minForScholarship >= 95) schComment = getTranslation('evil_scholarship_comment_fantasy');
+                else if (minForScholarship >= 80) schComment = getTranslation('evil_scholarship_comment_hard');
+                else schComment = getTranslation('evil_scholarship_comment_medium');
+            } else if (mode === 'serious') {
+                schComment = '';
+            } else {
+                if (minForScholarship >= 95) schComment = getTranslation('standard_scholarship_comment_hard');
+                else if (minForScholarship >= 80) schComment = getTranslation('standard_scholarship_comment_medium');
+                else schComment = getTranslation('standard_scholarship_comment_easy');
+            }
             predictionHTML += `<p>${schEmoji} Минимум <strong>${Math.max(50, minForScholarship).toFixed(1)}</strong> баллов${schComment}</p>`;
         } else {
-            const impossibleMsg = mode === 'evil'
-                ? "Нужно больше 100 баллов. Может, попробуешь взятку? Шучу... или нет 🤔"
-                : "Невозможно получить стипендию при текущих результатах.";
+            const impossibleMsgKey = mode === 'evil'
+                ? 'impossible_scholarship_evil'
+                : 'impossible_scholarship_standard';
+            const impossibleMsg = getTranslation(impossibleMsgKey);
             predictionHTML += `<p>❌ ${impossibleMsg}</p>`;
         }
 
@@ -559,11 +551,20 @@ function calculate() {
         predictionHTML += `<p style="margin-bottom: 10px;"><strong>💎 Для повышенной стипендии:</strong></p>`;
         if (minForHighScholarship <= 100) {
             const highSchEmoji = minForHighScholarship >= 95 ? '🚀' : minForHighScholarship >= 85 ? '💎' : '⭐';
-            const highSchComment = mode === 'evil'
-                ? (minForHighScholarship >= 95 ? ' (Это уже из области фантастики!)' : minForHighScholarship >= 85 ? ' (На грани возможного!)' : ' (Потребуются невероятные усилия)')
-                : mode === 'serious'
-                    ? (minForHighScholarship >= 95 ? ' (экстремально сложно)' : minForHighScholarship >= 85 ? ' (очень высокая сложность)' : ' (высокая сложность)')
-                    : (minForHighScholarship >= 95 ? ' (практически нереально)' : minForHighScholarship >= 85 ? ' (очень сложно)' : ' (сложно, но возможно)');
+            let highSchComment = '';
+            if (mode === 'evil') {
+                if (minForHighScholarship >= 95) highSchComment = getTranslation('evil_high_scholarship_comment_fantasy');
+                else if (minForHighScholarship >= 85) highSchComment = getTranslation('evil_high_scholarship_comment_hard');
+                else highSchComment = getTranslation('evil_high_scholarship_comment_easy');
+            } else if (mode === 'serious') {
+                if (minForHighScholarship >= 95) highSchComment = getTranslation('serious_scholarship_comment_hard');
+                else if (minForHighScholarship >= 85) highSchComment = getTranslation('serious_scholarship_comment_medium');
+                else highSchComment = getTranslation('serious_scholarship_comment_easy');
+            } else {
+                if (minForHighScholarship >= 95) highSchComment = ' (практически нереально)';
+                else if (minForHighScholarship >= 85) highSchComment = ' (очень сложно)';
+                else highSchComment = ' (сложно, но возможно)';
+            }
             predictionHTML += `<p>${highSchEmoji} Минимум <strong>${Math.max(50, minForHighScholarship).toFixed(1)}</strong> баллов${highSchComment}</p>`;
         } else {
             const impossibleHighMsg = mode === 'evil'
@@ -613,34 +614,34 @@ function calculate() {
 
     if (regterm < 50 || final < 25 || total < 50 || failed) {
         status = 'danger';
-        message = '<h2>❌ Летник</h2>';
-        comment = pick(comments[mode].fail);
+        message = `<h2>${getTranslation('failed_title')}</h2>`;
+        comment = pick(commentTexts[mode].fail);
     } else if (final >= 25 && final < 50) {
         status = 'warning';
-        message = '<h2>⚠️ Пересдача</h2>';
+        message = `<h2>${getTranslation('retake_title')}</h2>`;
         if (mode === 'evil') {
-            comment = "Файнал между 25 и 50. Судьба дала второй шанс, не облажайся.";
+            comment = getTranslation('retake_evil');
         } else if (mode === 'serious') {
-            comment = "Экзамен не сдан, но предоставляется возможность пересдачи.";
+            comment = getTranslation('retake_serious');
         } else {
-            comment = "Пересдача. У вас есть второй шанс.";
+            comment = getTranslation('retake_standard');
         }
     } else if (total < 70) {
         status = 'warning';
-        message = '<h2>⚠️ Без стипендии</h2>';
-        comment = pick(comments[mode].pass);
+        message = `<h2>${getTranslation('pass_title')}</h2>`;
+        comment = pick(commentTexts[mode].pass);
     } else if (total >= 90) {
         status = 'success';
-        message = '<h2>💎 Превосходно! Повышенная стипендия!</h2>';
-        comment = pick(comments[mode].highScholarship);
+        message = `<h2>${getTranslation('high_scholarship_title')}</h2>`;
+        comment = pick(commentTexts[mode].highScholarship);
     } else if (total >= 70) {
         status = 'success';
-        message = '<h2>✅ Успех! Обычная стипендия!</h2>';
-        comment = pick(comments[mode].scholarship);
+        message = `<h2>${getTranslation('scholarship_title')}</h2>`;
+        comment = pick(commentTexts[mode].scholarship);
     }
 
     const detailsText = mode === 'serious'
-        ? `Детали расчёта: РегТерм = ${regterm.toFixed(2)}${regtermSource}, Итоговый балл = ${total.toFixed(2)}`
+        ? getTranslation('details_calculation').replace('{regterm}', regterm.toFixed(2)).replace('{total}', total.toFixed(2))
         : `РегТерм: ${regterm.toFixed(2)}${regtermSource} | Итого: ${total.toFixed(2)}`;
 
     resultDiv.className = `result ${status} show`;
@@ -658,15 +659,15 @@ function revealSecret() {
         "Разработчик этого калькулятора тоже иногда заваливает экзамены 😅",
         "Знаешь ли ты, что первый калькулятор был создан в 17 веке?",
         "Этот калькулятор был сделан с ♥ и большим количеством кофе ☕",
-        "Секретный совет: всегда проверяйте расчеты вручную!",
-        "Ты - 1 из 1000 пользователей, который нашел эту пасхалку!",
-        "Мои поздравления пасхантер, может и на других страницах что то есть?)",
-        "Внимание! Обнаружена утечка: файнал составляет 40% от оценки!",
-        "Хакерский совет: чтобы сдать экзамен, нужно на него прийти 😉",
-        "Секрет успеха: 10% везение, 20% навыки, 70% этот калькулятор!",
-        "Предупреждение: чрезмерное использование калькулятора может привести к... хорошим оценкам!",
-        "Знаете разницу между студентом и этим калькулятором? Калькулятор всегда считает правильно!",
-        "Поздравляю! Вы нашли оправдание не готовиться к экзамену!",
+        getTranslation('secret_manual_check'),
+        getTranslation('secret_rare_user'),
+        getTranslation('secret_easter_egg'),
+        getTranslation('secret_leak'),
+        getTranslation('secret_hack'),
+        getTranslation('secret_success'),
+        getTranslation('secret_warning'),
+        getTranslation('secret_difference'),
+        getTranslation('secret_excuse'),
         "Инсайдерская информация: преподы тоже пользуются калькуляторами!",
         "Секретный ингредиент хорошей оценки - уверенность (и этот калькулятор)",
         "Функция 'автопропуск пар' временно отключена... к сожалению",

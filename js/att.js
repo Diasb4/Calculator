@@ -7,9 +7,11 @@ document.addEventListener('DOMContentLoaded', function () {
     // Проверяем сохраненную тему
     if (localStorage.getItem("theme") === "dark") {
         body.classList.add("dark-mode");
-        toggle.textContent = "☀️ Тема";
+        const darkModeText = getTranslation ? '☀️ Theme' : '☀️ Тема';
+        toggle.textContent = darkModeText;
     } else {
-        toggle.textContent = "🌙 Тема";
+        const lightModeText = getTranslation ? '🌙 Theme' : '🌙 Тема';
+        toggle.textContent = lightModeText;
     }
 
     // Обработчик переключения темы
@@ -17,10 +19,12 @@ document.addEventListener('DOMContentLoaded', function () {
         body.classList.toggle("dark-mode");
 
         if (body.classList.contains("dark-mode")) {
-            toggle.textContent = "☀️ Тема";
+            const darkModeText = getTranslation ? '☀️ Theme' : '☀️ Тема';
+            toggle.textContent = darkModeText;
             localStorage.setItem("theme", "dark");
         } else {
-            toggle.textContent = "🌙 Тема";
+            const lightModeText = getTranslation ? '🌙 Theme' : '🌙 Тема';
+            toggle.textContent = lightModeText;
             localStorage.setItem("theme", "light");
         }
     });
@@ -46,13 +50,13 @@ function calculateAttendance() {
     // Проверяем корректность введенных данных
     if (isNaN(lessonsPerWeek)) {
         resultDiv.className = 'result danger show';
-        resultDiv.innerHTML = `<h2>❌ Ошибка</h2><p>Пожалуйста, введите количество пар в неделю.</p>`;
+        resultDiv.innerHTML = `<h2>❌ ${getTranslation('att_error')}</h2><p>${getTranslation('att_please_enter')}</p>`;
         return;
     }
 
     if (lessonsPerWeek < 1 || lessonsPerWeek > 50) {
         resultDiv.className = 'result danger show';
-        resultDiv.innerHTML = `<h2>❌ Ошибка</h2><p>Количество пар должно быть от 1 до 50.</p>`;
+        resultDiv.innerHTML = `<h2>❌ ${getTranslation('att_error')}</h2><p>${getTranslation('att_range_error')}</p>`;
         return;
     }
 
@@ -76,7 +80,7 @@ function calculateAttendance() {
     resultHTML += '</div>';
 
     resultHTML += '<div class="info">';
-    resultHTML += '<strong>Примечание:</strong> Фактическое количество допустимых пропусков может зависеть от конкретного предмета, сверьтесь с силлабусом данного курса.';
+    resultHTML += `<strong>Примечание:</strong> ${getTranslation('att_note')}`;
     resultHTML += '</div>';
 
     resultDiv.innerHTML = resultHTML;

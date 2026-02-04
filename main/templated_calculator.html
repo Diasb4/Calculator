@@ -20,14 +20,15 @@
 
 <body>
     <nav class="navbar">
-        <a href="../index.html" class="nav-button">← На главную</a>
-        <div class="nav-buttons">
-            <button id="theme-toggle" class="nav-button">🌙 Тема</button>
-        </div>
-    </nav>
+    <a href="../index.html" class="nav-button" data-translate="nav_home">← Home</a>
+    <div class="nav-buttons">
+        <button id="language-toggle" class="nav-button">🌐 English</button>
+        <button id="theme-toggle" class="nav-button" data-translate="nav_theme">🌙 Theme</button>
+    </div>
+</nav>
 
     <div class="container">
-        <h1>📚 Структурированный калькулятор</h1>
+        <h1 data-translate="option_templates_title">📚 Предметные шаблоны</h1>
 
         <!-- Assignments Section -->
         <div class="section">
@@ -117,13 +118,14 @@
     </div>
 
     <footer>
-        &copy; 2025 Not_404. In case of any bug contact via Telegram <a href="https://t.me/Qrudos"
-            target="_blank">@Qrudos</a>.
+        <span data-translate="footer_copyright">&copy; 2025 Not_404. In case of any bug contact via Telegram</span>
+        <a href="https://t.me/Qrudos" target="_blank">@Qrudos</a>.
         <div style="opacity: 0.01; position: absolute; bottom: 5px; right: 5px; width: 10px; height: 10px; cursor: pointer;"
             onclick="revealSecret()" title="ssshhh...">
         </div>
     </footer>
 
+    <script src="../js/language.js"></script>
     <script src="../js/template.js"></script>
     <script>
 

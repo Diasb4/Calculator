@@ -10,75 +10,75 @@
 
 <body>
     <nav class="navbar">
-        <!-- Кнопка "На главную" слева -->
-        <a href="../index.html" class="nav-button">← На главную</a>
-
-        <!-- Контейнер для кнопок справа -->
-        <div class="nav-buttons">
-            <button id="theme-toggle" class="nav-button">🌙 Тема</button>
+    <a href="../index.html" class="nav-button" data-translate="nav_home">← На главную</a>
+    <div class="nav-buttons">
+        <button id="language-toggle" class="nav-button">🌐 English</button>
+        <!-- Navigation buttons container -->
+            <button id="theme-toggle" class="nav-button" data-translate="nav_theme">🌙 Theme</button>
             <div class="mode-dropdown">
-                <button id="mode-toggle" class="nav-button">Сменить режим</button>
+                <button id="mode-toggle" class="nav-button" data-translate="nav_mode">Change mode</button>
                 <div class="mode-dropdown-content" id="modeDropdown">
-                    <div class="mode-option" data-mode="serious">Серьёзный режим</div>
-                    <div class="mode-option" data-mode="standard">Стандартный режим</div>
-                    <div class="mode-option" data-mode="evil">Злой старшекурсник</div>
+                    <div class="mode-option" data-mode="serious" data-translate="nav_serious">Serious mode</div>
+                    <div class="mode-option" data-mode="standard" data-translate="nav_standard">Standard mode</div>
+                    <div class="mode-option" data-mode="evil" data-translate="nav_evil">Evil upperclassman</div>
                 </div>
             </div>
         </div>
     </nav>
 
     <div class="container">
-        <h1>📚 Калькулятор оценок</h1>
-        <div class="current-mode" id="currentModeDisplay">Текущий режим: Стандартный</div>
+        <h1 data-translate="calculator_title">📚 Калькулятор оценок</h1>
+        <div class="current-mode" id="currentModeDisplay" data-translate="current_mode">Текущий режим: Стандартный</div>
 
         <div class="input-group">
-            <label for="regmid">РегМид (0-100)</label>
-            <input type="number" id="regmid" min="0" max="100" placeholder="Введите оценку">
+            <label for="regmid" data-translate="regmid_label">РегМид (0-100)</label>
+            <input type="number" id="regmid" min="0" max="100" placeholder="Введите оценку" data-translate-type="placeholder" data-translate="regmid_placeholder">
         </div>
 
         <div class="input-group">
-            <label for="regend">РегЭнд (0-100)</label>
-            <input type="number" id="regend" min="0" max="100" placeholder="Введите оценку">
+            <label for="regend" data-translate="regend_label">РегЭнд (0-100)</label>
+            <input type="number" id="regend" min="0" max="100" placeholder="Введите оценку" data-translate-type="placeholder" data-translate="regend_placeholder">
         </div>
 
         <div class="input-group">
-            <label for="regterm">РегТерм (0-100)</label>
-            <input type="number" id="regterm" min="0" max="100" placeholder="Или введите РегТерм напрямую">
+            <label for="regterm" data-translate="regterm_label">РегТерм (0-100)</label>
+            <input type="number" id="regterm" min="0" max="100" placeholder="Или введите РегТерм напрямую" data-translate-type="placeholder" data-translate="regterm_placeholder">
         </div>
 
         <div class="input-group">
-            <label for="final">Файнал (0-100)</label>
-            <input type="number" id="final" min="0" max="100" placeholder="Оставьте пустым для прогноза">
+            <label for="final" data-translate="final_label">Файнал (0-100)</label>
+            <input type="number" id="final" min="0" max="100" placeholder="Оставьте пустым для прогноза" data-translate-type="placeholder" data-translate="final_placeholder">
         </div>
 
-        <button id="calculate-btn">Рассчитать</button>
+        <button id="calculate-btn" data-translate="calculate_btn">Рассчитать</button>
 
         <!-- НОВАЯ КНОПКА ДЛЯ СОЗДАНИЯ ССЫЛКИ -->
-        <button id="share-btn" class="share-button">🔗 Создать ссылку для друга</button>
+        <button id="share-btn" class="share-button" data-translate="share_button">🔗 Создать ссылку для друга</button>
 
         <div class="share-section" id="shareSection" style="display: none;">
             <div class="input-group">
-                <label for="share-link">Ссылка для общего доступа:</label>
+                <label for="share-link" data-translate="share_link_label">Ссылка для общего доступа:</label>
                 <div class="share-link-container">
                     <input type="text" id="share-link" readonly class="share-link-input">
-                    <button id="copy-link-btn" class="copy-button">Копировать</button>
+                    <button id="copy-link-btn" class="copy-button" data-translate="copy_button">Копировать</button>
                 </div>
             </div>
-            <p class="share-info">Эта ссылка будет активна 24 часа и сохранит все введённые данные</p>
+            <p class="share-info" data-translate="share_info">Эта ссылка будет активна 24 часа и сохранит все введённые данные</p>
         </div>
 
-        <div class="warning-text">
-            ⚠️ <strong>Важно:</strong> Списывание ведёт к отчислению!
+        <div class="warning-text" data-translate="warning_text">
+            ⚠️ Важно: Списывание ведёт к отчислению!
         </div>
 
         <div id="result" class="result"></div>
     </div>
 
     <footer>
-        &copy; 2025 Not_404. In case of any bug contact via Telegram <a href="https://t.me/Qrudos"
-            target="_blank">@Qrudos</a>.
+        <span data-translate="footer_copyright">&copy; 2025 Not_404. In case of any bug contact via Telegram</span>
+        <a href="https://t.me/Qrudos" target="_blank">@Qrudos</a>.
     </footer>
 
+    <script src="../js/language.js"></script>
     <script src="../js/total.js"></script>
 </body>
 

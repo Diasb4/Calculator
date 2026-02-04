@@ -9,19 +9,20 @@
 </head>
 
 <body>
-    <!-- Навбар -->
+    <!-- Navigation bar -->
     <nav class="navbar">
-        <a href="../index.html" class="nav-button">← На главную</a>
-        <div class="nav-buttons">
-            <button id="theme-toggle" class="nav-button">🌙 Тема</button>
-        </div>
-    </nav>
+    <a href="../index.html" class="nav-button" data-translate="nav_home">← Home</a>
+    <div class="nav-buttons">
+        <button id="language-toggle" class="nav-button">🌐 English</button>
+        <button id="theme-toggle" class="nav-button" data-translate="nav_theme">🌙 Theme</button>
+    </div>
+</nav>
 
-    <!-- Контейнер обратной связи -->
+    <!-- Feedback container -->
     <div class="feedback-container">
-        <h1>💬 Обратная связь</h1>
+        <h1 data-translate="option_feedback_title">💬 Feedback</h1>
         <p class="subtitle">
-            Есть идеи для улучшения калькулятора? Нашли баг?<br>
+            Have ideas to improve the calculator? Found a bug?<br>
             Напишите нам - мы ценим ваше мнение!
         </p>
 
@@ -59,6 +60,7 @@
         <div class="status-message" id="statusMessage"></div>
     </div>
 
+    <script src="../js/language.js"></script>
     <script src="../js/feedback.js">
 
     </script>

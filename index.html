@@ -1,10 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
-
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GradeMaster - Калькулятор оценок</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
+    <title>GradeMaster</title>
     <link rel="stylesheet" href="style/style.css">
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-4DVBKX599T"></script>
@@ -12,99 +11,81 @@
         window.dataLayer = window.dataLayer || [];
         function gtag() { dataLayer.push(arguments); }
         gtag('js', new Date());
-
         gtag('config', 'G-4DVBKX599T');
     </script>
-    <style>
-        /* Исправление перекрытия навбаром */
-        .container {
-            margin-top: 80px;
-            /* Добавляем отступ сверху равный высоте навбара */
-        }
-
-        /* Для мобильных устройств можно уменьшить отступ */
-        @media (max-width: 768px) {
-            .container {
-                margin-top: 70px;
-            }
-        }
-    </style>
 </head>
-
 <body>
     <nav class="navbar">
         <div class="nav-buttons">
-            <button id="theme-toggle" class="nav-button">🌙 Тема</button>
+            <button id="language-toggle" class="nav-button">🌐 English</button>
+            <button id="theme-toggle" class="nav-button" data-translate="nav_theme">🌙 Theme</button>
         </div>
-        <a href="../main/Feedback.html" class="nav-button">💬 Обратная связь</a>
+        <a href="main/Feedback.html" class="nav-button" data-translate="nav_feedback">💬 Обратная связь</a>
     </nav>
+    
     <div class="container">
-        <h1>🎓 GradeMaster</h1>
-        <p class="subtitle">Выберите тип калькулятора</p>
+        <h1 data-translate="main_title">🎓 GradeMaster</h1>
+        <p class="subtitle" data-translate="main_description">Выберите тип калькулятора</p>
 
         <div class="calculator-options">
             <div class="option-card">
-                <h3>🚀 Калькулятор Итоговой Оценки</h3>
-                <p>Калькулятор помогающий понять как сильно надо готовиться</p>
+                <h3 data-translate="option_total_title">🚀 Калькулятор Итоговой Оценки</h3>
+                <p data-translate="option_total_desc">Калькулятор помогающий понять как сильно надо готовиться</p>
                 <ul class="features">
-                    <li>• Максимальная прозрачность</li>
-                    <li>• Ручной ввод всех параметров</li>
-                    <li>• Подходит для любых предметов</li>
+                    <li data-translate="feature_transparency">• Максимальная прозрачность</li>
+                    <li data-translate="feature_manual">• Ручной ввод всех параметров</li>
+                    <li data-translate="feature_all_subjects">• Подходит для любых предметов</li>
                 </ul>
-                <button
-                    onclick="trackNavigation('Итоговая оценка'); window.location.href='../main/TotalCalculator.html'">
-                    <p>Перейти</p>
+                <button onclick="trackNavigation('Итоговая оценка'); window.location.href='../main/TotalCalculator.html'">
+                    <p data-translate="go_button">Перейти</p>
                 </button>
             </div>
 
             <div class="option-card">
-                <h3>📊 Калькулятор Итогового GPA</h3>
-                <p>Калькулятор помогающий понять сколько вы получили</p>
+                <h3 data-translate="option_gpa_title">📊 Калькулятор Итогового GPA</h3>
+                <p data-translate="option_gpa_desc">Калькулятор помогающий понять сколько вы получили</p>
                 <ul class="features">
-                    <li>• Максимальная прозрачность</li>
-                    <li>• Ручной ввод всех параметров</li>
-                    <li>• Подходит для любых предметов</li>
+                    <li data-translate="feature_transparency">• Максимальная прозрачность</li>
+                    <li data-translate="feature_manual">• Ручной ввод всех параметров</li>
+                    <li data-translate="feature_all_subjects">• Подходит для любых предметов</li>
                 </ul>
                 <button onclick="trackNavigation('Итоговый GPA'); window.location.href='../main/CalculatorGPA.html'">
-                    <p>Перейти</p>
+                    <p data-translate="go_button">Перейти</p>
                 </button>
             </div>
 
             <div class="option-card">
-                <h3>📚 Предметные шаблоны</h3>
-                <p>Готовые настройки для популярных направлений</p>
+                <h3 data-translate="option_templates_title">📚 Предметные шаблоны</h3>
+                <p data-translate="option_templates_desc">Готовые настройки для популярных направлений</p>
                 <ul class="features">
-                    <li>• Быстрый старт</li>
-                    <li>• Популярные предметы</li>
-                    <li>• Предустановленные веса</li>
+                    <li data-translate="feature_fast_start">• Быстрый старт</li>
+                    <li data-translate="feature_popular_subjects">• Популярные предметы</li>
+                    <li data-translate="feature_preset_weights">• Предустановленные веса</li>
                 </ul>
-                <button
-                    onclick="trackNavigation('Предметные шаблоны'); window.location.href='../main/templated_calculator.html'">
-                    <p>Перейти</p>
+                <button onclick="trackNavigation('Предметные шаблоны'); window.location.href='../main/templated_calculator.html'">
+                    <p data-translate="go_button">Перейти</p>
                 </button>
             </div>
+            
             <div class="option-card">
-                <h3>📚 Калькулятор посещаемости</h3>
-                <p>Удобный калькулятор для подсчета своей посещаемости((и того сколько раз можно остаться дома :) )</p>
+                <h3 data-translate="option_attendance_title">📚 Калькулятор посещаемости</h3>
+                <p data-translate="option_attendance_desc">Удобный калькулятор для подсчета своей посещаемости((и того сколько раз можно остаться дома :) )</p>
                 <ul class="features">
-                    <li>• Быстрый старт</li>
-                    <li>• Читаемый интерфейс</li>
-                    <li>• Понятный метод подсчета</li>
+                    <li data-translate="feature_fast_start">• Быстрый старт</li>
+                    <li data-translate="feature_readable_interface">• Читаемый интерфейс</li>
+                    <li data-translate="feature_clear_method">• Понятный метод подсчета</li>
                 </ul>
-                <button
-                    onclick="trackNavigation('Посещаемость'); window.location.href='../main/AttendanceCalculator.html'">
-                    <p>Перейти</p>
+                <button onclick="trackNavigation('Посещаемость'); window.location.href='../main/AttendanceCalculator.html'">
+                    <p data-translate="go_button">Перейти</p>
                 </button>
             </div>
         </div>
     </div>
 
     <footer>
-        &copy; 2025 Not_404. In case of any bug contact via Telegram <a href="https://t.me/Qrudos"
-            target="_blank">@Qrudos</a>.
-        <div style="opacity: 0.01; position: absolute; bottom: 5px; right: 5px; width: 10px; height: 10px; cursor: pointer;"
-            onclick="trackEasterEgg(); revealSecret()" title="ssshhh...">
-        </div>
+        <span data-translate="footer_copyright">&copy; 2025 Not_404. In case of any bug contact via Telegram</span>
+        <a href="https://t.me/Qrudos" target="_blank">@Qrudos</a>.
+        <div class="easter-egg" onclick="trackEasterEgg(); revealSecret()" title="ssshhh..."></div>
     </footer>
 
     <!-- Встроенный скрипт для отслеживания событий -->
@@ -132,7 +113,7 @@
         }
     </script>
 
-    <script src="../js/main.js"></script>
+    <script src="js/language.js"></script>
+    <script src="js/main.js"></script>
 </body>
-
 </html>
