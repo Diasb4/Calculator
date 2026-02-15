@@ -76,13 +76,39 @@ body {
         left: auto !important;
     }
 
-    .nav-button {
-        padding: 10px 12px !important;
+    nav.navbar .nav-button {
+        padding: 6px 10px !important;
         font-size: 13px !important;
     }
+
+    nav.navbar button.nav-button {
+        min-height: unset !important;
+    }
+
+    /* не меняем размеры кнопок в навбаре */
 }
 
 @media (max-width: 480px) {
+    nav.navbar {
+        padding: 8px 10px;
+        flex-wrap: nowrap;
+        gap: 6px;
+        align-items: center;
+        background: #ffffff;
+    }
+
+    nav.navbar .nav-button {
+        padding: 5px 8px !important;
+        font-size: 12px !important;
+        flex: 0 0 auto;
+    }
+
+    nav.navbar > a.nav-button {
+        max-width: 48vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
     .container {
         padding: 20px 15px !important;
     }
@@ -97,8 +123,35 @@ body {
     }
 
     .nav-buttons {
-        flex-direction: column;
-        gap: 8px;
+        flex: 1 1 auto;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        justify-content: flex-end;
+        gap: 5px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding-bottom: 2px;
+    }
+
+    .nav-buttons::-webkit-scrollbar {
+        display: none;
+    }
+
+    #language-toggle,
+    #theme-toggle {
+        width: 88px;
+        padding: 5px 8px !important;
+        font-size: 12px !important;
+        line-height: 1.1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 0 0 auto;
     }
 }
 
@@ -262,9 +315,10 @@ nav.navbar {
     left: 0;
     width: 100%;
     z-index: 1000;
-    padding: 15px 20px;
-    background: rgba(255, 255, 255, 0.95);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    padding: 8px 12px;
+    background: #ffffff;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -272,20 +326,22 @@ nav.navbar {
 
 .nav-buttons {
     display: flex;
-    gap: 10px;
+    gap: 8px;
 }
 
 .nav-button {
-    padding: 8px 16px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
+    padding: 6px 10px;
+    background: rgba(102, 126, 234, 0.12);
+    color: #2c3e50;
+    border: 1px solid rgba(102, 126, 234, 0.25);
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
     text-decoration: none;
+    white-space: nowrap;
+    line-height: 1.15;
     -webkit-touch-callout: none;
     /* iOS Safari */
     -webkit-user-select: none;
@@ -295,8 +351,14 @@ nav.navbar {
 }
 
 .nav-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    background: rgba(102, 126, 234, 0.2);
+    border-color: rgba(102, 126, 234, 0.4);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+}
+
+.nav-button:focus-visible {
+    outline: 2px solid rgba(102, 126, 234, 0.55);
+    outline-offset: 2px;
 }
 
 .mode-dropdown {
@@ -310,7 +372,7 @@ nav.navbar {
     right: 0;
     top: 100%;
     background: white;
-    min-width: 200px;
+    min-width: 180px;
     border-radius: 10px;
     box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
     z-index: 1001;
@@ -323,7 +385,7 @@ nav.navbar {
 }
 
 .mode-option {
-    padding: 12px 16px;
+    padding: 10px 14px;
     color: #333;
     text-decoration: none;
     display: block;

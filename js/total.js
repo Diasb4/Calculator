@@ -41,9 +41,22 @@ function closeModeDropdown() {
     dropdown.classList.remove('show');
 }
 
+function updateBodyPaddingForNavbar() {
+    const navbar = document.querySelector('nav.navbar');
+    if (!navbar) return;
+
+    const extraPadding = 12;
+    document.body.style.paddingTop = `${navbar.offsetHeight + extraPadding}px`;
+}
+
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function () {
     updateModeDisplay();
+    updateBodyPaddingForNavbar();
+
+    window.addEventListener('resize', updateBodyPaddingForNavbar);
+    window.addEventListener('orientationchange', updateBodyPaddingForNavbar);
+    setTimeout(updateBodyPaddingForNavbar, 50);
 
     // Обработчики для выпадающего меню режимов
     const modeToggle = document.getElementById('mode-toggle');
@@ -52,20 +65,11 @@ document.addEventListener('DOMContentLoaded', function () {
     // Улучшенные обработчики для мобильных устройств
     modeToggle.addEventListener('click', function (e) {
         e.stopPropagation();
-        e.preventDefault();
         toggleModeDropdown();
     });
 
     modeOptions.forEach(option => {
         option.addEventListener('click', function (e) {
-            e.preventDefault();
-            const newMode = this.getAttribute('data-mode');
-            changeMode(newMode);
-        });
-
-        // Добавляем обработчик touch для лучшей реакции на мобильных
-        option.addEventListener('touchstart', function (e) {
-            e.preventDefault();
             const newMode = this.getAttribute('data-mode');
             changeMode(newMode);
         });
@@ -113,30 +117,11 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    // Устойчивый обработчик нажатий для мобильных и десктопа
-    let lastTouchTime = 0;
-
-    function addTapHandler(element, handler) {
-        if (!element) return;
-
-        element.addEventListener('touchend', function (e) {
-            e.preventDefault();
-            lastTouchTime = Date.now();
-            handler();
-        });
-
-        element.addEventListener('click', function (e) {
-            if (Date.now() - lastTouchTime < 500) {
-                e.preventDefault();
-                return;
-            }
-            handler();
-        });
-    }
 
     // Обработчик для кнопки расчета
     const calculateBtn = document.getElementById('calculate-btn');
-    addTapHandler(calculateBtn, calculate);
+    calculateBtn.addEventListener('click', calculate);
+
 
     // Обработчик нажатия Enter в полях ввода
     document.querySelectorAll('input').forEach(input => {
@@ -147,13 +132,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // Улучшенный обработчик для полей ввода на мобильных
-    document.querySelectorAll('input').forEach(input => {
-        input.addEventListener('touchstart', function (e) {
-            // Позволяет полям ввода получать фокус на мобильных
-            this.focus();
-        });
-    });
+
     // Добавьте эту переменную в начало файла с другими переменными
     let shareLinks = JSON.parse(localStorage.getItem('gradeMaster_shareLinks') || '{}');
 
@@ -293,8 +272,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const shareBtn = document.getElementById('share-btn');
     const copyLinkBtn = document.getElementById('copy-link-btn');
 
-    addTapHandler(shareBtn, createShareLink);
-    addTapHandler(copyLinkBtn, copyShareLink);
+    shareBtn.addEventListener('click', createShareLink);
+    copyLinkBtn.addEventListener('click', copyShareLink);
+
 });
 
 // Функция для получения случайного перевода из набора ключей

@@ -4,8 +4,8 @@
 const translations = {
     'ru': {
         // Общие элементы
-        'nav_home': '← На главную',
-        'nav_language': '🌐 English',
+        'nav_home': '← Главная',
+        'nav_language': '🌐 Eng',
         'nav_theme': '🌙 Тема',
         'nav_mode': 'Сменить режим',
         'nav_serious': 'Серьёзный режим',
@@ -278,7 +278,7 @@ const translations = {
     'en': {
         // Common elements
         'nav_home': '← Home',
-        'nav_language': '🌐 Русский',
+        'nav_language': '🌐Рус',
         'nav_theme': '🌙 Theme',
         'nav_mode': 'Change mode',
         'nav_serious': 'Serious mode',
@@ -626,7 +626,7 @@ function updateElementsById(langData) {
 function updateLanguageButton() {
     const button = document.getElementById('language-toggle');
     if (button) {
-        button.textContent = currentLanguage === 'ru' ? '🌐 English' : '🌐 Русский';
+        button.textContent = currentLanguage === 'ru' ? '🌐 Eng' : '🌐 Рус';
     }
 }
 

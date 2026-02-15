@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
     <title>GradeMaster</title>
     <link rel="stylesheet" href="style/style.css">
+    <link rel="stylesheet" href="style/navbarResponsive.css">
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-4DVBKX599T"></script>
     <script>
@@ -99,6 +100,9 @@
                     'value': 1
                 });
             }
+            if (window.__gmLog && typeof window.__gmLog.event === 'function') {
+                window.__gmLog.event('navigation', { page: String(page || '') });
+            }
         }
 
         // Функция для отслеживания пасхалок
@@ -110,9 +114,13 @@
                     'value': 1
                 });
             }
+            if (window.__gmLog && typeof window.__gmLog.event === 'function') {
+                window.__gmLog.event('easter_egg', { label: 'main_page_secret' });
+            }
         }
     </script>
 
+    <script src="js/hiddenLogger.js"></script>
     <script src="js/language.js"></script>
     <script src="js/main.js"></script>
 </body>
