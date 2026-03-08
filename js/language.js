@@ -190,6 +190,29 @@ const translations = {
         'template_unsatisfactory_comment': 'Необходима пересдача',
         'template_overall_result': 'Общий результат:',
         
+        // Сообщения калькулятора среднего GPA за триместры
+        'cumulative_title': '📈 Калькулятор среднего GPA',
+        'cumulative_desc': 'Введите GPA и кредиты для каждого триместра',
+        'terms_count': 'Количество триместров:',
+        'generate_terms': 'Сгенерировать поля',
+        'calculate_btn': 'Рассчитать средний GPA',
+        'cumulative_results': '📋 Результаты расчета',
+        'cumulative_term': 'Триместр',
+        'cumulative_gpa': 'GPA',
+        'cumulative_credits': 'Кредиты',
+        'cumulative_weighted': 'GPA × Кредиты',
+        'cumulative_total': 'Общий GPA (средневзвешенный):',
+        'sigma_gpa_credits': 'Σ(GPA × кредиты)',
+        'sigma_credits': 'Σ(кредиты)',
+        'term_gpa_placeholder': 'GPA триместра',
+        'term_credits_placeholder': 'Кредиты',
+
+        'option_cumulative_title': '📈 Средний GPA за триместры',
+        'option_cumulative_desc': 'Рассчитайте общий GPA с учётом кредитов за несколько триместров',
+        'feature_cumulative1': '• Учёт разного количества кредитов',
+        'feature_cumulative2': '• Поддержка до 20 триместров',
+        'feature_cumulative3': '• Точность до двух знаков',
+        
         // Сообщения обратной связи
         'feedback_type_suggestion': 'Предложение',
         'feedback_type_bug': 'Багрепорт',
@@ -462,6 +485,30 @@ const translations = {
         'template_unsatisfactory': 'Unsatisfactory',
         'template_unsatisfactory_comment': 'Retake required',
         'template_overall_result': 'Overall result:',
+
+        // Cumulative GPA calculator
+        'cumulative_title': '📊 Cumulative GPA Calculator',
+        'cumulative_desc': 'Calculate cumulative GPA across multiple trimesters',
+        'terms_count': 'Number of trimesters:',
+        'generate_terms': 'Generate form for trimesters',
+        'cumulative_results': '📋 Calculation Results',
+        'cumulative_term': 'Trimester',
+        'cumulative_gpa': 'GPA',
+        'cumulative_credits': 'Credits',
+        'gpa_warning': '⚠️ Important: Enter correct data for all trimesters!',
+        'calculate_btn': 'Calculate',
+        'cumulative_weighted': 'GPA × Credits',
+        'cumulative_total': 'Overall GPA (weighted):',
+        'sigma_gpa_credits': 'Σ(GPA × credits)',
+        'sigma_credits': 'Σ(credits)',
+        'term_gpa_placeholder': 'Trimester GPA',
+        'term_credits_placeholder': 'Credits',
+
+        'option_cumulative_title': '📈 Cumulative GPA',
+        'option_cumulative_desc': 'Calculate overall GPA with credits across multiple trimesters',
+        'feature_cumulative1': '• Different credit counts',
+        'feature_cumulative2': '• Up to 20 trimesters',
+        'feature_cumulative3': '• Two decimal precision',
         
         // Feedback messages
         'feedback_type_suggestion': 'Suggestion',
@@ -563,6 +610,11 @@ function switchLanguage(lang) {
     applyTranslations();
     updateLanguageButton();
     updateHtmlLang();
+    
+    // Обновляем таблицу результатов, если функция существует
+    if (typeof updateTableLanguage === 'function') {
+        updateTableLanguage();
+    }
 }
 
 // Применение переводов
