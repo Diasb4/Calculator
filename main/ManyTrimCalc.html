@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
+    <title>Cumulative GPA Calculator - GradeMaster</title>
+    <link rel="stylesheet" href="../style/styleForCumulative.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-buttons">
+            <button id="language-toggle" class="nav-button">🌐 English</button>
+            <button id="theme-toggle" class="nav-button">🌙 Тема</button>
+        </div>
+        <a href="../main/Feedback.html" class="nav-button" data-translate="nav_feedback">💬 Обратная связь</a>
+    </nav>
+
+    <div class="container">
+        <h1 data-translate="cumulative_title">📈 Калькулятор среднего GPA за триместры</h1>
+        <p class="subtitle" data-translate="cumulative_desc">Введите GPA и кредиты для каждого триместра</p>
+
+        <div class="formula">
+            GPA = Σ(GPA<sub>i</sub> × <span data-translate="cumulative_credits">кредиты</span><sub>i</sub>) / Σ(<span data-translate="cumulative_credits">кредиты</span><sub>i</sub>)
+        </div>
+
+        <div class="input-group">
+            <label for="terms-count" data-translate="terms_count">Количество триместров:</label>
+            <input type="number" id="terms-count" min="1" max="20" value="3">
+        </div>
+
+        <button id="generate-terms" class="calculate-btn" data-translate="generate_terms">Сгенерировать поля</button>
+
+        <div id="terms-container"></div>
+
+        <button id="calculate-cumulative" class="calculate-btn" style="display: none;" data-translate="calculate_btn">Рассчитать общий GPA</button>
+
+        <div class="warning-text">
+            ⚠️ <strong data-translate="gpa_warning">Важно: Введите корректные данные для всех триместров!</strong>
+        </div>
+
+        <div id="result" class="result"></div>
+    </div>
+
+    <footer>
+        <span data-translate="footer_copyright">&copy; 2025 Not_404. In case of any bug contact via Telegram</span>
+        <a href="https://t.me/Qrudos" target="_blank">@Qrudos</a>.
+        <div class="easter-egg" onclick="trackEasterEgg(); revealSecret()" title="ssshhh..."></div>
+    </footer>
+
+    <script src="../js/language.js"></script>
+    <script src ="../js/cumulative.js"></script>
+</body>
+</html>
