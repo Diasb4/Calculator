@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from telegram.ext import ContextTypes
-
-
 TEXT: dict[str, dict[str, str]] = {
     "ru": {
         "choose_lang": "Выберите язык:",
@@ -12,6 +9,7 @@ TEXT: dict[str, dict[str, str]] = {
         "menu_lang": "Язык",
         "menu_gpa": "GPA",
         "menu_attendance": "Посещаемость",
+        "menu_cumulative": "Средний GPA",
         "menu_total": "Итог",
         "menu_template": "Шаблон",
         "lang_ru": "Русский",
@@ -22,6 +20,9 @@ TEXT: dict[str, dict[str, str]] = {
         "gpa_credits": "Кредиты:",
         "gpa_grade": "Оценка (%) 0-100:",
         "att_lessons": "Сколько пар в неделю? (1-50)",
+        "cumulative_count": "Сколько триместров? (1-20)",
+        "cumulative_term_gpa": "GPA триместра {n} (0-4):",
+        "cumulative_term_credits": "Кредиты триместра {n}:",
         "total_has_regterm": "Есть RegTerm напрямую?",
         "total_regterm": "Введите RegTerm (0-100):",
         "total_regmid": "Введите RegMid (0-100):",
@@ -34,6 +35,7 @@ TEXT: dict[str, dict[str, str]] = {
         "invalid_1_20": "Введите число от 1 до 20.",
         "invalid_1_50": "Введите число 1-50.",
         "invalid_0_100": "Введите 0-100.",
+        "invalid_0_4": "Введите GPA 0-4.",
         "invalid_50_100_or_0": "Введите 50-100 или 0 для прогноза.",
         "invalid_gt0": "Введите корректное число > 0.",
         "invalid_credits_range": "Кредиты должны быть > 0 и не больше 50.",
@@ -53,6 +55,7 @@ TEXT: dict[str, dict[str, str]] = {
         "regmid_too_low": "У вас РегМид слишком мал (меньше 25).",
         "regend_too_low": "У вас РегЭнд слишком мал (меньше 25).",
         "gpa_result": "GPA: {gpa}\nСумма кредитов: {credits}",
+        "cumulative_result": "Средний GPA: {gpa}\nСумма кредитов: {credits}",
         "att_result": (
             "За {weeks} недель при {per_week} пар/нед:\n"
             "Всего пар: {total}\n"
@@ -64,6 +67,24 @@ TEXT: dict[str, dict[str, str]] = {
             "Нужно для прохода: {pass}\n"
             "Нужно для стипендии: {sch}\n"
             "Нужно для повышенной: {high}"
+        ),
+        "total_pred_high_unreachable": (
+            "RegTerm: {regterm}\n"
+            "Нужно для прохода: {pass}\n"
+            "Нужно для стипендии: {sch}\n"
+            "Повышенная стипендия недостижима"
+        ),
+        "total_pred_sch_unreachable": (
+            "RegTerm: {regterm}\n"
+            "Нужно для прохода: {pass}\n"
+            "Стипендия недостижима\n"
+            "Нужно для повышенной: {high}"
+        ),
+        "total_pred_sch_high_unreachable": (
+            "RegTerm: {regterm}\n"
+            "Нужно для прохода: {pass}\n"
+            "Стипендия недостижима\n"
+            "Повышенная стипендия недостижима"
         ),
         "total_result": "RegTerm: {regterm}\nИтого: {total}\nСтатус: {status}",
         "template_result": (
@@ -80,6 +101,7 @@ TEXT: dict[str, dict[str, str]] = {
         "menu_lang": "Language",
         "menu_gpa": "GPA",
         "menu_attendance": "Attendance",
+        "menu_cumulative": "Cumulative GPA",
         "menu_total": "Total Score",
         "menu_template": "Template",
         "lang_ru": "Русский",
@@ -90,6 +112,9 @@ TEXT: dict[str, dict[str, str]] = {
         "gpa_credits": "Credits:",
         "gpa_grade": "Grade (%) 0-100:",
         "att_lessons": "Lessons per week? (1-50)",
+        "cumulative_count": "How many terms? (1-20)",
+        "cumulative_term_gpa": "Term {n} GPA (0-4):",
+        "cumulative_term_credits": "Term {n} credits:",
         "total_has_regterm": "Do you have RegTerm directly?",
         "total_regterm": "Enter RegTerm (0-100):",
         "total_regmid": "Enter RegMid (0-100):",
@@ -102,6 +127,7 @@ TEXT: dict[str, dict[str, str]] = {
         "invalid_1_20": "Enter a number from 1 to 20.",
         "invalid_1_50": "Enter a number from 1 to 50.",
         "invalid_0_100": "Enter 0-100.",
+        "invalid_0_4": "Enter GPA 0-4.",
         "invalid_50_100_or_0": "Enter 50-100 or 0 for prediction.",
         "invalid_gt0": "Enter a valid number > 0.",
         "invalid_credits_range": "Credits must be > 0 and at most 50.",
@@ -121,6 +147,7 @@ TEXT: dict[str, dict[str, str]] = {
         "regmid_too_low": "Your RegMid is too low (below 25).",
         "regend_too_low": "Your RegEnd is too low (below 25).",
         "gpa_result": "GPA: {gpa}\nTotal credits: {credits}",
+        "cumulative_result": "Cumulative GPA: {gpa}\nTotal credits: {credits}",
         "att_result": (
             "For {weeks} weeks at {per_week} lessons/week:\n"
             "Total lessons: {total}\n"
@@ -132,6 +159,24 @@ TEXT: dict[str, dict[str, str]] = {
             "Needed to pass: {pass}\n"
             "Needed for scholarship: {sch}\n"
             "Needed for high scholarship: {high}"
+        ),
+        "total_pred_high_unreachable": (
+            "RegTerm: {regterm}\n"
+            "Needed to pass: {pass}\n"
+            "Needed for scholarship: {sch}\n"
+            "High scholarship is not achievable"
+        ),
+        "total_pred_sch_unreachable": (
+            "RegTerm: {regterm}\n"
+            "Needed to pass: {pass}\n"
+            "Scholarship is not achievable\n"
+            "Needed for high scholarship: {high}"
+        ),
+        "total_pred_sch_high_unreachable": (
+            "RegTerm: {regterm}\n"
+            "Needed to pass: {pass}\n"
+            "Scholarship is not achievable\n"
+            "High scholarship is not achievable"
         ),
         "total_result": "RegTerm: {regterm}\nTotal: {total}\nStatus: {status}",
         "template_result": (
@@ -145,11 +190,7 @@ TEXT: dict[str, dict[str, str]] = {
 }
 
 
-def lang(context: ContextTypes.DEFAULT_TYPE) -> str:
-    return context.user_data.get("lang", "ru")
-
-
-def t(context: ContextTypes.DEFAULT_TYPE, key: str, **kwargs: Any) -> str:
-    template = TEXT[lang(context)][key]
+def t(lang: str, key: str, **kwargs: Any) -> str:
+    lang_code = lang if lang in TEXT else "ru"
+    template = TEXT[lang_code].get(key, key)
     return template.format(**kwargs)
-
