@@ -107,6 +107,19 @@
 
         <button class="calculate-btn" id="calculate-all-btn">Рассчитать итоговую оценку</button>
 
+        <div class="preset-section">
+            <h3>🔗 Пресет предмета</h3>
+            <p>Сохраните веса и список работ в ссылку. Оценки в пресет не попадают.</p>
+            <div class="preset-actions">
+                <button class="preset-btn" id="save-preset-btn" type="button">Сохранить пресет</button>
+            </div>
+            <div class="preset-link-box" id="presetLinkBox">
+                <input type="text" id="preset-link" readonly aria-label="Ссылка на пресет">
+                <button class="copy-preset-btn" id="copy-preset-btn" type="button">Скопировать</button>
+            </div>
+            <div class="preset-status" id="presetStatus"></div>
+        </div>
+
         <div class="warning-text">
             ⚠️ <strong>Важно:</strong> Сумма весов всех секций должна быть равна 100%
             <div class="weight-error" id="weightError">

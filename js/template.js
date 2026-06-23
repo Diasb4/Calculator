@@ -1,6 +1,14 @@
 // Управление темной темой
 const toggle = document.getElementById("theme-toggle");
 const body = document.body;
+const PRESET_QUERY_PARAM = 'preset';
+const PRESET_SECTIONS = [
+    { key: 'assignments', listId: 'assignmentsList', weightId: 'assignmentsWeight' },
+    { key: 'quizzes', listId: 'quizzesList', weightId: 'quizzesWeight' },
+    { key: 'exams', listId: 'examsList', weightId: 'examsWeight' }
+];
+const MAX_PRESET_ITEMS_PER_SECTION = 50;
+const MAX_PRESET_NAME_LENGTH = 80;
 
 // Проверяем сохраненную тему
 if (localStorage.getItem("theme") === "dark") {
@@ -52,6 +60,222 @@ function getComponentPrefix(sectionId) {
         case 'quizzesList': return 'Quiz';
         case 'examsList': return 'Exam';
         default: return 'Component';
+    }
+}
+
+function createComponentItem(name = '', grade = '') {
+    const componentDiv = document.createElement('div');
+    componentDiv.className = 'component-item';
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'component-name';
+    nameInput.placeholder = name || 'Component';
+    nameInput.value = name;
+    nameInput.maxLength = MAX_PRESET_NAME_LENGTH;
+
+    const gradeInput = document.createElement('input');
+    gradeInput.type = 'number';
+    gradeInput.className = 'component-grade';
+    gradeInput.placeholder = 'Оценка (0-100)';
+    gradeInput.min = '0';
+    gradeInput.max = '100';
+    gradeInput.value = grade;
+
+    const removeButton = document.createElement('button');
+    removeButton.className = 'remove-btn';
+    removeButton.type = 'button';
+    removeButton.textContent = '×';
+    removeButton.addEventListener('click', function () {
+        removeComponent(this);
+    });
+
+    componentDiv.append(nameInput, gradeInput, removeButton);
+    return componentDiv;
+}
+
+function encodePresetData(data) {
+    const bytes = new TextEncoder().encode(JSON.stringify(data));
+    let binary = '';
+
+    bytes.forEach(byte => {
+        binary += String.fromCharCode(byte);
+    });
+
+    return btoa(binary)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+}
+
+function decodePresetData(encodedData) {
+    let base64 = encodedData.replace(/-/g, '+').replace(/_/g, '/');
+
+    while (base64.length % 4) {
+        base64 += '=';
+    }
+
+    const binary = atob(base64);
+    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function normalizeWeight(value, fallback = 0) {
+    const parsedValue = parseInt(value, 10);
+
+    if (Number.isNaN(parsedValue)) {
+        return fallback;
+    }
+
+    return Math.min(100, Math.max(0, parsedValue));
+}
+
+function normalizePresetName(value, fallback = '') {
+    if (typeof value !== 'string') {
+        return fallback;
+    }
+
+    return value.trim().slice(0, MAX_PRESET_NAME_LENGTH) || fallback;
+}
+
+function collectPresetData() {
+    const sections = {};
+
+    PRESET_SECTIONS.forEach(config => {
+        const section = document.getElementById(config.listId);
+        const items = Array.from(section.querySelectorAll('.component-item')).map(component => {
+            const nameInput = component.querySelector('.component-name');
+            return {
+                name: normalizePresetName(nameInput ? nameInput.value : '')
+            };
+        }).slice(0, MAX_PRESET_ITEMS_PER_SECTION);
+
+        sections[config.key] = {
+            weight: normalizeWeight(document.getElementById(config.weightId).value),
+            items
+        };
+    });
+
+    return {
+        version: 1,
+        sections
+    };
+}
+
+function applyPresetData(presetData) {
+    if (!presetData || presetData.version !== 1 || !presetData.sections) {
+        throw new Error('Unsupported preset format');
+    }
+
+    PRESET_SECTIONS.forEach(config => {
+        const sectionData = presetData.sections[config.key] || {};
+        const list = document.getElementById(config.listId);
+        const weightInput = document.getElementById(config.weightId);
+        const items = Array.isArray(sectionData.items)
+            ? sectionData.items.slice(0, MAX_PRESET_ITEMS_PER_SECTION)
+            : [];
+
+        weightInput.value = normalizeWeight(sectionData.weight, normalizeWeight(weightInput.value));
+        list.innerHTML = '';
+
+        if (items.length === 0) {
+            list.appendChild(createComponentItem(`${getComponentPrefix(config.listId)} 1`));
+            return;
+        }
+
+        items.forEach((item, index) => {
+            const fallbackName = `${getComponentPrefix(config.listId)} ${index + 1}`;
+            const itemName = normalizePresetName(item.name, fallbackName);
+            list.appendChild(createComponentItem(itemName));
+        });
+    });
+}
+
+function setPresetStatus(message, type = 'success') {
+    const status = document.getElementById('presetStatus');
+
+    if (!status) return;
+
+    status.textContent = message;
+    status.className = `preset-status ${type} show`;
+}
+
+function createPresetLink() {
+    try {
+        const presetData = collectPresetData();
+        const encodedPreset = encodePresetData(presetData);
+        const presetUrl = new URL(window.location.href);
+
+        presetUrl.searchParams.set(PRESET_QUERY_PARAM, encodedPreset);
+        presetUrl.hash = '';
+
+        document.getElementById('preset-link').value = presetUrl.toString();
+        document.getElementById('presetLinkBox').classList.add('show');
+        setPresetStatus('✅ Пресет сохранён. Ссылку можно отправить другому человеку.');
+    } catch (error) {
+        setPresetStatus('❌ Не получилось создать ссылку на пресет.', 'danger');
+    }
+}
+
+function copyPresetLink() {
+    const presetLinkInput = document.getElementById('preset-link');
+    const presetLink = presetLinkInput.value;
+
+    if (!presetLink) {
+        createPresetLink();
+
+        if (!presetLinkInput.value) {
+            return;
+        }
+    }
+
+    const linkToCopy = presetLinkInput.value;
+
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(linkToCopy)
+            .then(() => setPresetStatus('✅ Ссылка скопирована.'))
+            .catch(copyPresetLinkFallback);
+        return;
+    }
+
+    copyPresetLinkFallback();
+}
+
+function copyPresetLinkFallback() {
+    const presetLinkInput = document.getElementById('preset-link');
+
+    presetLinkInput.select();
+    presetLinkInput.setSelectionRange(0, 99999);
+    document.execCommand('copy');
+    setPresetStatus('✅ Ссылка скопирована.');
+}
+
+function loadPresetFromUrl() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const encodedPreset = urlParams.get(PRESET_QUERY_PARAM);
+
+    if (!encodedPreset) return false;
+
+    try {
+        applyPresetData(decodePresetData(encodedPreset));
+        setPresetStatus('📥 Пресет загружен из ссылки.');
+        return true;
+    } catch (error) {
+        setPresetStatus('❌ Ссылка на пресет повреждена или устарела.', 'danger');
+        return false;
+    }
+}
+
+function initializePresetControls() {
+    const savePresetButton = document.getElementById('save-preset-btn');
+    const copyPresetButton = document.getElementById('copy-preset-btn');
+
+    if (savePresetButton) {
+        savePresetButton.addEventListener('click', createPresetLink);
+    }
+
+    if (copyPresetButton) {
+        copyPresetButton.addEventListener('click', copyPresetLink);
     }
 }
 
@@ -226,6 +450,8 @@ document.head.insertAdjacentHTML('beforeend', `<style>${toastStyles}</style>`);
 
 // Инициализация - расчет при загрузке
 document.addEventListener('DOMContentLoaded', function () {
+    loadPresetFromUrl();
+    initializePresetControls();
     calculateAll();
 });
 // Дополнительные исправления для мобильных устройств

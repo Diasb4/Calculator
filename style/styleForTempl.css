@@ -40,6 +40,17 @@ body.dark-mode .total-section {
     color: #ffffff !important;
 }
 
+body.dark-mode .preset-section {
+    background: #1a1a1a !important;
+    border: 1px solid #333333 !important;
+    color: #ffffff !important;
+}
+
+body.dark-mode .preset-section h3,
+body.dark-mode .preset-section p {
+    color: #ffffff !important;
+}
+
 body.dark-mode .section-title {
     color: #ffffff !important;
 }
@@ -50,7 +61,8 @@ body.dark-mode .section-weight {
 
 body.dark-mode .component-name,
 body.dark-mode .component-grade,
-body.dark-mode .weight-input {
+body.dark-mode .weight-input,
+body.dark-mode #preset-link {
     background: #0a0a0a !important;
     color: #ffffff !important;
     border: 1px solid #333333 !important;
@@ -58,7 +70,8 @@ body.dark-mode .weight-input {
 
 body.dark-mode .component-name:focus,
 body.dark-mode .component-grade:focus,
-body.dark-mode .weight-input:focus {
+body.dark-mode .weight-input:focus,
+body.dark-mode #preset-link:focus {
     border-color: #666666 !important;
     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1) !important;
 }
@@ -90,6 +103,18 @@ body.dark-mode .calculate-btn {
 }
 
 body.dark-mode .calculate-btn:hover {
+    background: #333333 !important;
+}
+
+body.dark-mode .preset-btn,
+body.dark-mode .copy-preset-btn {
+    background: #222222 !important;
+    color: #ffffff !important;
+    border: 1px solid #333333 !important;
+}
+
+body.dark-mode .preset-btn:hover,
+body.dark-mode .copy-preset-btn:hover {
     background: #333333 !important;
 }
 
@@ -322,6 +347,88 @@ h1 {
     color: #667eea;
 }
 
+.preset-section {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    margin-top: 20px;
+    padding: 18px;
+}
+
+.preset-section h3 {
+    margin-bottom: 8px;
+    color: #333;
+}
+
+.preset-section p {
+    color: #666;
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 14px;
+}
+
+.preset-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.preset-btn,
+.copy-preset-btn {
+    padding: 11px 14px;
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.preset-btn:hover,
+.copy-preset-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(32, 201, 151, 0.25);
+}
+
+.preset-link-box {
+    display: none;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.preset-link-box.show {
+    display: flex;
+}
+
+#preset-link {
+    flex: 1;
+    min-width: 0;
+    padding: 10px 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+.preset-status {
+    display: none;
+    margin-top: 10px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.preset-status.show {
+    display: block;
+}
+
+.preset-status.success {
+    color: #28a745;
+}
+
+.preset-status.danger {
+    color: #dc3545;
+}
+
 button.calculate-btn {
     width: 100%;
     padding: 15px;
@@ -483,10 +590,16 @@ footer a:hover {
     }
 
     .add-btn,
-    .calculate-btn {
+    .calculate-btn,
+    .preset-btn,
+    .copy-preset-btn {
         padding: 14px !important;
         font-size: 16px !important;
         min-height: 50px !important;
+    }
+
+    .preset-link-box {
+        flex-direction: column !important;
     }
 
     .remove-btn {
@@ -553,7 +666,9 @@ button,
 .nav-button,
 .add-btn,
 .calculate-btn,
-.remove-btn {
+.remove-btn,
+.preset-btn,
+.copy-preset-btn {
     touch-action: manipulation;
     /* Улучшает отзывчивость на касания */
     -webkit-touch-callout: none;
