@@ -1,7 +1,8 @@
 // Управление темной темой
 const toggle = document.getElementById("theme-toggle");
 const body = document.body;
-const PRESET_QUERY_PARAM = 'preset';
+const PRESET_QUERY_PARAM = 'p';
+const LEGACY_PRESET_QUERY_PARAM = 'preset';
 const PRESET_SECTIONS = [
     { key: 'assignments', listId: 'assignmentsList', weightId: 'assignmentsWeight' },
     { key: 'quizzes', listId: 'quizzesList', weightId: 'quizzesWeight' },
@@ -139,43 +140,49 @@ function normalizePresetName(value, fallback = '') {
 }
 
 function collectPresetData() {
-    const sections = {};
-
-    PRESET_SECTIONS.forEach(config => {
+    return PRESET_SECTIONS.map(config => {
         const section = document.getElementById(config.listId);
         const items = Array.from(section.querySelectorAll('.component-item')).map(component => {
             const nameInput = component.querySelector('.component-name');
-            return {
-                name: normalizePresetName(nameInput ? nameInput.value : '')
-            };
+            return normalizePresetName(nameInput ? nameInput.value : '');
         }).slice(0, MAX_PRESET_ITEMS_PER_SECTION);
 
-        sections[config.key] = {
-            weight: normalizeWeight(document.getElementById(config.weightId).value),
+        return [
+            normalizeWeight(document.getElementById(config.weightId).value),
             items
-        };
+        ];
     });
-
-    return {
-        version: 1,
-        sections
-    };
 }
 
 function applyPresetData(presetData) {
-    if (!presetData || presetData.version !== 1 || !presetData.sections) {
+    const sections = Array.isArray(presetData)
+        ? presetData
+        : PRESET_SECTIONS.map(config => {
+            const sectionData = presetData && presetData.version === 1 && presetData.sections
+                ? presetData.sections[config.key] || {}
+                : {};
+
+            return [
+                sectionData.weight,
+                Array.isArray(sectionData.items)
+                    ? sectionData.items.map(item => item.name)
+                    : []
+            ];
+        });
+
+    if (!Array.isArray(sections) || sections.length === 0) {
         throw new Error('Unsupported preset format');
     }
 
-    PRESET_SECTIONS.forEach(config => {
-        const sectionData = presetData.sections[config.key] || {};
+    PRESET_SECTIONS.forEach((config, sectionIndex) => {
+        const sectionData = Array.isArray(sections[sectionIndex]) ? sections[sectionIndex] : [];
         const list = document.getElementById(config.listId);
         const weightInput = document.getElementById(config.weightId);
-        const items = Array.isArray(sectionData.items)
-            ? sectionData.items.slice(0, MAX_PRESET_ITEMS_PER_SECTION)
+        const items = Array.isArray(sectionData[1])
+            ? sectionData[1].slice(0, MAX_PRESET_ITEMS_PER_SECTION)
             : [];
 
-        weightInput.value = normalizeWeight(sectionData.weight, normalizeWeight(weightInput.value));
+        weightInput.value = normalizeWeight(sectionData[0], normalizeWeight(weightInput.value));
         list.innerHTML = '';
 
         if (items.length === 0) {
@@ -185,7 +192,7 @@ function applyPresetData(presetData) {
 
         items.forEach((item, index) => {
             const fallbackName = `${getComponentPrefix(config.listId)} ${index + 1}`;
-            const itemName = normalizePresetName(item.name, fallbackName);
+            const itemName = normalizePresetName(item, fallbackName);
             list.appendChild(createComponentItem(itemName));
         });
     });
@@ -206,6 +213,7 @@ function createPresetLink() {
         const encodedPreset = encodePresetData(presetData);
         const presetUrl = new URL(window.location.href);
 
+        presetUrl.searchParams.delete(LEGACY_PRESET_QUERY_PARAM);
         presetUrl.searchParams.set(PRESET_QUERY_PARAM, encodedPreset);
         presetUrl.hash = '';
 
@@ -252,7 +260,7 @@ function copyPresetLinkFallback() {
 
 function loadPresetFromUrl() {
     const urlParams = new URLSearchParams(window.location.search);
-    const encodedPreset = urlParams.get(PRESET_QUERY_PARAM);
+    const encodedPreset = urlParams.get(PRESET_QUERY_PARAM) || urlParams.get(LEGACY_PRESET_QUERY_PARAM);
 
     if (!encodedPreset) return false;
 
