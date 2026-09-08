@@ -312,3 +312,32 @@ select:focus {
         font-size: 13px;
     }
 }
+
+.restore-draft-btn {
+    width: 100%;
+    margin-top: 12px;
+    padding: 10px 15px;
+    background: transparent;
+    border: 2px dashed #667eea;
+    color: #667eea;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: center;
+}
+
+.restore-draft-btn:hover {
+    background: rgba(102, 126, 234, 0.1);
+    transform: translateY(-2px);
+}
+
+body.dark-mode .restore-draft-btn {
+    border-color: #8fa5ff;
+    color: #8fa5ff;
+}
+
+body.dark-mode .restore-draft-btn:hover {
+    background: rgba(143, 165, 255, 0.1);
+}

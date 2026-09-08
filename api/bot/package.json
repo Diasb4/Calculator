@@ -1,0 +1,19 @@
+{
+  "name": "grademaster-bot",
+  "version": "1.0.0",
+  "description": "Telegram Bot for GradeMaster Calculator with Reply feature",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "gpa",
+    "calculator",
+    "grademaster"
+  ],
+  "author": "Not_404",
+  "license": "MIT"
+}
+
