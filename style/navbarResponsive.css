@@ -1,6 +1,24 @@
 /* Shared responsive tweaks for the fixed top navbar.
    Goal: keep the header compact on phones and prevent overlap of the language/theme buttons. */
 
+select#language-toggle {
+    font-family: inherit;
+    cursor: pointer;
+    min-width: 96px;
+    width: auto;
+    text-overflow: clip;
+    color-scheme: light;
+}
+
+.dark-mode select#language-toggle {
+    color-scheme: dark;
+}
+
+select#language-toggle:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 3px;
+}
+
 @media (max-width: 768px) {
     /* Many pages increase all buttons on mobile; keep navbar buttons compact */
     nav.navbar .nav-button {

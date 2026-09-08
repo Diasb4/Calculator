@@ -18,12 +18,12 @@
 <body>
     <nav class="navbar">
         <div class="nav-buttons">
-            <button id="language-toggle" class="nav-button">🌐 English</button>
+            <select id="language-toggle" class="nav-button" aria-label="Язык"><option value="ru" lang="ru">Русский</option><option value="kk" lang="kk">Қазақша</option><option value="en" lang="en">English</option></select>
             <button id="theme-toggle" class="nav-button" data-translate="nav_theme">🌙 Theme</button>
         </div>
         <a href="main/Feedback.html" class="nav-button" data-translate="nav_feedback">💬 Обратная связь</a>
     </nav>
-    
+
     <div class="container">
         <h1 data-translate="main_title">🎓 GradeMaster</h1>
         <p class="subtitle" data-translate="main_description">Выберите тип калькулятора</p>
@@ -37,7 +37,7 @@
                     <li data-translate="feature_manual">• Ручной ввод всех параметров</li>
                     <li data-translate="feature_all_subjects">• Подходит для любых предметов</li>
                 </ul>
-                <button onclick="trackNavigation('Итоговая оценка'); window.location.href='../main/TotalCalculator.html'">
+                <button onclick="trackNavigation('Итоговая оценка'); window.location.href='main/TotalCalculator.html'">
                     <p data-translate="go_button">Перейти</p>
                 </button>
             </div>
@@ -50,7 +50,7 @@
                     <li data-translate="feature_manual">• Ручной ввод всех параметров</li>
                     <li data-translate="feature_all_subjects">• Подходит для любых предметов</li>
                 </ul>
-                <button onclick="trackNavigation('Итоговый GPA'); window.location.href='../main/CalculatorGPA.html'">
+                <button onclick="trackNavigation('Итоговый GPA'); window.location.href='main/CalculatorGPA.html'">
                     <p data-translate="go_button">Перейти</p>
                 </button>
             </div>
@@ -63,7 +63,7 @@
                     <li data-translate="feature_popular_subjects">• Популярные предметы</li>
                     <li data-translate="feature_preset_weights">• Предустановленные веса</li>
                 </ul>
-                <button onclick="trackNavigation('Предметные шаблоны'); window.location.href='../main/templated_calculator.html'">
+                <button onclick="trackNavigation('Предметные шаблоны'); window.location.href='main/templated_calculator.html'">
                     <p data-translate="go_button">Перейти</p>
                 </button>
             </div>
@@ -75,7 +75,7 @@
                 <li data-translate="feature_cumulative2">• Поддержка до 20 триместров</li>
                 <li data-translate="feature_cumulative3">• Точность до двух знаков</li>
             </ul>
-            <button onclick="trackNavigation('Средний GPA за триместры'); window.location.href='../main/CumulativeGPA.html'">
+            <button onclick="trackNavigation('Средний GPA за триместры'); window.location.href='main/CumulativeGPA.html'">
                 <p data-translate="go_button">Перейти</p>
             </button>
             </div>
@@ -87,7 +87,7 @@
                     <li data-translate="feature_readable_interface">• Читаемый интерфейс</li>
                     <li data-translate="feature_clear_method">• Понятный метод подсчета</li>
                 </ul>
-                <button onclick="trackNavigation('Посещаемость'); window.location.href='../main/AttendanceCalculator.html'">
+                <button onclick="trackNavigation('Посещаемость'); window.location.href='main/AttendanceCalculator.html'">
                     <p data-translate="go_button">Перейти</p>
                 </button>
             </div>
@@ -96,7 +96,7 @@
 
     <footer>
         <span data-translate="footer_copyright">&copy; 2025 Not_404. In case of any bug contact via Telegram</span>
-        <a href="https://t.me/Qrudos" target="_blank">@Qrudos</a>.
+        <a href="https://t.me/Qrudos" target="_blank" rel="noopener noreferrer">@Qrudos</a>.
         <div class="easter-egg" onclick="trackEasterEgg(); revealSecret()" title="ssshhh..."></div>
     </footer>
 
@@ -132,6 +132,7 @@
     </script>
 
     <script src="js/language.js"></script>
+    <script src="js/localization.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>

@@ -1,6 +1,3 @@
-// Управление темной темой
-const toggle = document.getElementById("theme-toggle");
-const body = document.body;
 const PRESET_QUERY_PARAM = 'p';
 const LEGACY_PRESET_QUERY_PARAM = 'preset';
 const PRESET_SECTIONS = [
@@ -11,40 +8,17 @@ const PRESET_SECTIONS = [
 const MAX_PRESET_ITEMS_PER_SECTION = 50;
 const MAX_PRESET_NAME_LENGTH = 80;
 
-// Проверяем сохраненную тему
-if (localStorage.getItem("theme") === "dark") {
-    body.classList.add("dark-mode");
-    toggle.textContent = "☀️ Тема";
-} else {
-    toggle.textContent = "🌙 Тема";
-}
-
-// Обработчик переключения темы
-toggle.addEventListener("click", () => {
-    body.classList.toggle("dark-mode");
-
-    if (body.classList.contains("dark-mode")) {
-        toggle.textContent = "☀️ Тема";
-        localStorage.setItem("theme", "dark");
-    } else {
-        toggle.textContent = "🌙 Тема";
-        localStorage.setItem("theme", "light");
-    }
-});
-
 // Добавление нового компонента
 function addComponent(sectionId) {
     const section = document.getElementById(sectionId);
     const componentCount = section.querySelectorAll('.component-item').length + 1;
 
-    const componentDiv = document.createElement('div');
-    componentDiv.className = 'component-item';
-    componentDiv.innerHTML = `
-                <input type="text" class="component-name" placeholder="${getComponentPrefix(sectionId)} ${componentCount}" value="${getComponentPrefix(sectionId)} ${componentCount}">
-                <input type="number" class="component-grade" placeholder="Оценка (0-100)" min="0" max="100">
-                <button class="remove-btn" onclick="removeComponent(this)">×</button>
-            `;
+    const componentDiv = createComponentItem();
+    const nameInput = componentDiv.querySelector('.component-name');
+    nameInput.dataset.defaultKey = getComponentPrefix(sectionId);
+    nameInput.dataset.defaultNumber = String(componentCount);
     section.appendChild(componentDiv);
+    applyTranslations();
 }
 
 // Удаление компонента
@@ -57,10 +31,10 @@ function removeComponent(button) {
 // Получение префикса для имени компонента
 function getComponentPrefix(sectionId) {
     switch (sectionId) {
-        case 'assignmentsList': return 'Assignment';
-        case 'quizzesList': return 'Quiz';
-        case 'examsList': return 'Exam';
-        default: return 'Component';
+        case 'assignmentsList': return 'assignment';
+        case 'quizzesList': return 'quiz';
+        case 'examsList': return 'exam';
+        default: return 'component';
     }
 }
 
@@ -71,14 +45,16 @@ function createComponentItem(name = '', grade = '') {
     const nameInput = document.createElement('input');
     nameInput.type = 'text';
     nameInput.className = 'component-name';
-    nameInput.placeholder = name || 'Component';
+    nameInput.placeholder = name || getTranslation('component');
     nameInput.value = name;
     nameInput.maxLength = MAX_PRESET_NAME_LENGTH;
 
     const gradeInput = document.createElement('input');
     gradeInput.type = 'number';
     gradeInput.className = 'component-grade';
-    gradeInput.placeholder = 'Оценка (0-100)';
+    gradeInput.dataset.translate = 'grade_range';
+    gradeInput.dataset.translateType = 'placeholder';
+    translateElement(gradeInput);
     gradeInput.min = '0';
     gradeInput.max = '100';
     gradeInput.value = grade;
@@ -87,6 +63,9 @@ function createComponentItem(name = '', grade = '') {
     removeButton.className = 'remove-btn';
     removeButton.type = 'button';
     removeButton.textContent = '×';
+    removeButton.dataset.translate = 'remove_item';
+    removeButton.dataset.translateType = 'aria-label';
+    translateElement(removeButton);
     removeButton.addEventListener('click', function () {
         removeComponent(this);
     });
@@ -186,12 +165,12 @@ function applyPresetData(presetData) {
         list.innerHTML = '';
 
         if (items.length === 0) {
-            list.appendChild(createComponentItem(`${getComponentPrefix(config.listId)} 1`));
+            list.appendChild(createComponentItem(`${getTranslation(getComponentPrefix(config.listId))} 1`));
             return;
         }
 
         items.forEach((item, index) => {
-            const fallbackName = `${getComponentPrefix(config.listId)} ${index + 1}`;
+            const fallbackName = `${getTranslation(getComponentPrefix(config.listId))} ${index + 1}`;
             const itemName = normalizePresetName(item, fallbackName);
             list.appendChild(createComponentItem(itemName));
         });
@@ -203,7 +182,8 @@ function setPresetStatus(message, type = 'success') {
 
     if (!status) return;
 
-    status.textContent = message;
+    status.dataset.translate = message;
+    translateElement(status);
     status.className = `preset-status ${type} show`;
 }
 
@@ -219,9 +199,9 @@ function createPresetLink() {
 
         document.getElementById('preset-link').value = presetUrl.toString();
         document.getElementById('presetLinkBox').classList.add('show');
-        setPresetStatus('✅ Пресет сохранён. Ссылку можно отправить другому человеку.');
+        setPresetStatus('preset_saved');
     } catch (error) {
-        setPresetStatus('❌ Не получилось создать ссылку на пресет.', 'danger');
+        setPresetStatus('preset_error', 'danger');
     }
 }
 
@@ -241,7 +221,7 @@ function copyPresetLink() {
 
     if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(linkToCopy)
-            .then(() => setPresetStatus('✅ Ссылка скопирована.'))
+            .then(() => setPresetStatus('link_copied'))
             .catch(copyPresetLinkFallback);
         return;
     }
@@ -254,8 +234,10 @@ function copyPresetLinkFallback() {
 
     presetLinkInput.select();
     presetLinkInput.setSelectionRange(0, 99999);
-    document.execCommand('copy');
-    setPresetStatus('✅ Ссылка скопирована.');
+    try {
+        if (!document.execCommand('copy')) throw new Error('Copy failed');
+        setPresetStatus('link_copied');
+    } catch { setPresetStatus('copy_error', 'danger'); }
 }
 
 function loadPresetFromUrl() {
@@ -266,10 +248,10 @@ function loadPresetFromUrl() {
 
     try {
         applyPresetData(decodePresetData(encodedPreset));
-        setPresetStatus('📥 Пресет загружен из ссылки.');
+        setPresetStatus('preset_loaded');
         return true;
     } catch (error) {
-        setPresetStatus('❌ Ссылка на пресет повреждена или устарела.', 'danger');
+        setPresetStatus('preset_invalid', 'danger');
         return false;
     }
 }
@@ -315,10 +297,10 @@ function calculateAll() {
     const overallTotal = assignmentsTotal + quizzesTotal + examsTotal;
 
     // Обновление отображения
-    document.getElementById('assignmentsTotal').textContent = `Assignments: ${assignmentsTotal.toFixed(2)}`;
-    document.getElementById('quizzesTotal').textContent = `Quizzes: ${quizzesTotal.toFixed(2)}`;
-    document.getElementById('examsTotal').textContent = `Exams: ${examsTotal.toFixed(2)}`;
-    document.getElementById('overallTotal').textContent = `Общий результат: ${overallTotal.toFixed(2)}`;
+    document.getElementById('assignmentsTotal').innerHTML = `${translationHTML('assignments')} ${assignmentsTotal.toFixed(2)}`;
+    document.getElementById('quizzesTotal').innerHTML = `${translationHTML('quizzes')} ${quizzesTotal.toFixed(2)}`;
+    document.getElementById('examsTotal').innerHTML = `${translationHTML('exams')} ${examsTotal.toFixed(2)}`;
+    document.getElementById('overallTotal').innerHTML = `${translationHTML('template_overall_result')} ${overallTotal.toFixed(2)}`;
 
     // Показ результата с оценкой
     showResult(overallTotal);
@@ -359,27 +341,27 @@ function showResult(totalScore) {
 
     if (totalScore >= 90) {
         status = 'success';
-        message = `✅ ${getTranslation('template_excellent')}`;
-        comment = getTranslation('template_excellent_comment');
+        message = `✅ ${translationHTML('template_excellent')}`;
+        comment = translationHTML('template_excellent_comment');
     } else if (totalScore >= 70) {
         status = 'success';
-        message = `✅ ${getTranslation('template_good')}`;
-        comment = getTranslation('template_good_comment');
+        message = `✅ ${translationHTML('template_good')}`;
+        comment = translationHTML('template_good_comment');
     } else if (totalScore >= 50) {
         status = 'warning';
-        message = `⚠️ ${getTranslation('template_satisfactory')}`;
-        comment = getTranslation('template_satisfactory_comment');
+        message = `⚠️ ${translationHTML('template_satisfactory')}`;
+        comment = translationHTML('template_satisfactory_comment');
     } else {
         status = 'danger';
-        message = `❌ ${getTranslation('template_unsatisfactory')}`;
-        comment = getTranslation('template_unsatisfactory_comment');
+        message = `❌ ${translationHTML('template_unsatisfactory')}`;
+        comment = translationHTML('template_unsatisfactory_comment');
     }
 
     resultDiv.className = `result ${status} show`;
     resultDiv.innerHTML = `
                 <h2>${message}</h2>
                 <p>${comment}</p>
-                <p class="score">${getTranslation('template_overall_result')} ${totalScore.toFixed(2)}</p>
+                <p class="score">${translationHTML('template_overall_result')} ${totalScore.toFixed(2)}</p>
             `;
 }
 
@@ -398,17 +380,17 @@ function revealSecret() {
         getTranslation('secret_auto_passing'),
         getTranslation('secret_calculator_student'),
         getTranslation('secret_calculator_scholarship'),
-        "Интересный факт: 87% студентов находят пасхалки во время подготовки к экзаменам",
-        "Пссс... между нами, РегМид весит 30%, но все делают вид, что это не так",
-        "Разработчик рекомендует: одна пасхалка в день - и сессия не страшна!",
+        getTranslation('secret_extra_5'),
+        getTranslation('secret_extra_6'),
+        getTranslation('secret_extra_7'),
         getTranslation('secret_leak'),
         getTranslation('secret_hack'),
         getTranslation('secret_success'),
         getTranslation('secret_warning'),
         getTranslation('secret_difference'),
-        "Факт: 100% пользователей этого калькулятора успешно отвлекаются от учебы!",
-        "Секретная формула: сон + еда + этот калькулятор = успешная сессия!",
-        "Пасхалка уровня 'я должен был учиться, но ищу пасхалки'",
+        getTranslation('secret_extra_8'),
+        getTranslation('secret_extra_9'),
+        getTranslation('secret_extra_12'),
         getTranslation('secret_excuse')
     ];
 
@@ -460,81 +442,7 @@ document.head.insertAdjacentHTML('beforeend', `<style>${toastStyles}</style>`);
 document.addEventListener('DOMContentLoaded', function () {
     loadPresetFromUrl();
     initializePresetControls();
+    document.getElementById('calculate-all-btn').addEventListener('click', calculateAll);
+    applyTranslations();
     calculateAll();
 });
-// Дополнительные исправления для мобильных устройств
-document.addEventListener('DOMContentLoaded', function () {
-    // Улучшенные обработчики для кнопок на мобильных
-    const calculateBtn = document.getElementById('calculate-all-btn');
-    if (calculateBtn) {
-        calculateBtn.addEventListener('touchstart', function (e) {
-            e.preventDefault();
-            calculateAll();
-        });
-    }
-
-    // Улучшенные обработчики для кнопок добавления
-    document.querySelectorAll('.add-btn').forEach(btn => {
-        btn.addEventListener('touchstart', function (e) {
-            e.preventDefault();
-            const listId = this.getAttribute('onclick').match(/'([^']+)'/)[1];
-            addComponent(listId);
-        });
-    });
-
-    // Улучшенные обработчики для кнопок удаления
-    document.querySelectorAll('.remove-btn').forEach(btn => {
-        btn.addEventListener('touchstart', function (e) {
-            e.preventDefault();
-            removeComponent(this);
-        });
-    });
-
-    // Улучшенные обработчики для полей ввода
-    document.querySelectorAll('input').forEach(input => {
-        input.addEventListener('touchstart', function (e) {
-            // Позволяет полям ввода получать фокус на мобильных
-            this.focus();
-        });
-    });
-
-    // Управление темной темой
-    const toggle = document.getElementById("theme-toggle");
-    const body = document.body;
-
-    // Проверяем сохраненную тему
-    if (localStorage.getItem("theme") === "dark") {
-        body.classList.add("dark-mode");
-        toggle.textContent = "☀️ Тема";
-    } else {
-        toggle.textContent = "🌙 Тема";
-    }
-
-    // Обработчик переключения темы
-    toggle.addEventListener("click", () => {
-        body.classList.toggle("dark-mode");
-
-        if (body.classList.contains("dark-mode")) {
-            toggle.textContent = "☀️ Тема";
-            localStorage.setItem("theme", "dark");
-        } else {
-            toggle.textContent = "🌙 Тема";
-            localStorage.setItem("theme", "light");
-        }
-    });
-
-    // Обработчик touch для переключения темы
-    toggle.addEventListener('touchstart', function (e) {
-        e.preventDefault();
-        body.classList.toggle("dark-mode");
-
-        if (body.classList.contains("dark-mode")) {
-            toggle.textContent = "☀️ Тема";
-            localStorage.setItem("theme", "dark");
-        } else {
-            toggle.textContent = "🌙 Тема";
-            localStorage.setItem("theme", "light");
-        }
-    });
-});
-document.head.insertAdjacentHTML('beforeend', `<style>${toastStyles}</style>`);

@@ -1,20 +1,3 @@
-// Переключение темы
-document.getElementById('theme-toggle').addEventListener('click', function () {
-    document.body.classList.toggle('dark-mode');
-    const darkModeText = getTranslation ? (document.body.classList.contains('dark-mode') ? '☀️ Theme' : '🌙 Theme') : (document.body.classList.contains('dark-mode') ? '☀️ Тема' : '🌙 Тема');
-    this.textContent = darkModeText;
-
-    // Сохраняем настройку темы в localStorage
-    localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
-});
-
-// Загружаем сохраненную тему
-if (localStorage.getItem('theme') === 'dark') {
-    document.body.classList.add('dark-mode');
-    const darkModeTextButton = getTranslation ? '☀️ Theme' : '☀️ Тема';
-    document.getElementById('theme-toggle').textContent = darkModeTextButton;
-}
-
 // Функция для определения GPA по проценту
 //P.S Привет всем тем кто лазит в моем коде :)
 function percentageToGPA(percentage) {
@@ -33,37 +16,40 @@ function percentageToGPA(percentage) {
 
 // Генерация формы для предметов
 document.getElementById('generate-subjects').addEventListener('click', function () {
-    const subjectsCount = parseInt(document.getElementById('subjects-count').value);
+    const subjectsCount = Number(document.getElementById('subjects-count').value);
     const container = document.getElementById('subjects-container');
 
-    if (isNaN(subjectsCount) || subjectsCount < 1 || subjectsCount > 20) {
-        showResult(getTranslation('gpa_correct_count'), 'error');
+    if (!Number.isInteger(subjectsCount) || subjectsCount < 1 || subjectsCount > 20) {
+        showResult(translationHTML('gpa_correct_count'), 'error');
         return;
     }
 
     // Очищаем контейнер
     container.innerHTML = '';
+    document.getElementById('result').classList.remove('show');
 
     // Создаем поля для каждого предмета
     for (let i = 0; i < subjectsCount; i++) {
         const subjectDiv = document.createElement('div');
         subjectDiv.className = 'subject-input';
         subjectDiv.innerHTML = `
-                    <input type="text" class="subject-name" placeholder="Название предмета ${i + 1}">
-                    <input type="number" class="subject-credits" placeholder="Кредиты" min="0" step="0.5" value="">
-                    <input type="number" class="subject-grade" placeholder="Оценка (%)" min="0" max="100" value="">
-                    <button class="remove-subject">×</button>
+                    <input type="text" class="subject-name" placeholder="${getTranslation('subject_name', {number: i + 1})}" data-translate="subject_name" data-translate-type="placeholder" data-translate-params='{"number":${i + 1}}' >
+                    <input type="number" class="subject-credits" placeholder="${getTranslation('cumulative_credits')}" data-translate="cumulative_credits" data-translate-type="placeholder" min="0" step="0.5" value="">
+                    <input type="number" class="subject-grade" placeholder="${getTranslation('grade_percentage')}" data-translate="grade_percentage" data-translate-type="placeholder" min="0" max="100" value="">
+                    <button class="remove-subject" data-translate="remove_item" data-translate-type="aria-label">×</button>
                 `;
         container.appendChild(subjectDiv);
 
         // Добавляем обработчик для кнопки удаления
         subjectDiv.querySelector('.remove-subject').addEventListener('click', function () {
             container.removeChild(subjectDiv);
+            document.getElementById('result').classList.remove('show');
         });
     }
 
     // Показываем кнопку расчета
     document.getElementById('calculate-gpa').style.display = 'block';
+    applyTranslations();
 });
 
 // Функция для отображения результата
@@ -82,16 +68,16 @@ document.getElementById('calculate-gpa').addEventListener('click', function () {
 
     // Создаем таблицу для результатов
     let resultsHTML = `
-                <h2>📋 Результаты расчета</h2>
+                <h2>${translationHTML('cumulative_results')}</h2>
                 <div class="subjects-table-wrapper">
                     <table class="subjects-table">
                         <thead>
                             <tr>
-                                <th>Предмет</th>
-                                <th>Кредиты</th>
-                                <th>Оценка (%)</th>
+                                <th>${translationHTML('subject')}</th>
+                                <th>${translationHTML('cumulative_credits')}</th>
+                                <th>${translationHTML('grade_percentage')}</th>
                                 <th>GPA</th>
-                                <th>GPA × Кредиты</th>
+                                <th>${translationHTML('cumulative_weighted')}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -99,12 +85,12 @@ document.getElementById('calculate-gpa').addEventListener('click', function () {
 
     // Проверяем каждую строку и рассчитываем GPA
     subjectInputs.forEach((input, index) => {
-        const name = input.querySelector('.subject-name').value || `Предмет ${index + 1}`;
+        const name = input.querySelector('.subject-name').value;
         const credits = parseFloat(input.querySelector('.subject-credits').value);
         const grade = parseFloat(input.querySelector('.subject-grade').value);
 
         // Проверяем валидность данных
-        if (isNaN(credits) || credits <= 0) {
+        if (!Number.isFinite(credits) || credits <= 0) {
             input.querySelector('.subject-credits').style.borderColor = '#dc3545';
             hasErrors = true;
         } else {
@@ -119,7 +105,7 @@ document.getElementById('calculate-gpa').addEventListener('click', function () {
         }
 
         // Если данные валидны, добавляем к расчетам
-        if (!isNaN(credits) && credits > 0 && !isNaN(grade) && grade >= 0 && grade <= 100) {
+        if (Number.isFinite(credits) && credits > 0 && !isNaN(grade) && grade >= 0 && grade <= 100) {
             const gpa = percentageToGPA(grade);
             const weightedGPA = gpa * credits;
             totalWeightedGPA += weightedGPA;
@@ -128,7 +114,7 @@ document.getElementById('calculate-gpa').addEventListener('click', function () {
             // Добавляем строку в таблицу результатов
             resultsHTML += `
                         <tr>
-                            <td>${name}</td>
+                            <td>${name ? escapeHTML(name) : translationHTML('subject') + ' ' + (index + 1)}</td>
                             <td>${credits}</td>
                             <td>${grade}%</td>
                             <td>${gpa.toFixed(2)}</td>
@@ -141,12 +127,12 @@ document.getElementById('calculate-gpa').addEventListener('click', function () {
     resultsHTML += `</tbody></table></div>`;
 
     if (hasErrors) {
-        showResult(getTranslation('gpa_fill_all'), 'error');
+        showResult(translationHTML('gpa_fill_all'), 'error');
         return;
     }
 
     if (totalCredits === 0) {
-        showResult(getTranslation('gpa_insufficient'), 'error');
+        showResult(translationHTML('gpa_insufficient'), 'error');
         return;
     }
 
@@ -155,10 +141,10 @@ document.getElementById('calculate-gpa').addEventListener('click', function () {
     // Добавляем общий GPA к результатам
     resultsHTML += `
                 <div class="total-gpa">
-                    <h3>${getTranslation('gpa_overall')}</h3>
+                    <h3>${translationHTML('gpa_overall')}</h3>
                     <div class="gpa-value">${overallGPA.toFixed(2)}</div>
-                    <p>Σ(GPA × кредиты) = ${totalWeightedGPA.toFixed(2)}</p>
-                    <p>Σ(кредиты) = ${totalCredits}</p>
+                    <p>${translationHTML('sigma_gpa_credits')} = ${totalWeightedGPA.toFixed(2)}</p>
+                    <p>${translationHTML('sigma_credits')} = ${totalCredits}</p>
                     <p>${totalWeightedGPA.toFixed(2)} / ${totalCredits} = ${overallGPA.toFixed(2)}</p>
                 </div>
             `;

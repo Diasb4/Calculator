@@ -5,7 +5,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
     <title>Калькулятор оценок - Структурированный</title>
-    <link rel="stylesheet" href="../style/styleForTempl.css">
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-4DVBKX599T"></script>
     <script>
@@ -22,7 +21,7 @@
     <nav class="navbar">
     <a href="../index.html" class="nav-button" data-translate="nav_home">← Home</a>
     <div class="nav-buttons">
-        <button id="language-toggle" class="nav-button">🌐 English</button>
+        <select id="language-toggle" class="nav-button" aria-label="Язык"><option value="ru" lang="ru">Русский</option><option value="kk" lang="kk">Қазақша</option><option value="en" lang="en">English</option></select>
         <button id="theme-toggle" class="nav-button" data-translate="nav_theme">🌙 Theme</button>
     </div>
 </nav>
@@ -33,70 +32,70 @@
         <!-- Assignments Section -->
         <div class="section">
             <div class="section-header">
-                <div class="section-title">📝 Assignments</div>
+                <div class="section-title" data-translate="assignments">📝 Assignments</div>
                 <div class="section-weight">
-                    Вес: <input type="number" class="weight-input" id="assignmentsWeight" min="0" max="100" value="40">%
+                    <span data-translate="weight">Вес:</span> <input type="number" class="weight-input" id="assignmentsWeight" min="0" max="100" value="40">%
                 </div>
             </div>
             <div class="components-list" id="assignmentsList">
                 <div class="component-item">
-                    <input type="text" class="component-name" placeholder="Assignment 1" value="Assignment 1">
-                    <input type="number" class="component-grade" placeholder="Оценка (0-100)" min="0" max="100">
-                    <button class="remove-btn" onclick="removeComponent(this)">×</button>
+                    <input type="text" class="component-name" placeholder="Assignment 1" value="Assignment 1" data-default-key="assignment" data-default-number="1">
+                    <input type="number" class="component-grade" data-translate="grade_range" data-translate-type="placeholder" placeholder="Оценка (0-100)" min="0" max="100">
+                    <button class="remove-btn" data-translate="remove_item" data-translate-type="aria-label" onclick="removeComponent(this)">×</button>
                 </div>
                 <div class="component-item">
-                    <input type="text" class="component-name" placeholder="Assignment 2" value="Assignment 2">
-                    <input type="number" class="component-grade" placeholder="Оценка (0-100)" min="0" max="100">
-                    <button class="remove-btn" onclick="removeComponent(this)">×</button>
+                    <input type="text" class="component-name" placeholder="Assignment 2" value="Assignment 2" data-default-key="assignment" data-default-number="2">
+                    <input type="number" class="component-grade" data-translate="grade_range" data-translate-type="placeholder" placeholder="Оценка (0-100)" min="0" max="100">
+                    <button class="remove-btn" data-translate="remove_item" data-translate-type="aria-label" onclick="removeComponent(this)">×</button>
                 </div>
             </div>
-            <button class="add-btn" onclick="addComponent('assignmentsList')">+ Добавить Assignment</button>
+            <button class="add-btn" onclick="addComponent('assignmentsList')" data-translate="add_assignment">+ Добавить Assignment</button>
         </div>
 
         <!-- Quizzes Section -->
         <div class="section">
             <div class="section-header">
-                <div class="section-title">📋 Quizzes</div>
+                <div class="section-title" data-translate="quizzes">📋 Quizzes</div>
                 <div class="section-weight">
-                    Вес: <input type="number" class="weight-input" id="quizzesWeight" min="0" max="100" value="20">%
+                    <span data-translate="weight">Вес:</span> <input type="number" class="weight-input" id="quizzesWeight" min="0" max="100" value="20">%
                 </div>
             </div>
             <div class="components-list" id="quizzesList">
                 <div class="component-item">
-                    <input type="text" class="component-name" placeholder="Quiz 1" value="Quiz 1">
-                    <input type="number" class="component-grade" placeholder="Оценка (0-100)" min="0" max="100">
-                    <button class="remove-btn" onclick="removeComponent(this)">×</button>
+                    <input type="text" class="component-name" placeholder="Quiz 1" value="Quiz 1" data-default-key="quiz" data-default-number="1">
+                    <input type="number" class="component-grade" data-translate="grade_range" data-translate-type="placeholder" placeholder="Оценка (0-100)" min="0" max="100">
+                    <button class="remove-btn" data-translate="remove_item" data-translate-type="aria-label" onclick="removeComponent(this)">×</button>
                 </div>
             </div>
-            <button class="add-btn" onclick="addComponent('quizzesList')">+ Добавить Quiz</button>
+            <button class="add-btn" onclick="addComponent('quizzesList')" data-translate="add_quiz">+ Добавить Quiz</button>
         </div>
 
         <!-- Exams Section -->
         <div class="section">
             <div class="section-header">
-                <div class="section-title">📊 Midterm/Endterm</div>
+                <div class="section-title" data-translate="exams">📊 Midterm/Endterm</div>
                 <div class="section-weight">
-                    Вес: <input type="number" class="weight-input" id="examsWeight" min="0" max="100" value="40">%
+                    <span data-translate="weight">Вес:</span> <input type="number" class="weight-input" id="examsWeight" min="0" max="100" value="40">%
                 </div>
             </div>
             <div class="components-list" id="examsList">
                 <div class="component-item">
-                    <input type="text" class="component-name" placeholder="Midterm" value="Midterm">
-                    <input type="number" class="component-grade" placeholder="Оценка (0-100)" min="0" max="100">
-                    <button class="remove-btn" onclick="removeComponent(this)">×</button>
+                    <input type="text" class="component-name" placeholder="Midterm" value="Midterm" data-default-key="midterm" data-default-number="">
+                    <input type="number" class="component-grade" data-translate="grade_range" data-translate-type="placeholder" placeholder="Оценка (0-100)" min="0" max="100">
+                    <button class="remove-btn" data-translate="remove_item" data-translate-type="aria-label" onclick="removeComponent(this)">×</button>
                 </div>
                 <div class="component-item">
-                    <input type="text" class="component-name" placeholder="Endterm" value="Endterm">
-                    <input type="number" class="component-grade" placeholder="Оценка (0-100)" min="0" max="100">
-                    <button class="remove-btn" onclick="removeComponent(this)">×</button>
+                    <input type="text" class="component-name" placeholder="Endterm" value="Endterm" data-default-key="endterm" data-default-number="">
+                    <input type="number" class="component-grade" data-translate="grade_range" data-translate-type="placeholder" placeholder="Оценка (0-100)" min="0" max="100">
+                    <button class="remove-btn" data-translate="remove_item" data-translate-type="aria-label" onclick="removeComponent(this)">×</button>
                 </div>
             </div>
-            <button class="add-btn" onclick="addComponent('examsList')">+ Добавить Exam</button>
+            <button class="add-btn" onclick="addComponent('examsList')" data-translate="add_exam">+ Добавить Exam</button>
         </div>
 
         <!-- Totals Section -->
         <div class="total-section">
-            <h3>📈 Итоговые значения</h3>
+            <h3 data-translate="template_totals">📈 Итоговые значения</h3>
             <div class="total-display" id="assignmentsTotal">Assignments: 0.00</div>
             <div class="total-display" id="quizzesTotal">Quizzes: 0.00</div>
             <div class="total-display" id="examsTotal">Exams: 0.00</div>
@@ -105,40 +104,41 @@
             </div>
         </div>
 
-        <button class="calculate-btn" id="calculate-all-btn">Рассчитать итоговую оценку</button>
+        <button class="calculate-btn" id="calculate-all-btn" data-translate="calculate_total">Рассчитать итоговую оценку</button>
 
         <div class="preset-section">
-            <h3>🔗 Пресет предмета</h3>
-            <p>Сохраните веса и список работ в ссылку. Оценки в пресет не попадают.</p>
+            <h3 data-translate="preset_title">🔗 Пресет предмета</h3>
+            <p data-translate="preset_description">Сохраните веса и список работ в ссылку. Оценки в пресет не попадают.</p>
             <div class="preset-actions">
-                <button class="preset-btn" id="save-preset-btn" type="button">Сохранить пресет</button>
+                <button class="preset-btn" id="save-preset-btn" data-translate="preset_save" type="button">Сохранить пресет</button>
             </div>
             <div class="preset-link-box" id="presetLinkBox">
-                <input type="text" id="preset-link" readonly aria-label="Ссылка на пресет">
-                <button class="copy-preset-btn" id="copy-preset-btn" type="button">Скопировать</button>
+                <input type="text" id="preset-link" data-translate="preset_link_label" data-translate-type="aria-label" readonly aria-label="Ссылка на пресет">
+                <button class="copy-preset-btn" id="copy-preset-btn" data-translate="copy_button" type="button">Скопировать</button>
             </div>
-            <div class="preset-status" id="presetStatus"></div>
+            <div class="preset-status" id="presetStatus" role="status" aria-live="polite"></div>
         </div>
 
         <div class="warning-text">
-            ⚠️ <strong>Важно:</strong> Сумма весов всех секций должна быть равна 100%
+            <span data-translate="weight_warning">⚠️ Сумма весов всех секций должна быть равна 100%</span>
             <div class="weight-error" id="weightError">
-                Текущая сумма весов: <span id="currentWeight">0</span>%
+                <span data-translate="weight_current">Текущая сумма весов:</span> <span id="currentWeight">0</span>%
             </div>
         </div>
 
-        <div id="result" class="result"></div>
+        <div id="result" role="status" aria-live="polite" class="result"></div>
     </div>
 
     <footer>
         <span data-translate="footer_copyright">&copy; 2025 Not_404. In case of any bug contact via Telegram</span>
-        <a href="https://t.me/Qrudos" target="_blank">@Qrudos</a>.
+        <a href="https://t.me/Qrudos" target="_blank" rel="noopener noreferrer">@Qrudos</a>.
         <div style="opacity: 0.01; position: absolute; bottom: 5px; right: 5px; width: 10px; height: 10px; cursor: pointer;"
             onclick="revealSecret()" title="ssshhh...">
         </div>
     </footer>
 
     <script src="../js/language.js"></script>
+    <script src="../js/localization.js"></script>
     <script src="../js/template.js"></script>
     <script>
 

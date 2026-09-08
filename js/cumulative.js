@@ -1,95 +1,39 @@
-
-function applyTranslations() {
-    const langData = translations[currentLanguage];
-    
-    // Обновляем все элементы с data-translate
-    document.querySelectorAll('[data-translate]').forEach(element => {
-        const key = element.getAttribute('data-translate');
-        if (langData[key]) {
-            if (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA') {
-                if (element.getAttribute('data-translate-type') === 'placeholder') {
-                    element.placeholder = langData[key];
-                }
-            } else if (element.tagName === 'OPTION') {
-                element.textContent = langData[key];
-            } else {
-                element.textContent = langData[key];
-            }
-        }
-    });
-    
-    // Обновляем плейсхолдеры для полей триместров (если они есть)
-    document.querySelectorAll('.term-gpa').forEach((el, index) => {
-        const base = langData?.term_gpa_placeholder || 'GPA триместра';
-        el.placeholder = `${base} ${index+1}`;
-    });
-    document.querySelectorAll('.term-credits').forEach(el => {
-        el.placeholder = langData?.term_credits_placeholder || 'Кредиты';
-    });
-    
-    // Обновляем текст кнопки языка
-    updateLanguageButton();
-}
-// Переключение темы
-        document.getElementById('theme-toggle').addEventListener('click', function() {
-            document.body.classList.toggle('dark-mode');
-            this.textContent = document.body.classList.contains('dark-mode') ? '☀️ Тема' : '🌙 Тема';
-            localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
-        });
-
-        // Загружаем сохраненную тему
-        if (localStorage.getItem('theme') === 'dark') {
-            document.body.classList.add('dark-mode');
-            document.getElementById('theme-toggle').textContent = '☀️ Тема';
-        }
-
-
-function updateTableLanguage() {
-    if (!document.getElementById('result').classList.contains('show')) return;
-    
-    const rows = document.querySelectorAll('.subjects-table tbody tr');
-    rows.forEach((row, index) => {
-        const firstCell = row.cells[0];
-        if (firstCell) {
-            const termWord = currentLanguage === 'ru' ? 'Триместр' : 'Trimester';
-            firstCell.textContent = termWord + ' ' + (index + 1);
-        }
-    });
-}
-
 // Генерация полей для триместров
 document.getElementById('generate-terms').addEventListener('click', function() {
-    const termsCount = parseInt(document.getElementById('terms-count').value);
+    const termsCount = Number(document.getElementById('terms-count').value);
     const container = document.getElementById('terms-container');
-    
-    if (isNaN(termsCount) || termsCount < 1 || termsCount > 20) {
-        showResult('❌ Пожалуйста, введите корректное количество триместров (1-20)', 'error');
+
+    if (!Number.isInteger(termsCount) || termsCount < 1 || termsCount > 20) {
+        showResult(translationHTML('cumulative_count_error'), 'error');
         return;
     }
-    
+
     container.innerHTML = '';
-    
+    document.getElementById('result').classList.remove('show');
+
     for (let i = 0; i < termsCount; i++) {
         const termDiv = document.createElement('div');
         termDiv.className = 'subject-input';
-        
+
         // Используем текущий язык для плейсхолдеров
         const gpaPlaceholder = (typeof translations !== 'undefined' && translations[currentLanguage]?.term_gpa_placeholder) || 'GPA триместра';
         const creditsPlaceholder = (typeof translations !== 'undefined' && translations[currentLanguage]?.term_credits_placeholder) || 'Кредиты';
-        
+
         termDiv.innerHTML = `
-            <input type="number" class="term-gpa" placeholder="${gpaPlaceholder} ${i+1}" min="0" max="4" step="0.01" value="3.0">
-            <input type="number" class="term-credits" placeholder="${creditsPlaceholder}" min="0" step="0.5" value="30">
-            <button class="remove-term">×</button>
+            <input type="number" class="term-gpa" placeholder="${gpaPlaceholder}" data-translate="term_gpa_placeholder" data-translate-type="placeholder" min="0" max="4" step="0.01" value="3.0">
+            <input type="number" class="term-credits" placeholder="${creditsPlaceholder}" data-translate="term_credits_placeholder" data-translate-type="placeholder" min="0" step="0.5" value="30">
+            <button class="remove-term" data-translate="remove_item" data-translate-type="aria-label">×</button>
         `;
         container.appendChild(termDiv);
-        
+
         termDiv.querySelector('.remove-term').addEventListener('click', function() {
             container.removeChild(termDiv);
+            document.getElementById('result').classList.remove('show');
         });
     }
-    
+
     document.getElementById('calculate-cumulative').style.display = 'block';
+    applyTranslations();
 });
 
 // Функция для отображения результата
@@ -105,7 +49,7 @@ document.getElementById('calculate-cumulative').addEventListener('click', functi
     let totalWeighted = 0;
     let totalCredits = 0;
     let hasErrors = false;
-    
+
     // Формируем таблицу с data-translate атрибутами
     let resultsHTML = `
         <h2 data-translate="cumulative_results">📋 Результаты расчета</h2>
@@ -120,11 +64,11 @@ document.getElementById('calculate-cumulative').addEventListener('click', functi
             </thead>
             <tbody>
     `;
-    
+
     termInputs.forEach((input, index) => {
         const gpa = parseFloat(input.querySelector('.term-gpa').value);
         const credits = parseFloat(input.querySelector('.term-credits').value);
-        
+
         // Валидация
         if (isNaN(gpa) || gpa < 0 || gpa > 4) {
             input.querySelector('.term-gpa').style.borderColor = '#dc3545';
@@ -132,21 +76,21 @@ document.getElementById('calculate-cumulative').addEventListener('click', functi
         } else {
             input.querySelector('.term-gpa').style.borderColor = '';
         }
-        
-        if (isNaN(credits) || credits <= 0) {
+
+        if (!Number.isFinite(credits) || credits <= 0) {
             input.querySelector('.term-credits').style.borderColor = '#dc3545';
             hasErrors = true;
         } else {
             input.querySelector('.term-credits').style.borderColor = '';
         }
-        
-        if (!isNaN(gpa) && gpa >= 0 && gpa <= 4 && !isNaN(credits) && credits > 0) {
+
+        if (!isNaN(gpa) && gpa >= 0 && gpa <= 4 && Number.isFinite(credits) && credits > 0) {
             const weighted = gpa * credits;
             totalWeighted += weighted;
             totalCredits += credits;
-            
+
             // Для слова "Триместр" используем условный перевод, так как это динамический номер
-            const termLabel = (currentLanguage === 'ru' ? 'Триместр' : 'Trimester') + ' ' + (index+1);
+            const termLabel = translationHTML('cumulative_term') + ' ' + (index+1);
             resultsHTML += `
                 <tr>
                     <td>${termLabel}</td>
@@ -157,21 +101,21 @@ document.getElementById('calculate-cumulative').addEventListener('click', functi
             `;
         }
     });
-    
+
     resultsHTML += `</tbody></table>`;
-    
+
     if (hasErrors) {
-        showResult('❌ Пожалуйста, проверьте введенные данные. GPA должен быть от 0 до 4, кредиты больше 0.', 'error');
+        showResult(translationHTML('cumulative_data_error'), 'error');
         return;
     }
-    
+
     if (totalCredits === 0) {
-        showResult('❌ Недостаточно данных для расчета.', 'error');
+        showResult(translationHTML('gpa_insufficient'), 'error');
         return;
     }
-    
+
     const cumulativeGPA = totalWeighted / totalCredits;
-    
+
     // Итоговый блок с data-translate для всех текстовых элементов
     resultsHTML += `
         <div class="total-gpa">
@@ -182,11 +126,11 @@ document.getElementById('calculate-cumulative').addEventListener('click', functi
             <p>${totalWeighted.toFixed(2)} / ${totalCredits} = ${cumulativeGPA.toFixed(2)}</p>
         </div>
     `;
-    
+
     const resultDiv = document.getElementById('result');
     resultDiv.className = 'result success show';
     resultDiv.innerHTML = resultsHTML;
-    
+
     // Применяем переводы к только что вставленному HTML
     if (typeof applyTranslations === 'function') {
         applyTranslations();

@@ -14,7 +14,7 @@
     <nav class="navbar">
     <a href="../index.html" class="nav-button" data-translate="nav_home">← Home</a>
     <div class="nav-buttons">
-        <button id="language-toggle" class="nav-button">🌐 English</button>
+        <select id="language-toggle" class="nav-button" aria-label="Язык"><option value="ru" lang="ru">Русский</option><option value="kk" lang="kk">Қазақша</option><option value="en" lang="en">English</option></select>
         <button id="theme-toggle" class="nav-button" data-translate="nav_theme">🌙 Theme</button>
     </div>
 </nav>
@@ -22,46 +22,47 @@
     <!-- Feedback container -->
     <div class="feedback-container">
         <h1 data-translate="option_feedback_title">💬 Feedback</h1>
-        <p class="subtitle">
-            Have ideas to improve the calculator? Found a bug?<br>
-            Напишите нам - мы ценим ваше мнение!
+        <p class="subtitle" data-translate="feedback_description">
+            Есть идеи по улучшению калькулятора или нашли ошибку? Напишите нам — мы ценим ваше мнение!
         </p>
 
         <form class="feedback-form" id="feedbackForm">
             <div class="form-group">
-                <label for="userName">Ваше имя (необязательно):</label>
-                <input type="text" id="userName" placeholder="Как к вам обращаться?">
+                <label for="userName" data-translate="feedback_name">Ваше имя (необязательно):</label>
+                <input type="text" id="userName" maxlength="100" data-translate="feedback_name_placeholder" data-translate-type="placeholder" placeholder="Как к вам обращаться?">
             </div>
 
             <div class="form-group">
-                <label for="feedbackType">Тип обращения:</label>
+                <label for="feedbackType" data-translate="feedback_type">Тип обращения:</label>
                 <select id="feedbackType">
-                    <option value="suggestion">💡 Предложение по улучшению</option>
-                    <option value="bug">🐛 Сообщение об ошибке</option>
-                    <option value="feature">🚀 Запрос новой функции</option>
-                    <option value="other">📝 Другое</option>
+                    <option value="suggestion" data-translate="feedback_type_suggestion">💡 Предложение по улучшению</option>
+                    <option value="bug" data-translate="feedback_type_bug">🐛 Сообщение об ошибке</option>
+                    <option value="feature" data-translate="feedback_type_feature">🚀 Запрос новой функции</option>
+                    <option value="other" data-translate="feedback_type_other">📝 Другое</option>
                 </select>
             </div>
 
             <div class="form-group">
-                <label for="message">Сообщение:*</label>
-                <textarea id="message" placeholder="Опишите вашу идею, проблему или предложение..." required></textarea>
+                <label for="message" data-translate="feedback_message">Сообщение:*</label>
+                <textarea id="message" maxlength="3000" aria-describedby="feedbackLimits" data-translate="feedback_message_placeholder" data-translate-type="placeholder" placeholder="Опишите вашу идею, проблему или предложение..." required></textarea>
+                <small id="feedbackLimits" data-translate="feedback_limits">До 3000 символов в сообщении, 100 в имени и 200 в контакте.</small>
             </div>
 
             <div class="form-group">
-                <label for="contact">Контакт (если нужен ответ):</label>
-                <input type="text" id="contact" placeholder="Telegram, email или др.">
+                <label for="contact" data-translate="feedback_contact">Контакт (если нужен ответ):</label>
+                <input type="text" id="contact" maxlength="200" data-translate="feedback_contact_placeholder" data-translate-type="placeholder" placeholder="Telegram, email или др.">
             </div>
 
-            <button type="submit" class="submit-btn" id="submitBtn">
+            <button type="submit" class="submit-btn" id="submitBtn" data-translate="feedback_submit">
                 📨 Отправить сообщение
             </button>
         </form>
 
-        <div class="status-message" id="statusMessage"></div>
+        <div class="status-message" id="statusMessage" role="status" aria-live="polite"></div>
     </div>
 
     <script src="../js/language.js"></script>
+    <script src="../js/localization.js"></script>
     <script src="../js/feedback.js">
 
     </script>

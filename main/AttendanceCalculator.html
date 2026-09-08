@@ -22,7 +22,7 @@
     <nav class="navbar">
     <a href="../index.html" class="nav-button" data-translate="nav_home">← Home</a>
     <div class="nav-buttons">
-        <button id="language-toggle" class="nav-button">🌐 English</button>
+        <select id="language-toggle" class="nav-button" aria-label="Язык"><option value="ru" lang="ru">Русский</option><option value="kk" lang="kk">Қазақша</option><option value="en" lang="en">English</option></select>
         <button id="theme-toggle" class="nav-button" data-translate="nav_theme">🌙 Theme</button>
     </div>
 </nav>
@@ -30,37 +30,38 @@
     <div class="container">
         <h1 data-translate="option_attendance_title">📚 Калькулятор посещаемости</h1>
 
-        <p class="description">
+        <p class="description" data-translate="att_description">
             Этот калькулятор поможет вам определить, сколько пар можно пропустить за 10 недель семестра.
         </p>
 
         <div class="percentage-info">
-            Допустимый процент пропусков: <span class="highlight">30%</span>
+            <span data-translate="att_percentage">Допустимый процент пропусков:</span> <span class="highlight">30%</span>
         </div>
 
         <div class="input-group">
-            <label for="lessonsPerWeek">Количество пар в неделю(парой считается урок в 50 минут):</label>
-            <input type="number" id="lessonsPerWeek" min="1" max="20" placeholder="Введите число от 1 до 20">
+            <label for="lessonsPerWeek" data-translate="att_lessons_label">Количество пар в неделю(парой считается урок в 50 минут):</label>
+            <input type="number" id="lessonsPerWeek" data-translate="att_placeholder" data-translate-type="placeholder" min="1" max="20" placeholder="Введите число от 1 до 20">
         </div>
 
-        <button onclick="calculateAttendance()">Рассчитать</button>
+        <button onclick="calculateAttendance()" data-translate="calculate_btn">Рассчитать</button>
 
         <div class="warning-text" data-translate="warning_text">
             ⚠️ Важно: Списывание ведёт к отчислению!
         </div>
 
-        <div id="result" class="result"></div>
+        <div id="result" role="status" aria-live="polite" class="result"></div>
     </div>
 
     <footer>
         <span data-translate="footer_copyright">&copy; 2025 Not_404. In case of any bug contact via Telegram</span>
-        <a href="https://t.me/Qrudos" target="_blank">@Qrudos</a>.
+        <a href="https://t.me/Qrudos" target="_blank" rel="noopener noreferrer">@Qrudos</a>.
             <div style="opacity: 0.01; position: absolute; bottom: 5px; right: 5px; width: 10px; height: 10px; cursor: pointer;"
                 onclick="revealSecret()" title="ssshhh...">
             </div>
         </footer>
 
-        <script src="../js/language.js"></script>
+    <script src="../js/language.js"></script>
+    <script src="../js/localization.js"></script>
         <script src="../js/att.js"></script>
 </body>
 

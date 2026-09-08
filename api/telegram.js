@@ -1,5 +1,7 @@
 export default async function handler(req, res) {
-    console.log("=== Telegram API Called ===");
+    function fail(status, code, error) {
+        return res.status(status).json({ success: false, code, error });
+    }
 
     // CORS
     res.setHeader("Access-Control-Allow-Credentials", "true");
@@ -18,18 +20,17 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: "Method not allowed" });
     }
 
-    const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-    const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+    const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    const CHAT_ID = process.env.TELEGRAM_CHAT_ID?.trim();
 
     if (!BOT_TOKEN || !CHAT_ID) {
-        return res.status(500).json({
-            error: "Server configuration error: Missing environment variables",
-            details: { hasBotToken: !!BOT_TOKEN, hasChatId: !!CHAT_ID },
-        });
+        console.error("Feedback configuration: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is missing");
+        return fail(503, "FEEDBACK_UNAVAILABLE", "Feedback is temporarily unavailable");
     }
 
     if (!BOT_TOKEN.includes(":")) {
-        return res.status(500).json({ error: "Invalid bot token format" });
+        console.error("Feedback configuration: invalid TELEGRAM_BOT_TOKEN format");
+        return fail(503, "FEEDBACK_UNAVAILABLE", "Feedback is temporarily unavailable");
     }
 
     const WEBLOG_ENABLED = process.env.WEBLOG_ENABLED === "1";
@@ -88,7 +89,15 @@ export default async function handler(req, res) {
     }
 
     try {
-        const body = req.body || {};
+        let body = req.body || {};
+        if (typeof body === "string") {
+            try { body = JSON.parse(body); } catch {
+                return fail(400, "INVALID_MESSAGE", "A JSON object is required");
+            }
+        }
+        if (!body || typeof body !== "object" || Array.isArray(body)) {
+            return fail(400, "INVALID_MESSAGE", "A JSON object is required");
+        }
         const { message, weblog } = body;
 
         let finalMessage = "";
@@ -98,8 +107,15 @@ export default async function handler(req, res) {
             }
             finalMessage = formatWeblog(weblog);
         } else {
-            if (!message) {
-                return res.status(400).json({ error: "Message is required" });
+            if (typeof message !== "string" || !message.trim()) {
+                return fail(400, "INVALID_MESSAGE", "A non-empty message is required");
+            }
+            // Count the form's text after its <b> tags and escaped entities are parsed.
+            // Other HTML is counted conservatively; Telegram validates its syntax.
+            const textLength = message.replace(/<\/?b>/g, "")
+                .replace(/&(?:amp|lt|gt|quot|#39);/g, "x").length;
+            if (message.length > 24576 || textLength > 4096) {
+                return fail(400, "MESSAGE_TOO_LONG", "Message exceeds the length limit");
             }
             finalMessage = message;
         }
@@ -119,6 +135,7 @@ export default async function handler(req, res) {
                 "User-Agent": "GradeMaster-Bot/1.0",
             },
             body: JSON.stringify(telegramBody),
+            signal: AbortSignal.timeout(10000),
         });
 
         const responseText = await response.text();
@@ -126,31 +143,41 @@ export default async function handler(req, res) {
         let data;
         try {
             data = JSON.parse(responseText);
-        } catch (parseError) {
-            console.error("Failed to parse Telegram response:", parseError);
-            return res.status(500).json({
-                error: "Invalid response from Telegram API",
-                response: responseText,
-            });
+        } catch {
+            console.error("Telegram returned a non-JSON response", { status: response.status });
+            return fail(502, "UPSTREAM_ERROR", "Feedback service returned an invalid response");
         }
 
-        if (data.ok) {
+        if (response.ok && data?.ok === true && data.result?.message_id != null) {
             return res.status(200).json({ success: true, message_id: data.result.message_id });
         }
 
-        console.error("Telegram API error:", data);
-        return res.status(500).json({
-            error: "Telegram API error",
-            description: data.description,
-            error_code: data.error_code,
-        });
+        const errorCode = data?.error_code || response.status;
+        const description = typeof data?.description === "string" ? data.description : "";
+        // Log a bounded reason, never a token, chat ID, request body or raw response.
+        const reason = /chat not found/i.test(description) ? "chat_not_found"
+            : /bot was blocked|bot is not a member|not enough rights/i.test(description) ? "chat_access_denied"
+            : /can't parse entities/i.test(description) ? "invalid_html"
+            : /message is too long/i.test(description) ? "message_too_long" : "request_rejected";
+        console.error("Telegram API error", { errorCode, reason });
+        if (errorCode === 429) {
+            return fail(429, "RATE_LIMITED", "Please wait before sending another message");
+        }
+        if (reason === "message_too_long") {
+            return fail(400, "MESSAGE_TOO_LONG", "Message exceeds the length limit");
+        }
+        if (reason === "invalid_html") {
+            return fail(400, "INVALID_MESSAGE", "Message formatting is invalid");
+        }
+        if ([400, 401, 403, 404].includes(errorCode)) {
+            return fail(503, "FEEDBACK_UNAVAILABLE", "Feedback is temporarily unavailable");
+        }
+        return fail(502, "UPSTREAM_ERROR", "Feedback service is temporarily unavailable");
     } catch (error) {
-        console.error("Unhandled error in Telegram handler:", error);
-        return res.status(500).json({
-            error: "Internal server error",
-            message: error && error.message ? error.message : String(error),
-            stack: process.env.NODE_ENV === "development" && error && error.stack ? error.stack : undefined,
-        });
+        const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
+        console.error(timedOut ? "Telegram request timed out" : "Telegram request failed");
+        return fail(timedOut ? 504 : 502, timedOut ? "UPSTREAM_TIMEOUT" : "UPSTREAM_ERROR",
+            "Feedback service is temporarily unavailable");
     }
 }
 

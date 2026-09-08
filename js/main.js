@@ -12,27 +12,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }, index * 200);
     });
 
-    // Управление темной темой
     const toggle = document.getElementById("theme-toggle");
-    const body = document.body;
-
-    // Проверяем сохраненную тему
-    if (localStorage.getItem("theme") === "dark") {
-        body.classList.add("dark-mode");
-    }
-
-    // Обработчик переключения темы
-    if (toggle) {
-        toggle.addEventListener("click", () => {
-            body.classList.toggle("dark-mode");
-
-            if (body.classList.contains("dark-mode")) {
-                localStorage.setItem("theme", "dark");
-            } else {
-                localStorage.setItem("theme", "light");
-            }
-        });
-    }
 
     // Специальные пасхалки для разных действий
     let clickCount = 0;
@@ -53,7 +33,7 @@ document.addEventListener('DOMContentLoaded', function () {
             lastClickTime = currentTime;
 
             if (clickCount === 3) {
-                showSpecialToast("🎉 Тройной клик! Ты явно заскучал на парах!");
+                showSpecialToast(getTranslation('secret_triple'));
                 clickCount = 0;
             }
         });
@@ -65,7 +45,7 @@ document.addEventListener('DOMContentLoaded', function () {
         subtitle.addEventListener('mouseover', function () {
             if (!this.dataset.easterShown) {
                 setTimeout(() => {
-                    showSpecialToast("👀 Ты что, ищешь скрытый смысл? Его нет!");
+                    showSpecialToast(getTranslation('secret_subtitle'));
                     this.dataset.easterShown = true;
                 }, 2000);
             }
@@ -83,7 +63,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (!themeSwitchTimer) {
                 themeSwitchTimer = setTimeout(() => {
                     if (themeSwitchCount >= 5) {
-                        showSpecialToast("🎨 Художник? Так быстро переключаешь темы!");
+                        showSpecialToast(getTranslation('secret_theme'));
                     }
                     themeSwitchCount = 0;
                     clearTimeout(themeSwitchTimer);
@@ -96,35 +76,35 @@ document.addEventListener('DOMContentLoaded', function () {
 
 function revealSecret() {
     const secrets = [
-        "Пасхалка! Ты нашел секрет! 🥚",
-        "Разработчик этого калькулятора тоже иногда заваливает экзамены 😅",
-        "Знаешь ли ты, что первый калькулятор был создан в 17 веке?",
-        "Этот калькулятор был сделан с ♥ и большим количеством кофе ☕",
-        "Секретный совет: всегда проверяйте расчеты вручную!",
-        "Ты - 1 из 1000 пользователей, который нашел эту пасхалку!",
-        "Мои поздравления пасхантер, может и на других страницах что то есть?)",
-        "Функция 'автоматического прохождения экзамена' еще в разработке...",
-        "Знаете, почему калькулятор такой точный? Он не списывал на экзаменах!",
-        "Если бы этот калькулятор был студентом, у него была бы стипендия!",
-        "Интересный факт: 87% студентов находят пасхалки во время подготовки к экзаменам",
-        "Пссс... между нами, РегМид весит 30%, но все делают вид, что это не так",
-        "Разработчик рекомендует: одна пасхалка в день - и сессия не страшна!",
+        getTranslation('secret_extra_1'),
+        getTranslation('secret_extra_2'),
+        getTranslation('secret_extra_3'),
+        getTranslation('secret_extra_4'),
+        getTranslation('secret_manual_check'),
+        getTranslation('secret_rare_user'),
+        getTranslation('secret_easter_egg'),
+        getTranslation('secret_auto_passing'),
+        getTranslation('secret_calculator_student'),
+        getTranslation('secret_calculator_scholarship'),
+        getTranslation('secret_extra_5'),
+        getTranslation('secret_extra_6'),
+        getTranslation('secret_extra_7'),
         getTranslation('secret_leak'),
         getTranslation('secret_hack'),
         getTranslation('secret_success'),
         getTranslation('secret_warning'),
         getTranslation('secret_difference'),
-        "Факт: 100% пользователей этого калькулятора успешно отвлекаются от учебы!",
-        "Секретная формула: сон + еда + этот калькулятор = успешная сессия!",
-        "Разработчик был здесь 🐛",
-        "Это сообщение самоликвидируется через 5... 4... 3... шучу!",
-        "Пасхалка уровня 'я должен был учиться, но ищу пасхалки'",
+        getTranslation('secret_extra_8'),
+        getTranslation('secret_extra_9'),
+        getTranslation('secret_extra_10'),
+        getTranslation('secret_extra_11'),
+        getTranslation('secret_extra_12'),
         getTranslation('secret_excuse'),
-        "Инсайдерская информация: преподы тоже пользуются калькуляторами!",
-        "Секретный ингредиент хорошей оценки - уверенность (и этот калькулятор)",
-        "Функция 'автопропуск пар' временно отключена... к сожалению",
-        "Знаете, что общего у этого калькулятора и хорошей оценки? Оба требуют правильных входных данных!",
-        "Внимание! Обнаружена корреляция между использованием калькулятора и снижением уровня паники!"
+        getTranslation('secret_extra_13'),
+        getTranslation('secret_extra_14'),
+        getTranslation('secret_extra_15'),
+        getTranslation('secret_extra_16'),
+        getTranslation('secret_extra_17')
     ];
 
     const randomSecret = secrets[Math.floor(Math.random() * secrets.length)];

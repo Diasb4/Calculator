@@ -13,7 +13,7 @@
     <nav class="navbar">
     <a href="../index.html" class="nav-button" data-translate="nav_home">← На главную</a>
     <div class="nav-buttons">
-        <button id="language-toggle" class="nav-button">🌐Eng</button>
+        <select id="language-toggle" class="nav-button" aria-label="Язык"><option value="ru" lang="ru">Русский</option><option value="kk" lang="kk">Қазақша</option><option value="en" lang="en">English</option></select>
         <!-- Navigation buttons container -->
             <button id="theme-toggle" class="nav-button" data-translate="nav_theme">🌙 Theme</button>
             <div class="mode-dropdown">
@@ -71,14 +71,15 @@
             ⚠️ Важно: Списывание ведёт к отчислению!
         </div>
 
-        <div id="result" class="result"></div>
+        <div id="result" role="status" aria-live="polite" class="result"></div>
     </div>
 
     <footer>
         <span data-translate="footer_copyright">&copy; 2025 Not_404. In case of any bug contact via Telegram</span>
-        <a href="https://t.me/Qrudos" target="_blank">@Qrudos</a>.
+        <a href="https://t.me/Qrudos" target="_blank" rel="noopener noreferrer">@Qrudos</a>.
     </footer>
     <script src="../js/language.js"></script>
+    <script src="../js/localization.js"></script>
     <script src="../js/total.js"></script>
 </body>
 
