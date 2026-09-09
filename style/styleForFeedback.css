@@ -7,15 +7,27 @@
 }
 
 body {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+    background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(59, 130, 246, 0.08), transparent),
+               radial-gradient(ellipse 60% 40% at 100% 100%, rgba(59, 130, 246, 0.06), transparent),
+               #f8fafc;
+    background-color: #f8fafc;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
     align-items: center;
     padding: 80px 20px 20px;
-    color: #333;
+    color: #0f172a;
     position: relative;
-    transition: all 0.3s ease;
+    transition: all 0.25s ease;
+}
+
+body.dark-mode {
+    background: radial-gradient(ellipse 90% 55% at 50% -15%, rgba(37, 99, 235, 0.12), transparent),
+               radial-gradient(ellipse 60% 40% at 85% 90%, rgba(37, 99, 235, 0.08), transparent),
+               #090d16 !important;
+    background-color: #090d16 !important;
+    color: #f8fafc !important;
 }
 
 /* Навбар */
@@ -25,147 +37,161 @@ nav.navbar {
     left: 0;
     width: 100%;
     z-index: 1000;
-    padding: 15px 20px;
-    background: rgba(255, 255, 255, 0.95);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    padding: 14px 24px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(15, 23, 42, 0.06);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    transition: all 0.3s ease;
+    transition: all 0.25s ease;
 }
 
 .nav-buttons {
     display: flex;
-    gap: 10px;
+    gap: 8px;
 }
 
 .nav-button {
-    padding: 8px 16px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
+    padding: 7px 14px;
+    background: #0f172a;
+    color: #f8fafc;
+    border: 1px solid transparent;
     border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 13px;
+    font-weight: 500;
     cursor: pointer;
-    transition: all 0.3s;
+    transition: all 0.2s ease;
     text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .nav-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    background: #1e293b;
+    transform: translateY(-1px);
 }
 
 /* Темная тема */
 body.dark-mode {
-    background: #000000 !important;
-    color: #ffffff !important;
+    background: radial-gradient(ellipse 90% 55% at 50% -15%, rgba(37, 99, 235, 0.12), transparent),
+               radial-gradient(ellipse 60% 40% at 85% 90%, rgba(37, 99, 235, 0.08), transparent),
+               #090d16 !important;
+    background-color: #090d16 !important;
+    color: #f8fafc !important;
 }
 
 body.dark-mode .feedback-container {
-    background: #111111 !important;
-    color: #ffffff !important;
-    border: 1px solid #333333 !important;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5) !important;
+    background: #111827 !important;
+    color: #f8fafc !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7) !important;
 }
 
 body.dark-mode nav.navbar {
-    background: #111111 !important;
-    border-bottom: 1px solid #333333 !important;
+    background: rgba(17, 24, 39, 0.85) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 
 body.dark-mode .nav-button {
-    background: #222222 !important;
-    color: #ffffff !important;
-    border: 1px solid #333333 !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    color: #f1f5f9 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
 body.dark-mode .nav-button:hover {
-    background: #333333 !important;
+    background: rgba(255, 255, 255, 0.12) !important;
 }
 
 body.dark-mode input,
 body.dark-mode textarea,
 body.dark-mode select {
-    background: #0a0a0a !important;
-    color: #ffffff !important;
-    border: 1px solid #333333 !important;
+    background: #0b0f19 !important;
+    color: #f8fafc !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
 }
 
 body.dark-mode input:focus,
 body.dark-mode textarea:focus,
 body.dark-mode select:focus {
-    border-color: #666666 !important;
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1) !important;
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25) !important;
 }
 
 body.dark-mode .submit-btn {
-    background: #222222 !important;
-    color: #ffffff !important;
-    border: 1px solid #333333 !important;
+    background: #f8fafc !important;
+    color: #090d16 !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
 }
 
 body.dark-mode .submit-btn:hover {
-    background: #333333 !important;
+    background: #e2e8f0 !important;
+    color: #090d16 !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
 }
 
 body.dark-mode .status-message.success {
-    background: #002200 !important;
-    border: 1px solid #004400 !important;
-    color: #90ee90 !important;
+    background: rgba(16, 185, 129, 0.12) !important;
+    border: 1px solid rgba(16, 185, 129, 0.3) !important;
+    color: #34d399 !important;
 }
 
 body.dark-mode .status-message.error {
-    background: #220000 !important;
-    border: 1px solid #440000 !important;
-    color: #ff9999 !important;
+    background: rgba(239, 68, 68, 0.12) !important;
+    border: 1px solid rgba(239, 68, 68, 0.3) !important;
+    color: #f87171 !important;
 }
 
 body.dark-mode .telegram-link {
-    background: #333333 !important;
+    background: #2563eb !important;
     color: #ffffff !important;
-    border: 1px solid #555555 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
 body.dark-mode .telegram-link:hover {
-    background: #444444 !important;
+    background: #1d4ed8 !important;
 }
 
 body.dark-mode h1 {
-    color: #ffffff !important;
+    color: #f8fafc !important;
 }
 
 body.dark-mode .subtitle {
-    color: #cccccc !important;
+    color: #94a3b8 !important;
 }
 
 body.dark-mode label {
-    color: #cccccc !important;
+    color: #cbd5e1 !important;
 }
 
 /* Стили формы обратной связи */
 .feedback-container {
-    background: white;
+    background: #ffffff;
     border-radius: 20px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    padding: 40px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.06);
+    padding: 36px;
     max-width: 500px;
     width: 100%;
     text-align: center;
     margin-top: 20px;
+    transition: all 0.25s ease;
 }
 
 h1 {
-    color: #2c3e50;
-    margin-bottom: 10px;
-    font-size: 28px;
+    color: #0f172a;
+    margin-bottom: 8px;
+    font-size: 26px;
+    font-weight: 700;
 }
 
 .subtitle {
-    color: #7f8c8d;
-    margin-bottom: 30px;
-    line-height: 1.6;
+    color: #64748b;
+    margin-bottom: 24px;
+    line-height: 1.5;
+    font-size: 14px;
 }
 
 .feedback-form {
@@ -173,28 +199,28 @@ h1 {
 }
 
 .form-group {
-    margin-bottom: 20px;
+    margin-bottom: 18px;
 }
 
 label {
     display: block;
-    color: #2c3e50;
+    color: #334155;
     font-weight: 600;
-    margin-bottom: 8px;
-    font-size: 14px;
+    margin-bottom: 6px;
+    font-size: 13px;
 }
 
 input,
 textarea,
 select {
     width: 100%;
-    padding: 12px 15px;
-    border: 2px solid #e0e0e0;
+    padding: 12px 14px;
+    border: 1px solid rgba(15, 23, 42, 0.15);
     border-radius: 10px;
-    font-size: 16px;
-    transition: all 0.3s;
-    background: white;
-    color: #333;
+    font-size: 15px;
+    transition: all 0.2s ease;
+    background: #ffffff;
+    color: #0f172a;
 }
 
 textarea {
@@ -207,31 +233,33 @@ input:focus,
 textarea:focus,
 select:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 .submit-btn {
     width: 100%;
-    padding: 15px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
+    padding: 13px 20px;
+    background: #0f172a;
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 10px;
-    font-size: 18px;
+    font-size: 15px;
     font-weight: 600;
     cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s;
+    transition: all 0.2s ease;
     margin-top: 10px;
+    box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.15);
 }
 
 .submit-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+    background: #1e293b;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px -2px rgba(15, 23, 42, 0.2);
 }
 
 .submit-btn:disabled {
-    background: #bdc3c7;
+    background: #94a3b8;
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
@@ -318,26 +346,26 @@ select:focus {
     margin-top: 12px;
     padding: 10px 15px;
     background: transparent;
-    border: 2px dashed #667eea;
-    color: #667eea;
+    border: 1px dashed #0f172a;
+    color: #0f172a;
     border-radius: 10px;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     text-align: center;
 }
 
 .restore-draft-btn:hover {
-    background: rgba(102, 126, 234, 0.1);
-    transform: translateY(-2px);
+    background: rgba(15, 23, 42, 0.05);
+    transform: translateY(-1px);
 }
 
 body.dark-mode .restore-draft-btn {
-    border-color: #8fa5ff;
-    color: #8fa5ff;
+    border-color: rgba(255, 255, 255, 0.3);
+    color: #f8fafc;
 }
 
 body.dark-mode .restore-draft-btn:hover {
-    background: rgba(143, 165, 255, 0.1);
+    background: rgba(255, 255, 255, 0.08);
 }

@@ -1,7 +1,7 @@
-﻿// Service Worker для GradeMaster PWA
+// Service Worker для GradeMaster PWA
 // Обеспечивает кэширование статических ресурсов и работу в автономном режиме (Offline)
 
-const CACHE_NAME = 'grademaster-v1';
+const CACHE_NAME = 'grademaster-v2';
 
 const STATIC_ASSETS = [
     './',
@@ -66,20 +66,34 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Стратегия: Cache First с обновлением из сети для статических файлов GradeMaster
+    // Network-First для стилей, скриптов и HTML страниц (всегда свежий код и дизайн)
+    if (
+        request.mode === 'navigate' ||
+        request.destination === 'style' ||
+        request.destination === 'script' ||
+        request.destination === 'document' ||
+        /\.(css|js|html)$/i.test(url.pathname)
+    ) {
+        event.respondWith(
+            fetch(request)
+                .then((networkResponse) => {
+                    if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+                        const responseToCache = networkResponse.clone();
+                        caches.open(CACHE_NAME).then((cache) => {
+                            cache.put(request, responseToCache);
+                        });
+                    }
+                    return networkResponse;
+                })
+                .catch(() => caches.match(request))
+        );
+        return;
+    }
+
+    // Cache-First для статических медиаресурсов (SVG, иконки)
     event.respondWith(
         caches.match(request).then((cachedResponse) => {
             if (cachedResponse) {
-                // Фоновое обновление кэша (Stale-while-revalidate)
-                fetch(request).then((networkResponse) => {
-                    if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-                        caches.open(CACHE_NAME).then((cache) => {
-                            cache.put(request, networkResponse.clone());
-                        });
-                    }
-                }).catch(() => {
-                    // Игнорируем сетевые сбои в оффлайн режиме
-                });
                 return cachedResponse;
             }
 
@@ -92,11 +106,6 @@ self.addEventListener('fetch', (event) => {
                     cache.put(request, responseToCache);
                 });
                 return networkResponse;
-            }).catch(() => {
-                // Если запрос навигации и сети нет, возвращаем fallback из кэша
-                if (request.mode === 'navigate') {
-                    return caches.match('./index.html') || caches.match('/index.html');
-                }
             });
         })
     );

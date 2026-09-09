@@ -14,21 +14,23 @@ body {
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Text', 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(59, 130, 246, 0.08), transparent),
+               radial-gradient(ellipse 60% 40% at 100% 100%, rgba(59, 130, 246, 0.06), transparent),
+               #f8fafc;
+    background-color: #f8fafc;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
     align-items: center;
     padding: 80px 15px 70px;
-    color: #333;
+    color: #0f172a;
     position: relative;
-    transition: all 0.3s ease;
+    transition: all 0.25s ease;
 }
 
 /* Улучшения для мобильных устройств */
 @media (max-width: 768px) {
-    body {
         padding: 70px 10px 60px;
     }
 
@@ -196,16 +198,6 @@ body.dark-mode select:focus {
     box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1) !important;
 }
 
-body.dark-mode button:not(.nav-button) {
-    background: #222222 !important;
-    color: #ffffff !important;
-    border: 1px solid #333333 !important;
-}
-
-body.dark-mode button:hover:not(.nav-button) {
-    background: #333333 !important;
-}
-
 body.dark-mode .result.success {
     background: #002200 !important;
     border: 1px solid #004400 !important;
@@ -331,12 +323,12 @@ nav.navbar {
 
 .nav-button {
     padding: 6px 10px;
-    background: rgba(102, 126, 234, 0.12);
-    color: #2c3e50;
-    border: 1px solid rgba(102, 126, 234, 0.25);
+    background: rgba(15, 23, 42, 0.06);
+    color: #0f172a;
+    border: 1px solid rgba(15, 23, 42, 0.12);
     border-radius: 10px;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
     text-decoration: none;
@@ -347,17 +339,16 @@ nav.navbar {
     -webkit-user-select: none;
     /* Safari */
     user-select: none;
-    /* Стандартный синтаксис */
 }
 
 .nav-button:hover {
-    background: rgba(102, 126, 234, 0.2);
-    border-color: rgba(102, 126, 234, 0.4);
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+    background: rgba(15, 23, 42, 0.1);
+    border-color: rgba(15, 23, 42, 0.2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .nav-button:focus-visible {
-    outline: 2px solid rgba(102, 126, 234, 0.55);
+    outline: 2px solid #2563eb;
     outline-offset: 2px;
 }
 
@@ -402,121 +393,165 @@ nav.navbar {
 }
 
 .mode-option:hover {
-    background: #667eea;
+    background: #0f172a;
     color: white;
 }
 
 .container {
-    background: white;
-    border-radius: 20px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    padding: 40px;
-    max-width: 500px;
+    background: #ffffff;
+    border-radius: 18px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 10px 30px -10px rgba(0, 0, 0, 0.07), 0 0 0 1px rgba(0, 0, 0, 0.06);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    padding: 36px 32px;
+    max-width: 520px;
     width: 100%;
     margin: auto;
+    transition: all 0.25s ease;
+}
+
+body.dark-mode .container {
+    background: #111827 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6) !important;
 }
 
 h1 {
-    color: #333;
-    margin-bottom: 30px;
+    color: inherit;
+    margin-bottom: 20px;
     text-align: center;
-    font-size: 28px;
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
 }
 
 .description {
     text-align: center;
-    margin-bottom: 30px;
-    color: #7f8c8d;
-    line-height: 1.6;
+    margin-bottom: 24px;
+    color: #64748b;
+    line-height: 1.5;
+    font-size: 14px;
 }
 
 .percentage-info {
     text-align: center;
     margin-bottom: 20px;
-    padding: 10px;
-    background: #e1f5fe;
+    padding: 10px 14px;
+    background: rgba(37, 99, 235, 0.08);
+    border: 1px solid rgba(37, 99, 235, 0.2);
     border-radius: 10px;
     font-weight: 600;
-    color: #0277bd;
+    color: #2563eb;
+    font-size: 13px;
 }
 
 body.dark-mode .percentage-info {
-    background: #222222 !important;
-    color: #4fc3f7 !important;
+    background: rgba(37, 99, 235, 0.12) !important;
+    border-color: rgba(37, 99, 235, 0.3) !important;
+    color: #60a5fa !important;
 }
 
 .input-group {
-    margin-bottom: 25px;
+    margin-bottom: 18px;
+    text-align: left;
 }
 
 label {
     display: block;
-    color: #555;
+    color: #475569;
     font-weight: 600;
-    margin-bottom: 8px;
-    font-size: 14px;
+    margin-bottom: 6px;
+    font-size: 13px;
 }
 
 body.dark-mode label {
-    color: #cccccc !important;
+    color: #94a3b8 !important;
 }
 
 input,
 select {
     width: 100%;
-    padding: 12px 15px;
-    border: 2px solid #e0e0e0;
+    padding: 12px 14px;
+    border: 1px solid #cbd5e1;
     border-radius: 10px;
-    font-size: 16px;
-    transition: all 0.3s;
-    background: white;
-    color: #333;
+    font-size: 15px;
+    font-family: inherit;
+    transition: all 0.2s;
+    background: #ffffff;
+    color: #0f172a;
     -webkit-appearance: none;
-    /* Убирает стандартные стили в Safari */
     appearance: none;
 }
 
 input:focus,
 select:focus {
     outline: none;
-    border-color: #667eea;
-    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
+body.dark-mode input,
+body.dark-mode select {
+    background: #1e293b !important;
+    color: #f8fafc !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+body.dark-mode input:focus,
+body.dark-mode select:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3) !important;
 }
 
 button {
     width: 100%;
-    padding: 15px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    border-radius: 10px;
-    font-size: 18px;
+    padding: 13px 18px;
+    background: #0f172a;
+    color: #ffffff;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    font-size: 15px;
     font-weight: 600;
+    font-family: inherit;
     cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s;
+    transition: all 0.15s ease;
     margin-top: 10px;
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
     touch-action: manipulation;
-    /* Улучшает отзывчивость на касания */
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+    background: #1e293b;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 button:active {
     transform: translateY(0);
 }
 
+body.dark-mode button:not(.nav-button) {
+    background: #f8fafc !important;
+    color: #090d16 !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+body.dark-mode button:hover:not(.nav-button) {
+    background: #e2e8f0 !important;
+    color: #090d16 !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+}
+
 .result {
-    margin-top: 30px;
-    padding: 25px;
-    border-radius: 15px;
+    margin-top: 24px;
+    padding: 20px;
+    border-radius: 14px;
     display: none;
-    animation: slideIn 0.5s ease;
+    animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    text-align: left;
+    font-size: 14px;
 }
 
 .result.show {
@@ -526,7 +561,7 @@ button:active {
 @keyframes slideIn {
     from {
         opacity: 0;
-        transform: translateY(-20px);
+        transform: translateY(-8px);
     }
 
     to {
@@ -536,86 +571,122 @@ button:active {
 }
 
 .result.success {
-    background: #d4edda;
-    border: 2px solid #28a745;
-    color: #155724;
+    background: rgba(34, 197, 94, 0.08);
+    border: 1px solid rgba(34, 197, 94, 0.28);
+    color: #15803d;
 }
 
 .result.warning {
-    background: #fff3cd;
-    border: 2px solid #ffc107;
-    color: #856404;
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    color: #b45309;
 }
 
 .result.danger {
-    background: #f8d7da;
-    border: 2px solid #dc3545;
-    color: #721c24;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.28);
+    color: #b91c1c;
+}
+
+body.dark-mode .result.success {
+    background: rgba(34, 197, 94, 0.12) !important;
+    border: 1px solid rgba(34, 197, 94, 0.35) !important;
+    color: #4ade80 !important;
+}
+
+body.dark-mode .result.warning {
+    background: rgba(245, 158, 11, 0.12) !important;
+    border: 1px solid rgba(245, 158, 11, 0.35) !important;
+    color: #fbbf24 !important;
+}
+
+body.dark-mode .result.danger {
+    background: rgba(239, 68, 68, 0.12) !important;
+    border: 1px solid rgba(239, 68, 68, 0.35) !important;
+    color: #f87171 !important;
 }
 
 .result h2 {
-    margin-bottom: 15px;
-    font-size: 22px;
+    margin-bottom: 12px;
+    font-size: 18px;
+    font-weight: 700;
 }
 
 .result p {
-    margin: 8px 0;
-    font-size: 15px;
-    line-height: 1.6;
+    margin: 6px 0;
+    font-size: 14px;
+    line-height: 1.5;
 }
 
 .score {
     font-weight: 700;
-    font-size: 18px;
+    font-size: 17px;
 }
 
 .warning-text {
-    background: rgba(255, 193, 7, 0.1);
-    border-left: 4px solid #856404;
-    padding: 15px;
-    margin-top: 20px;
-    border-radius: 5px;
+    background: rgba(245, 158, 11, 0.07);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    padding: 12px 14px;
+    margin-top: 18px;
+    border-radius: 10px;
     font-size: 13px;
-    color: #856404;
+    color: #b45309;
+    line-height: 1.4;
+    text-align: center;
+}
+
+body.dark-mode .warning-text {
+    background: rgba(245, 158, 11, 0.12) !important;
+    border-color: rgba(245, 158, 11, 0.3) !important;
+    color: #fbbf24 !important;
 }
 
 .current-mode {
     font-size: 12px;
-    opacity: 0.8;
-    margin-top: 5px;
+    color: #64748b;
+    margin-top: -10px;
     text-align: center;
     margin-bottom: 20px;
 }
 
 .calculation {
-    background: white;
-    padding: 20px;
+    background: rgba(255, 255, 255, 0.7);
+    padding: 16px;
     border-radius: 10px;
-    margin-top: 20px;
-    border-left: 5px solid #3498db;
+    margin-top: 16px;
+    border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .calculation h3 {
-    margin-bottom: 15px;
-    color: #2c3e50;
-}
-
-.calculation p {
-    margin: 8px 0;
+    margin-bottom: 10px;
+    color: #0f172a;
+    font-size: 15px;
 }
 
 .highlight {
     font-weight: bold;
-    color: #e74c3c;
+    color: #2563eb;
+}
+
+body.dark-mode .highlight {
+    color: #60a5fa !important;
 }
 
 .info {
-    background: #e1f5fe;
-    padding: 15px;
+    background: rgba(15, 23, 42, 0.04);
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    padding: 14px;
     border-radius: 10px;
-    margin-top: 20px;
-    font-size: 14px;
-    line-height: 1.6;
+    margin-top: 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #334155;
+}
+
+body.dark-mode .info {
+    background: rgba(255, 255, 255, 0.04) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    color: #cbd5e1 !important;
 }
 
 footer {
@@ -633,7 +704,7 @@ footer {
 }
 
 footer a {
-    color: #667eea;
+    color: #2563eb;
     text-decoration: none;
 }
 
@@ -644,20 +715,22 @@ footer a:hover {
 /* Стили для кнопки и раздела общего доступа */
 .share-button {
     width: 100%;
-    padding: 12px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 12px 16px;
+    background: #2563eb;
     color: white;
-    border: none;
-    border-radius: 8px;
-    font-size: 16px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
     cursor: pointer;
     margin: 10px 0;
-    transition: all 0.3s ease;
+    transition: all 0.15s ease;
 }
 
 .share-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    background: #1d4ed8;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
 }
 
 .share-section {

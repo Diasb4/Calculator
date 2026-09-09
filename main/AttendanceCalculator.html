@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Калькулятор посещаемости</title>
-    <meta name="theme-color" content="#667eea">
+    <meta name="theme-color" content="#090d16">
     <link rel="manifest" href="../manifest.json">
     <link rel="icon" href="../icons/icon-192.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="../icons/icon-192.svg">
@@ -32,7 +32,7 @@
 </nav>
 
     <div class="container">
-        <h1 data-translate="option_attendance_title">📚 Калькулятор посещаемости</h1>
+        <h1 data-translate="option_attendance_title">Калькулятор посещаемости</h1>
 
         <p class="description" data-translate="att_description">
             Этот калькулятор поможет вам определить, сколько пар можно пропустить за 10 недель семестра.
@@ -55,7 +55,7 @@
         <button onclick="calculateAttendance()" data-translate="calculate_btn">Рассчитать</button>
 
         <div class="warning-text" data-translate="warning_text">
-            ⚠️ Важно: Списывание ведёт к отчислению!
+            Важно: Списывание ведёт к отчислению!
         </div>
 
         <div id="result" role="status" aria-live="polite" class="result"></div>
@@ -64,10 +64,8 @@
     <footer>
         <span data-translate="footer_copyright">&copy; 2025 Not_404. In case of any bug contact via Telegram</span>
         <a href="https://t.me/Qrudos" target="_blank" rel="noopener noreferrer">@Qrudos</a>.
-            <div style="opacity: 0.01; position: absolute; bottom: 5px; right: 5px; width: 10px; height: 10px; cursor: pointer;"
-                onclick="revealSecret()" title="ssshhh...">
-            </div>
-        </footer>
+        <div class="easter-egg" onclick="revealSecret()" title="ssshhh..." role="button" aria-label="Secret"></div>
+    </footer>
 
     <script src="../js/language.js"></script>
     <script src="../js/localization.js"></script>

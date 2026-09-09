@@ -13,7 +13,7 @@
         gtag('js', new Date());
         gtag('config', 'G-4DVBKX599T');
     </script>
-    <meta name="theme-color" content="#667eea">
+    <meta name="theme-color" content="#090d16">
     <link rel="manifest" href="../manifest.json">
     <link rel="icon" href="../icons/icon-192.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="../icons/icon-192.svg">
@@ -31,12 +31,12 @@
 </nav>
 
     <div class="container">
-        <h1 data-translate="option_templates_title">📚 Предметные шаблоны</h1>
+        <h1 data-translate="option_templates_title">Предметные шаблоны</h1>
 
         <!-- Assignments Section -->
         <div class="section">
             <div class="section-header">
-                <div class="section-title" data-translate="assignments">📝 Assignments</div>
+                <div class="section-title" data-translate="assignments">Assignments</div>
                 <div class="section-weight">
                     <span data-translate="weight">Вес:</span> <input type="number" class="weight-input" id="assignmentsWeight" min="0" max="100" value="40">%
                 </div>
@@ -59,7 +59,7 @@
         <!-- Quizzes Section -->
         <div class="section">
             <div class="section-header">
-                <div class="section-title" data-translate="quizzes">📋 Quizzes</div>
+                <div class="section-title" data-translate="quizzes">Quizzes</div>
                 <div class="section-weight">
                     <span data-translate="weight">Вес:</span> <input type="number" class="weight-input" id="quizzesWeight" min="0" max="100" value="20">%
                 </div>
@@ -77,7 +77,7 @@
         <!-- Exams Section -->
         <div class="section">
             <div class="section-header">
-                <div class="section-title" data-translate="exams">📊 Midterm/Endterm</div>
+                <div class="section-title" data-translate="exams">Midterm/Endterm</div>
                 <div class="section-weight">
                     <span data-translate="weight">Вес:</span> <input type="number" class="weight-input" id="examsWeight" min="0" max="100" value="40">%
                 </div>
@@ -99,7 +99,7 @@
 
         <!-- Totals Section -->
         <div class="total-section">
-            <h3 data-translate="template_totals">📈 Итоговые значения</h3>
+            <h3 data-translate="template_totals">Итоговые значения</h3>
             <div class="total-display" id="assignmentsTotal">Assignments: 0.00</div>
             <div class="total-display" id="quizzesTotal">Quizzes: 0.00</div>
             <div class="total-display" id="examsTotal">Exams: 0.00</div>
@@ -111,7 +111,7 @@
         <button class="calculate-btn" id="calculate-all-btn" data-translate="calculate_total">Рассчитать итоговую оценку</button>
 
         <div class="preset-section">
-            <h3 data-translate="preset_title">🔗 Пресет предмета</h3>
+            <h3 data-translate="preset_title">Пресет предмета</h3>
             <p data-translate="preset_description">Сохраните веса и список работ в ссылку. Оценки в пресет не попадают.</p>
             <div class="preset-actions">
                 <button class="preset-btn" id="save-preset-btn" data-translate="preset_save" type="button">Сохранить пресет</button>
@@ -124,7 +124,7 @@
         </div>
 
         <div class="warning-text">
-            <span data-translate="weight_warning">⚠️ Сумма весов всех секций должна быть равна 100%</span>
+            <span data-translate="weight_warning">Сумма весов всех секций должна быть равна 100%</span>
             <div class="weight-error" id="weightError">
                 <span data-translate="weight_current">Текущая сумма весов:</span> <span id="currentWeight">0</span>%
             </div>
@@ -136,9 +136,7 @@
     <footer>
         <span data-translate="footer_copyright">&copy; 2025 Not_404. In case of any bug contact via Telegram</span>
         <a href="https://t.me/Qrudos" target="_blank" rel="noopener noreferrer">@Qrudos</a>.
-        <div style="opacity: 0.01; position: absolute; bottom: 5px; right: 5px; width: 10px; height: 10px; cursor: pointer;"
-            onclick="revealSecret()" title="ssshhh...">
-        </div>
+        <div class="easter-egg" onclick="revealSecret()" title="ssshhh..." role="button" aria-label="Secret"></div>
     </footer>
 
     <script src="../js/language.js"></script>

@@ -100,14 +100,14 @@ function isAdmin(chatId) {
 function getMainKeyboard(chatId) {
     const isUserAdmin = isAdmin(chatId);
     const keyboard = [
-        [{ text: '🚀 Итоговая оценка' }, { text: '📊 Калькулятор GPA' }],
-        [{ text: '📈 Кумулятивный GPA' }, { text: '📋 Посещаемость' }],
-        [{ text: '🔄 Конвертер GPA' }, { text: '💬 Отзыв / Поддержка' }],
-        [{ text: '❓ Понятная инструкция' }, { text: '📱 Открыть сайт', web_app: { url: WEBAPP_URL } }]
+        [{ text: 'Итоговая оценка' }, { text: 'Калькулятор GPA' }],
+        [{ text: 'Кумулятивный GPA' }, { text: 'Посещаемость' }],
+        [{ text: 'Конвертер GPA' }, { text: 'Отзыв / Поддержка' }],
+        [{ text: 'Инструкция' }, { text: 'Открыть сайт', web_app: { url: WEBAPP_URL } }]
     ];
 
     if (isUserAdmin) {
-        keyboard.unshift([{ text: '⚙️ Панель Администратора' }]);
+        keyboard.unshift([{ text: 'Панель Администратора' }]);
     }
 
     return {
@@ -119,7 +119,7 @@ function getMainKeyboard(chatId) {
 function getCancelKeyboard() {
     return {
         keyboard: [
-            [{ text: '❌ Отмена / Главное меню' }]
+            [{ text: 'Отмена / Главное меню' }]
         ],
         resize_keyboard: true
     };
@@ -129,16 +129,16 @@ function getCalculatorsInlineKeyboard() {
     return {
         inline_keyboard: [
             [
-                { text: '🚀 Оценка (РегМид/Энд)', callback_data: 'wiz_total' },
-                { text: '📊 GPA триместра', callback_data: 'wiz_gpa' }
+                { text: 'Оценка (РегМид/Энд)', callback_data: 'wiz_total' },
+                { text: 'GPA триместра', callback_data: 'wiz_gpa' }
             ],
             [
-                { text: '📈 Общий GPA (Кумулятив)', callback_data: 'wiz_cgpa' },
-                { text: '📋 Посещаемость', callback_data: 'wiz_att' }
+                { text: 'Общий GPA (Кумулятив)', callback_data: 'wiz_cgpa' },
+                { text: 'Посещаемость', callback_data: 'wiz_att' }
             ],
             [
-                { text: '🔄 Конвертер % в GPA', callback_data: 'wiz_conv' },
-                { text: '💬 Написать админу', callback_data: 'wiz_feed' }
+                { text: 'Конвертер % в GPA', callback_data: 'wiz_conv' },
+                { text: 'Написать админу', callback_data: 'wiz_feed' }
             ]
         ]
     };
@@ -713,104 +713,104 @@ async function handleMessage(msg) {
         });
     }
 
-    // 2. /help или "❓ Понятная инструкция"
-    if (text === '/help' || text === '❓ Понятная инструкция') {
+    // 2. /help или "Инструкция"
+    if (text === '/help' || text === 'Инструкция' || text === '❓ Понятная инструкция') {
         return sendMessage(chatId, getFoolproofHelpText(), {
             reply_markup: getCalculatorsInlineKeyboard()
         });
     }
 
-    // 3. /admin или "⚙️ Панель Администратора" (ТОЛЬКО ДЛЯ АДМИНА)
-    if (text === '/admin' || text === '⚙️ Панель Администратора') {
+    // 3. /admin или "Панель Администратора" (ТОЛЬКО ДЛЯ АДМИНА)
+    if (text === '/admin' || text === 'Панель Администратора' || text === '⚙️ Панель Администратора') {
         if (!isAdmin(chatId)) {
-            return sendMessage(chatId, '❓ Команда не найдена. Напишите <code>/help</code> для просмотра доступных функций.', { reply_markup: getMainKeyboard(chatId) });
+            return sendMessage(chatId, 'Команда не найдена. Напишите <code>/help</code> для просмотра доступных функций.', { reply_markup: getMainKeyboard(chatId) });
         }
         return handleAdminPanel(chatId);
     }
 
     // 4. /id
     if (text === '/id') {
-        return sendMessage(chatId, `🆔 Ваш Telegram Chat ID: <code>${chatId}</code>\n👤 Имя: <b>${esc(userName)}</b>\n👑 Права: <b>${isAdmin(chatId) ? 'Администратор' : 'Студент'}</b>`);
+        return sendMessage(chatId, `Ваш Telegram Chat ID: <code>${chatId}</code>\nИмя: <b>${esc(userName)}</b>\nПрава: <b>${isAdmin(chatId) ? 'Администратор' : 'Студент'}</b>`);
     }
 
     // 5. /broadcast <текст> (ТОЛЬКО ДЛЯ АДМИНА)
     if (text.startsWith('/broadcast')) {
         if (!isAdmin(chatId)) {
-            return sendMessage(chatId, '❌ Доступ запрещен.');
+            return sendMessage(chatId, 'Доступ запрещен.');
         }
         const broadcastText = text.replace('/broadcast', '').trim();
         if (!broadcastText) {
-            return sendMessage(chatId, '❌ Введите текст для рассылки: <code>/broadcast Внимание! ...</code>');
+            return sendMessage(chatId, 'Введите текст для рассылки: <code>/broadcast Внимание! ...</code>');
         }
 
         let sent = 0;
         let failed = 0;
         for (const user of activeUsers) {
             try {
-                await sendMessage(user, `📢 <b>Объявление от GradeMaster:</b>\n\n${esc(broadcastText)}`);
+                await sendMessage(user, `<b>Объявление от GradeMaster:</b>\n\n${esc(broadcastText)}`);
                 sent++;
             } catch {
                 failed++;
             }
         }
-        return sendMessage(chatId, `✅ <b>Рассылка завершена!</b>\nУспешно отправлено: <b>${sent}</b>\nОшибок: <b>${failed}</b>`);
+        return sendMessage(chatId, `<b>Рассылка завершена!</b>\nУспешно отправлено: <b>${sent}</b>\nОшибок: <b>${failed}</b>`);
     }
 
     // 6. /reply <chat_id> <текст> (ТОЛЬКО ДЛЯ АДМИНА)
     if (text.startsWith('/reply')) {
         if (!isAdmin(chatId)) {
-            return sendMessage(chatId, '❌ Доступ запрещен.');
+            return sendMessage(chatId, 'Доступ запрещен.');
         }
         const parts = text.split(/\s+/);
         if (parts.length < 3) {
-            return sendMessage(chatId, '❌ <b>Формат команды:</b> <code>/reply &lt;chat_id&gt; &lt;текст ответа&gt;</code>\n<i>Пример:</i> <code>/reply 123456789 Ваш вопрос решен!</code>');
+            return sendMessage(chatId, '<b>Формат команды:</b> <code>/reply &lt;chat_id&gt; &lt;текст ответа&gt;</code>\n<i>Пример:</i> <code>/reply 123456789 Ваш вопрос решен!</code>');
         }
         const targetId = parts[1];
         const replyBody = parts.slice(2).join(' ');
 
         try {
-            await sendMessage(targetId, `💬 <b>Ответ от администратора GradeMaster:</b>\n\n${esc(replyBody)}\n\n<i>💡 Вы можете написать сюда в ответ, чтобы продолжить диалог.</i>`);
-            return sendMessage(chatId, `✅ Ответ успешно доставлен студенту (ID: <code>${targetId}</code>)!`);
+            await sendMessage(targetId, `<b>Ответ от администратора GradeMaster:</b>\n\n${esc(replyBody)}\n\n<i>Вы можете написать сюда в ответ, чтобы продолжить диалог.</i>`);
+            return sendMessage(chatId, `Ответ успешно доставлен студенту (ID: <code>${targetId}</code>)!`);
         } catch (err) {
-            return sendMessage(chatId, `❌ Ошибка отправки: ${esc(err.message)}`);
+            return sendMessage(chatId, `Ошибка отправки: ${esc(err.message)}`);
         }
     }
 
     // 7. Кнопки главного меню (Запуск мастеров)
-    if (text === '🚀 Итоговая оценка') {
+    if (text === 'Итоговая оценка' || text === '🚀 Итоговая оценка') {
         session.step = 'total_regmid';
         session.data = {};
-        return sendMessage(chatId, `🚀 <b>Калькулятор итоговой оценки (Шаг 1 из 2):</b>\n\nВведи твой балл за <b>РегМид</b> (число от 0 до 100).\n<i>Например:</i> <code>85</code>`, { reply_markup: getCancelKeyboard() });
+        return sendMessage(chatId, `<b>Калькулятор итоговой оценки (Шаг 1 из 2):</b>\n\nВведи твой балл за <b>РегМид</b> (число от 0 до 100).\n<i>Например:</i> <code>85</code>`, { reply_markup: getCancelKeyboard() });
     }
 
-    if (text === '📊 Калькулятор GPA') {
+    if (text === 'Калькулятор GPA' || text === '📊 Калькулятор GPA') {
         session.step = 'gpa_input';
         session.data = {};
-        return sendMessage(chatId, `📊 <b>Калькулятор GPA за триместр:</b>\n\nОтправь оценки и кредиты предметов через запятую.\n<b>Формат:</b> <code>Оценка Кредиты</code>\n\n<i>Пример:</i> <code>90 3, 85 4, 95 2</code>`, { reply_markup: getCancelKeyboard() });
+        return sendMessage(chatId, `<b>Калькулятор GPA за триместр:</b>\n\nОтправь оценки и кредиты предметов через запятую.\n<b>Формат:</b> <code>Оценка Кредиты</code>\n\n<i>Пример:</i> <code>90 3, 85 4, 95 2</code>`, { reply_markup: getCancelKeyboard() });
     }
 
-    if (text === '📈 Кумулятивный GPA') {
+    if (text === 'Кумулятивный GPA' || text === '📈 Кумулятивный GPA') {
         session.step = 'cum_input';
         session.data = {};
-        return sendMessage(chatId, `📈 <b>Кумулятивный GPA:</b>\n\nОтправь GPA и количество кредитов за каждый триместр через запятую.\n<b>Формат:</b> <code>GPA Кредиты</code>\n\n<i>Пример:</i> <code>3.5 15, 3.8 20, 3.2 18</code>`, { reply_markup: getCancelKeyboard() });
+        return sendMessage(chatId, `<b>Кумулятивный GPA:</b>\n\nОтправь GPA и количество кредитов за каждый триместр через запятую.\n<b>Формат:</b> <code>GPA Кредиты</code>\n\n<i>Пример:</i> <code>3.5 15, 3.8 20, 3.2 18</code>`, { reply_markup: getCancelKeyboard() });
     }
 
-    if (text === '📋 Посещаемость') {
+    if (text === 'Посещаемость' || text === '📋 Посещаемость') {
         session.step = 'att_lessons';
         session.data = {};
-        return sendMessage(chatId, `📋 <b>Калькулятор посещаемости (Шаг 1 из 2):</b>\n\nСколько пар в неделю по предмету?\n<i>Введи число от 1 до 20 (например: <code>3</code>)</i>`, { reply_markup: getCancelKeyboard() });
+        return sendMessage(chatId, `<b>Калькулятор посещаемости (Шаг 1 из 2):</b>\n\nСколько пар в неделю по предмету?\n<i>Введи число от 1 до 20 (например: <code>3</code>)</i>`, { reply_markup: getCancelKeyboard() });
     }
 
-    if (text === '🔄 Конвертер GPA') {
+    if (text === 'Конвертер GPA' || text === '🔄 Конвертер GPA') {
         session.step = 'conv_input';
         session.data = {};
-        return sendMessage(chatId, `🔄 <b>Конвертер оценок в GPA:</b>\n\nВведи процентную оценку (число от 0 до 100).\n<i>Например:</i> <code>87</code>`, { reply_markup: getCancelKeyboard() });
+        return sendMessage(chatId, `<b>Конвертер оценок в GPA:</b>\n\nВведи процентную оценку (число от 0 до 100).\n<i>Например:</i> <code>87</code>`, { reply_markup: getCancelKeyboard() });
     }
 
-    if (text === '💬 Отзыв / Поддержка') {
+    if (text === 'Отзыв / Поддержка' || text === '💬 Отзыв / Поддержка') {
         session.step = 'feed_input';
         session.data = {};
-        return sendMessage(chatId, `💬 <b>Служба поддержки и обратной связи:</b>\n\nНапишите ваше сообщение, вопрос или предложение. Администратор прочитает его и сможет ответить вам прямо здесь!`, { reply_markup: getCancelKeyboard() });
+        return sendMessage(chatId, `<b>Служба поддержки и обратной связи:</b>\n\nНапишите ваше сообщение, вопрос или предложение. Администратор прочитает его и сможет ответить вам прямо здесь!`, { reply_markup: getCancelKeyboard() });
     }
 
     // 8. Обработка быстрых команд одной строкой (/calc, /gpa, /cgpa, /att, /convert)
