@@ -4,7 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
-    <title>GradeMaster - Калькулятор оценок</title>
+    <meta name="theme-color" content="#667eea">
+    <link rel="manifest" href="../manifest.json">
+    <link rel="icon" href="../icons/icon-192.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="../icons/icon-192.svg">
     <link rel="stylesheet" href="../style/styleForTotal.css">
     <link rel="stylesheet" href="../style/navbarResponsive.css">
 </head>
@@ -19,9 +22,9 @@
             <div class="mode-dropdown">
                 <button id="mode-toggle" class="nav-button" data-translate="nav_mode">Change mode</button>
                 <div class="mode-dropdown-content" id="modeDropdown">
-                    <div class="mode-option" data-mode="serious" data-translate="nav_serious">Serious mode</div>
-                    <div class="mode-option" data-mode="standard" data-translate="nav_standard">Standard mode</div>
-                    <div class="mode-option" data-mode="evil" data-translate="nav_evil">Evil upperclassman</div>
+                    <div class="mode-option" data-mode="serious" data-translate="nav_serious" role="button" tabindex="0" aria-pressed="false">Serious mode</div>
+                    <div class="mode-option" data-mode="standard" data-translate="nav_standard" role="button" tabindex="0" aria-pressed="true">Standard mode</div>
+                    <div class="mode-option" data-mode="evil" data-translate="nav_evil" role="button" tabindex="0" aria-pressed="false">Evil upperclassman</div>
                 </div>
             </div>
         </div>

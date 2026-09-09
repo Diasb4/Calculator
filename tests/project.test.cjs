@@ -336,3 +336,76 @@ test('every local script and stylesheet referenced by a page exists', () => {
         }
     }
 });
+
+test('PWA assets exist and manifest is valid JSON', () => {
+    const manifestPath = path.join(root, 'manifest.json');
+    const swPath = path.join(root, 'sw.js');
+    const icon192 = path.join(root, 'icons/icon-192.svg');
+    const icon512 = path.join(root, 'icons/icon-512.svg');
+
+    assert.ok(fs.existsSync(manifestPath), 'manifest.json must exist');
+    assert.ok(fs.existsSync(swPath), 'sw.js must exist');
+    assert.ok(fs.existsSync(icon192), 'icon-192.svg must exist');
+    assert.ok(fs.existsSync(icon512), 'icon-512.svg must exist');
+
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    assert.equal(manifest.name, 'GradeMaster');
+    assert.equal(manifest.display, 'standalone');
+    assert.ok(Array.isArray(manifest.icons) && manifest.icons.length >= 2);
+});
+
+test('TotalCalculator stateless share encoding, decoding and keyboard navigation', () => {
+    const app = loadPage('main/TotalCalculator.html');
+    const testData = { rm: 85, re: 90, f: 95, m: 'both' };
+    const encoded = app.run(`encodeShareData(${JSON.stringify(testData)})`);
+    assert.ok(typeof encoded === 'string' && encoded.length > 0);
+
+    const decoded = app.run(`decodeShareData("${encoded}")`);
+    assert.deepEqual({ ...decoded }, testData);
+
+    // Test restoring from URL
+    const restored = loadPage('main/TotalCalculator.html', { search: `?d=${encoded}` });
+    assert.equal(restored.document.getElementById('regmid').value, '85');
+    assert.equal(restored.document.getElementById('regend').value, '90');
+    assert.equal(restored.document.getElementById('final').value, '95');
+
+    // Test keyboard accessibility on mode options
+    const modeOption = app.document.querySelector('.mode-option[data-mode="standard"]');
+    assert.equal(modeOption.getAttribute('tabindex'), '0');
+    assert.equal(modeOption.getAttribute('role'), 'button');
+});
+
+test('attendance visual meter renders safe, warning, and danger states correctly', () => {
+    const app = loadPage('main/AttendanceCalculator.html');
+    const result = app.document.getElementById('result');
+
+    // Safe zone
+    setValues(app, { lessonsPerWeek: 3, alreadyMissed: 2 });
+    app.run('calculateAttendance()');
+    assert.match(result.className, /success/);
+    assert.ok(result.querySelector('.att-meter-container'));
+    assert.ok(result.querySelector('.att-status-badge.success'));
+
+    // Warning zone
+    setValues(app, { lessonsPerWeek: 3, alreadyMissed: 8 });
+    app.run('calculateAttendance()');
+    assert.match(result.className, /warning/);
+    assert.ok(result.querySelector('.att-status-badge.warning'));
+
+    // Danger zone
+    setValues(app, { lessonsPerWeek: 3, alreadyMissed: 10 });
+    app.run('calculateAttendance()');
+    assert.match(result.className, /danger/);
+    assert.ok(result.querySelector('.att-status-badge.danger'));
+});
+
+test('Telegram bot serverless webhook verifies secret token header', async () => {
+    const botPath = path.join(root, 'api/bot/index.js');
+    assert.ok(fs.existsSync(botPath));
+    const botSource = fs.readFileSync(botPath, 'utf8');
+
+    // Verify secret token check logic is present in the source
+    assert.match(botSource, /x-telegram-bot-api-secret-token/);
+    assert.match(botSource, /TELEGRAM_SECRET_TOKEN/);
+});
+

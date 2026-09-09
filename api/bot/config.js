@@ -3,7 +3,7 @@
 
 module.exports = {
     // Токен Telegram бота
-    BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '8865588303:AAEmEiM59TPvgrEH9CBJ6ojD9lIf9uF2SVI',
+    BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
 
     // ID администратора (куда приходят уведомления и откуда можно отвечать)
     ADMIN_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '',

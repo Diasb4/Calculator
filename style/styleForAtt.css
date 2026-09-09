@@ -391,3 +391,155 @@ footer a:hover {
         font-size: 26px;
     }
 }
+
+/* Attendance Visual Progress Meter & Status Badge */
+.att-status-badge {
+    margin-top: 15px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+.att-status-badge.success {
+    background: rgba(40, 167, 69, 0.15);
+    border: 1px solid #28a745;
+    color: #155724;
+}
+
+.att-status-badge.warning {
+    background: rgba(255, 193, 7, 0.2);
+    border: 1px solid #ffc107;
+    color: #856404;
+}
+
+.att-status-badge.danger {
+    background: rgba(220, 53, 69, 0.15);
+    border: 1px solid #dc3545;
+    color: #721c24;
+}
+
+.att-status-text {
+    font-size: 16px;
+    display: block;
+    margin-bottom: 6px;
+}
+
+.att-details-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.att-meter-container {
+    margin-top: 20px;
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+}
+
+.att-meter-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #4a5568;
+    margin-bottom: 8px;
+}
+
+.att-bar-track {
+    position: relative;
+    height: 18px;
+    border-radius: 9px;
+    display: flex;
+    overflow: visible;
+    background: #edf2f7;
+    border: 1px solid #cbd5e0;
+}
+
+.att-zone {
+    height: 100%;
+}
+
+.att-zone:first-child {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+
+.att-zone:last-of-type {
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+.att-zone-safe {
+    background: linear-gradient(90deg, #48bb78, #38a169);
+}
+
+.att-zone-warning {
+    background: linear-gradient(90deg, #ecc94b, #dd6b20);
+}
+
+.att-zone-danger {
+    background: linear-gradient(90deg, #e53e3e, #9b2c2c);
+}
+
+.att-current-marker {
+    position: absolute;
+    top: -12px;
+    transform: translateX(-50%);
+    font-size: 16px;
+    z-index: 10;
+    transition: left 0.3s ease;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+
+.att-scale-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 11px;
+    color: #718096;
+    font-weight: 500;
+}
+
+.att-scale-labels .att-limit-label {
+    font-weight: 700;
+    color: #e53e3e;
+}
+
+/* Dark mode overrides for attendance visual meter */
+body.dark-mode .att-meter-container {
+    background: #181818 !important;
+    border-color: #333333 !important;
+}
+
+body.dark-mode .att-meter-title {
+    color: #cccccc !important;
+}
+
+body.dark-mode .att-bar-track {
+    background: #252525 !important;
+    border-color: #444444 !important;
+}
+
+body.dark-mode .att-scale-labels {
+    color: #888888 !important;
+}
+
+body.dark-mode .att-status-badge.success {
+    background: #002200 !important;
+    border-color: #006600 !important;
+    color: #90ee90 !important;
+}
+
+body.dark-mode .att-status-badge.warning {
+    background: #222200 !important;
+    border-color: #666600 !important;
+    color: #ffff99 !important;
+}
+
+body.dark-mode .att-status-badge.danger {
+    background: #220000 !important;
+    border-color: #660000 !important;
+    color: #ff9999 !important;
+}

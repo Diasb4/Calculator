@@ -111,3 +111,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('language-toggle')?.addEventListener('change', event => switchLanguage(event.target.value));
     applyTranslations();
 });
+
+// PWA Service Worker Registration
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
+    window.addEventListener('load', () => {
+        const swPath = window.location.pathname.includes('/main/') ? '../sw.js' : './sw.js';
+        navigator.serviceWorker.register(swPath).catch(err => {
+            console.debug('Service Worker registration skipped:', err);
+        });
+    });
+}

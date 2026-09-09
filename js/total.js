@@ -5,6 +5,10 @@ function changeMode(newMode) {
     updateModeDisplay();
     closeModeDropdown();
 
+    document.querySelectorAll('.mode-option').forEach(option => {
+        option.setAttribute('aria-pressed', String(option.getAttribute('data-mode') === newMode));
+    });
+
     const modeKeys = {
         serious: 'mode_serious_msg',
         standard: 'mode_standard_msg',
@@ -73,6 +77,13 @@ document.addEventListener('DOMContentLoaded', function () {
             const newMode = this.getAttribute('data-mode');
             changeMode(newMode);
         });
+        option.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                const newMode = this.getAttribute('data-mode');
+                changeMode(newMode);
+            }
+        });
     });
 
     // Закрытие выпадающего меню при клике вне его
@@ -102,140 +113,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-
-    // Добавьте эту переменную в начало файла с другими переменными
-    let shareLinks = {};
-    try { shareLinks = JSON.parse(readPreference('gradeMaster_shareLinks') || '{}') || {}; } catch { /* Ignore corrupt saved links. */ }
-
-    // Функция для создания уникального ID
-    function generateShareId() {
-        return 'share_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    }
-
-    // Функция для создания ссылки общего доступа
-    function createShareLink() {
-        const regmid = document.getElementById('regmid').value;
-        const regend = document.getElementById('regend').value;
-        const regterm = document.getElementById('regterm').value;
-        const final = document.getElementById('final').value;
-
-        // Собираем данные для сохранения
-        const shareData = {
-            regmid: regmid || null,
-            regend: regend || null,
-            regterm: regterm || null,
-            final: final || null,
-            mode: mode,
-            timestamp: Date.now(),
-            expires: Date.now() + (24 * 60 * 60 * 1000) // 24 часа
-        };
-
-        // Генерируем уникальный ID
-        const shareId = generateShareId();
-
-        // Сохраняем в localStorage
-        shareLinks[shareId] = shareData;
-        savePreference('gradeMaster_shareLinks', JSON.stringify(shareLinks));
-
-        // Создаем ссылку
-        const shareUrl = `${window.location.origin}${window.location.pathname}?share=${shareId}`;
-
-        // Показываем ссылку пользователю
-        document.getElementById('share-link').value = shareUrl;
-        document.getElementById('shareSection').style.display = 'block';
-
-        // Прокручиваем к разделу с ссылкой
-        document.getElementById('shareSection').scrollIntoView({ behavior: 'smooth' });
-
-        showComment(translationHTML('share_created'), 'success');
-    }
-
-    // Функция для загрузки данных из ссылки
-    function loadFromShareLink() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const shareId = urlParams.get('share');
-
-        if (!shareId) return false;
-
-        const shareData = shareLinks[shareId];
-
-        if (!shareData) {
-            showComment(translationHTML('invalid_link'), 'danger');
-            return false;
-        }
-
-        // Проверяем срок действия
-        if (Date.now() > shareData.expires) {
-            delete shareLinks[shareId];
-            savePreference('gradeMaster_shareLinks', JSON.stringify(shareLinks));
-            showComment(translationHTML('expired_link'), 'danger');
-            return false;
-        }
-
-        // Заполняем поля данными из ссылки
-        if (shareData.regmid) document.getElementById('regmid').value = shareData.regmid;
-        if (shareData.regend) document.getElementById('regend').value = shareData.regend;
-        if (shareData.regterm) document.getElementById('regterm').value = shareData.regterm;
-        if (shareData.final) document.getElementById('final').value = shareData.final;
-
-        // Устанавливаем режим
-        if (['serious', 'standard', 'evil'].includes(shareData.mode)) {
-            changeMode(shareData.mode);
-        }
-
-        showComment(translationHTML('share_loaded'), 'success');
-
-        // Автоматически рассчитываем если есть достаточно данных
-        const hasRegData = (shareData.regmid && shareData.regend) || shareData.regterm;
-        if (hasRegData) {
-            setTimeout(() => {
-                calculate();
-            }, 1000);
-        }
-
-        return true;
-    }
-
-    // Функция для копирования ссылки в буфер обмена
-    function copyShareLink() {
-        const shareLinkInput = document.getElementById('share-link');
-        shareLinkInput.select();
-        shareLinkInput.setSelectionRange(0, 99999); // Для мобильных устройств
-
-        try {
-            navigator.clipboard.writeText(shareLinkInput.value).then(() => {
-                showComment(translationHTML('link_copied'), 'success');
-            }).catch(() => {
-                // Fallback для старых браузеров
-                document.execCommand('copy');
-                showComment(translationHTML('link_copied'), 'success');
-            });
-        } catch (err) {
-            // Резервный вариант
-            document.execCommand('copy');
-            showComment(translationHTML('link_copied'), 'success');
-        }
-    }
-
-    // Функция для очистки устаревших ссылок
-    function cleanupExpiredLinks() {
-        const now = Date.now();
-        let updated = false;
-
-        Object.keys(shareLinks).forEach(shareId => {
-            if (now > shareLinks[shareId].expires) {
-                delete shareLinks[shareId];
-                updated = true;
-            }
-        });
-
-        if (updated) {
-            savePreference('gradeMaster_shareLinks', JSON.stringify(shareLinks));
-        }
-    }
-    // Очистка устаревших ссылок
-    cleanupExpiredLinks();
-
     // Загрузка данных из share-ссылки если есть
     loadFromShareLink();
 
@@ -243,10 +120,150 @@ document.addEventListener('DOMContentLoaded', function () {
     const shareBtn = document.getElementById('share-btn');
     const copyLinkBtn = document.getElementById('copy-link-btn');
 
-    shareBtn.addEventListener('click', createShareLink);
-    copyLinkBtn.addEventListener('click', copyShareLink);
-
+    if (shareBtn) shareBtn.addEventListener('click', createShareLink);
+    if (copyLinkBtn) copyLinkBtn.addEventListener('click', copyShareLink);
 });
+
+// Кодирование данных для передачи в URL (Stateless Base64 URL-safe)
+function encodeShareData(data) {
+    const bytes = new TextEncoder().encode(JSON.stringify(data));
+    let binary = '';
+    bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function decodeShareData(encodedData) {
+    if (!encodedData || typeof encodedData !== 'string') return null;
+    try {
+        let base64 = encodedData.replace(/-/g, '+').replace(/_/g, '/');
+        while (base64.length % 4) { base64 += '='; }
+        const binary = atob(base64);
+        const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+        return JSON.parse(new TextDecoder().decode(bytes));
+    } catch {
+        return null;
+    }
+}
+
+// Функция для создания ссылки общего доступа (Stateless URL)
+function createShareLink() {
+    const regmid = document.getElementById('regmid')?.value;
+    const regend = document.getElementById('regend')?.value;
+    const regterm = document.getElementById('regterm')?.value;
+    const finalVal = document.getElementById('final')?.value;
+
+    const shareData = {
+        rm: regmid || undefined,
+        re: regend || undefined,
+        rt: regterm || undefined,
+        f: finalVal || undefined,
+        m: mode
+    };
+
+    const encoded = encodeShareData(shareData);
+    const shareUrl = `${window.location.origin}${window.location.pathname}?d=${encoded}`;
+
+    const linkInput = document.getElementById('share-link');
+    const section = document.getElementById('shareSection');
+    if (linkInput) linkInput.value = shareUrl;
+    if (section) {
+        section.style.display = 'block';
+        if (typeof section.scrollIntoView === 'function') {
+            section.scrollIntoView({ behavior: 'smooth' });
+        }
+    }
+
+    showComment(translationHTML('share_created'), 'success');
+}
+
+// Функция для загрузки данных из ссылки
+function loadFromShareLink() {
+    const urlParams = new URLSearchParams(window.location.search);
+    let shareData = null;
+
+    let shareLinks = {};
+    try { shareLinks = JSON.parse(readPreference('gradeMaster_shareLinks') || '{}') || {}; } catch { /* Ignore corrupt saved links. */ }
+
+    const dParam = urlParams.get('d') || urlParams.get('data');
+    if (dParam) {
+        try {
+            shareData = decodeShareData(dParam);
+        } catch {
+            showComment(translationHTML('invalid_link'), 'danger');
+            return false;
+        }
+    } else if (urlParams.has('rm') || urlParams.has('re') || urlParams.has('regmid') || urlParams.has('regend')) {
+        shareData = {
+            rm: urlParams.get('rm') || urlParams.get('regmid'),
+            re: urlParams.get('re') || urlParams.get('regend'),
+            rt: urlParams.get('rt') || urlParams.get('regterm'),
+            f: urlParams.get('f') || urlParams.get('final'),
+            m: urlParams.get('m') || urlParams.get('mode')
+        };
+    } else if (urlParams.has('share')) {
+        const shareId = urlParams.get('share');
+        shareData = shareLinks[shareId];
+        if (!shareData) {
+            showComment(translationHTML('invalid_link'), 'danger');
+            return false;
+        }
+        if (shareData.expires && Date.now() > shareData.expires) {
+            delete shareLinks[shareId];
+            savePreference('gradeMaster_shareLinks', JSON.stringify(shareLinks));
+            showComment(translationHTML('expired_link'), 'danger');
+            return false;
+        }
+    }
+
+    if (!shareData) return false;
+
+    const regmid = shareData.rm ?? shareData.regmid;
+    const regend = shareData.re ?? shareData.regend;
+    const regterm = shareData.rt ?? shareData.regterm;
+    const finalVal = shareData.f ?? shareData.final;
+    const modeVal = shareData.m ?? shareData.mode;
+
+    const midEl = document.getElementById('regmid');
+    const endEl = document.getElementById('regend');
+    const termEl = document.getElementById('regterm');
+    const finEl = document.getElementById('final');
+
+    if (midEl && regmid !== undefined && regmid !== null && regmid !== '') midEl.value = String(regmid);
+    if (endEl && regend !== undefined && regend !== null && regend !== '') endEl.value = String(regend);
+    if (termEl && regterm !== undefined && regterm !== null && regterm !== '') termEl.value = String(regterm);
+    if (finEl && finalVal !== undefined && finalVal !== null && finalVal !== '') finEl.value = String(finalVal);
+
+    if (['serious', 'standard', 'evil'].includes(modeVal)) {
+        changeMode(modeVal);
+    }
+
+    showComment(translationHTML('share_loaded'), 'success');
+
+    const hasRegData = (regmid && regend) || regterm;
+    if (hasRegData) {
+        calculate();
+    }
+
+    return true;
+}
+
+// Функция для копирования ссылки в буфер обмена
+function copyShareLink() {
+    const shareLinkInput = document.getElementById('share-link');
+    if (!shareLinkInput) return;
+    shareLinkInput.select();
+    if (shareLinkInput.setSelectionRange) shareLinkInput.setSelectionRange(0, 99999);
+
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(shareLinkInput.value).then(() => {
+            showComment(translationHTML('link_copied'), 'success');
+        }).catch(() => {
+            try { document.execCommand('copy'); showComment(translationHTML('link_copied'), 'success'); } catch {}
+        });
+    } else {
+        try { document.execCommand('copy'); showComment(translationHTML('link_copied'), 'success'); } catch {}
+    }
+}
 
 // Функция для получения случайного перевода из набора ключей
 function getRandomTranslation(keys) {

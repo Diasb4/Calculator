@@ -295,6 +295,16 @@ module.exports = async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
+    // Проверка секретного токена вебхука Telegram (если задан в process.env)
+    const secretToken = process.env.TELEGRAM_SECRET_TOKEN;
+    if (secretToken) {
+        const headerToken = req.headers['x-telegram-bot-api-secret-token'];
+        if (headerToken !== secretToken) {
+            console.warn('Unauthorized webhook request: secret token mismatch');
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+    }
+
     try {
         const update = req.body;
         if (update && update.message) {

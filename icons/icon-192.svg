@@ -1,0 +1,19 @@
+﻿<svg xmlns=http://www.w3.org/2000/svg viewBox=0 0 192 192 width=192 height=192>
+  <defs>
+    <linearGradient id=bg x1=0% y1=0% x2=100% y2=100%>
+      <stop offset=0% stop-color=#667eea/>
+      <stop offset=100% stop-color=#764ba2/>
+    </linearGradient>
+    <linearGradient id=gold x1=0% y1=0% x2=100% y2=100%>
+      <stop offset=0% stop-color=#ffd200/>
+      <stop offset=100% stop-color=#f7971e/>
+    </linearGradient>
+  </defs>
+  <rect width=192 height=192 rx=42 fill=url(#bg)/>
+  <!-- Graduation Cap -->
+  <path d=M96 44 L162 76 L96 108 L30 76 Z fill=#ffffff/>
+  <path d=M52 90 L52 124 C52 138 96 150 96 150 C96 150 140 138 140 124 L140 90 L96 112 Z fill=#ffffff fill-opacity=0.9/>
+  <!-- Tassel -->
+  <path d=M152 82 L152 130 C152 136 148 140 144 140 C140 140 136 136 136 130 L136 89 stroke=url(#gold) stroke-width=4 stroke-linecap=round fill=none/>
+  <circle cx=144 cy=140 r=5 fill=url(#gold)/>
+</svg>
