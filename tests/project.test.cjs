@@ -409,3 +409,103 @@ test('Telegram bot serverless webhook verifies secret token header', async () =>
     assert.match(botSource, /TELEGRAM_SECRET_TOKEN/);
 });
 
+test('Telegram bot: percentageToGradeInfo scale covers all grades', () => {
+    const bot = require('../api/bot/index.js');
+    assert.equal(bot.percentageToGradeInfo(95).letter, 'A');
+    assert.equal(bot.percentageToGradeInfo(95).gpa, 4.0);
+    assert.equal(bot.percentageToGradeInfo(90).letter, 'A-');
+    assert.equal(bot.percentageToGradeInfo(90).gpa, 3.67);
+    assert.equal(bot.percentageToGradeInfo(85).letter, 'B+');
+    assert.equal(bot.percentageToGradeInfo(80).letter, 'B');
+    assert.equal(bot.percentageToGradeInfo(75).letter, 'B-');
+    assert.equal(bot.percentageToGradeInfo(70).letter, 'C+');
+    assert.equal(bot.percentageToGradeInfo(65).letter, 'C');
+    assert.equal(bot.percentageToGradeInfo(60).letter, 'C-');
+    assert.equal(bot.percentageToGradeInfo(55).letter, 'D+');
+    assert.equal(bot.percentageToGradeInfo(50).letter, 'D');
+    assert.equal(bot.percentageToGradeInfo(49).letter, 'F');
+    assert.equal(bot.percentageToGradeInfo(49).gpa, 0.0);
+});
+
+test('Telegram bot: calculateGradeReport with and without final exam', () => {
+    const bot = require('../api/bot/index.js');
+
+    // With final exam = 80
+    const reportWithFinal = bot.calculateGradeReport(80, 80, 80);
+    assert.match(reportWithFinal, /80\.00/);
+    assert.match(reportWithFinal, /Обычная стипендия/);
+
+    // With failed final exam (<25)
+    const reportFailFinal = bot.calculateGradeReport(80, 80, 20);
+    assert.match(reportFailFinal, /ниже порога 25 баллов/);
+
+    // With failed term score (<25)
+    const reportFailTerm = bot.calculateGradeReport(20, 20, 80);
+    assert.match(reportFailTerm, /Допуск к экзамену заблокирован/);
+
+    // Without final exam (forecast)
+    const reportForecast = bot.calculateGradeReport(80, 80, null);
+    assert.match(reportForecast, /Прогноз/i);
+    assert.match(reportForecast, /Для сдачи/);
+    assert.match(reportForecast, /Обычная стипендия/);
+});
+
+test('Telegram bot: calculateGPAReport processes lines with percentages and letters', () => {
+    const bot = require('../api/bot/index.js');
+    const input = `Математика 95 3
+Физика 80 4
+История 70 3`;
+    const report = bot.calculateGPAReport(input);
+    assert.match(report, /РАСЧЁТ GPA ЗА ТРИМЕСТР/);
+    assert.match(report, /Итоговый GPA/);
+    assert.match(report, /Всего кредитов:.*10/);
+
+    // Letter grade input
+    const letterInput = `A 3\nB 4`;
+    const letterReport = bot.calculateGPAReport(letterInput);
+    assert.match(letterReport, /Итоговый GPA/);
+});
+
+test('Telegram bot: calculateCumulativeGPAReport computes credit-weighted cumulative GPA', () => {
+    const bot = require('../api/bot/index.js');
+    const input = `1 семестр: 4.0 30
+2 семестр: 3.0 30`;
+    const report = bot.calculateCumulativeGPAReport(input);
+    assert.match(report, /Cumulative GPA.*3\.50/);
+    assert.match(report, /Сумма кредитов.*60/);
+});
+
+test('Telegram bot: calculateAttendanceReport calculates 10-week limit and visual meter', () => {
+    const bot = require('../api/bot/index.js');
+    const reportSafe = bot.calculateAttendanceReport(3, 2);
+    assert.match(reportSafe, /Всего занятий за семестр: <b>30<\/b>/);
+    assert.match(reportSafe, /Порог недопуска \(30%\): <b>9 пар максимум<\/b>/);
+    assert.match(reportSafe, /Безопасная зона посещаемости/);
+
+    const reportDanger = bot.calculateAttendanceReport(3, 10);
+    assert.match(reportDanger, /КРИТИЧЕСКИЙ ЛИМИТ ПРЕВЫШЕН/);
+});
+
+test('Telegram bot: convertGradeReport outputs complete conversion table', () => {
+    const bot = require('../api/bot/index.js');
+    const report = bot.convertGradeReport(92);
+    assert.match(report, /Буквенная оценка:.*A-/);
+    assert.match(report, /GPA:.*3\.67/);
+    assert.match(report, /ECTS: <b>B<\/b>/);
+});
+
+test('Telegram bot: admin security and main keyboard isolation', () => {
+    const bot = require('../api/bot/index.js');
+    // Normal student keyboard
+    const studentKeyboard = bot.getMainKeyboard('123456789_student');
+    const hasAdminButton = studentKeyboard.keyboard.some(row => row.some(btn => btn.text.includes('Панель Администратора')));
+    assert.equal(hasAdminButton, false, 'Admin button must NEVER be visible to normal students');
+
+    // Help text check
+    const help = bot.getFoolproofHelpText();
+    assert.match(help, /ИНСТРУКЦИЯ ПО ИСПОЛЬЗОВАНИЮ БОТА/);
+    assert.match(help, /Калькулятор итоговой оценки/);
+    assert.match(help, /Калькулятор GPA/);
+});
+
+
