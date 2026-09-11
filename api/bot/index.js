@@ -3,6 +3,7 @@
 // Полноценная замена веб-сайта GradeMaster прямо в Telegram.
 // Работает и как Vercel Serverless Webhook (/api/bot), и как локальный Long-Polling скрипт.
 
+const aitu = require('./aitu.js');
 const BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
 const ADMIN_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || '').trim();
 const WEBAPP_URL = process.env.WEBAPP_URL || 'https://calculator-not-404.vercel.app';
@@ -100,6 +101,7 @@ function isAdmin(chatId) {
 function getMainKeyboard(chatId) {
     const isUserAdmin = isAdmin(chatId);
     const keyboard = [
+        [{ text: '📝 Квизы AITU' }],
         [{ text: 'Итоговая оценка' }, { text: 'Калькулятор GPA' }],
         [{ text: 'Кумулятивный GPA' }, { text: 'Посещаемость' }],
         [{ text: 'Конвертер GPA' }, { text: 'Отзыв / Поддержка' }],
@@ -711,6 +713,74 @@ async function handleMessage(msg) {
         return sendMessage(chatId, welcome, {
             reply_markup: getMainKeyboard(chatId)
         });
+    }
+
+    // 1.5. Квизы AITU (/quizzes, /aitu)
+    if (text === '📝 Квизы AITU' || text === '/quizzes' || text === '/aitu' || text === 'Квизы AITU' || text === 'Квизы') {
+        await sendMessage(chatId, '⏳ <i>Проверяю квизы и дедлайны на learn.astanait.edu.kz...</i>');
+        const result = await aitu.getUpcomingQuizzes();
+        const msgText = aitu.formatQuizzesMessage(result);
+        return sendMessage(chatId, msgText, {
+            reply_markup: getMainKeyboard(chatId),
+            disable_web_page_preview: true
+        });
+    }
+
+    // 1.6. /set_cookie <sessionid> (Обновление сессии AITU)
+    if (text.startsWith('/set_cookie') || text.startsWith('/cookie')) {
+        if (!isAdmin(chatId)) {
+            return sendMessage(chatId, 'Доступ запрещен.');
+        }
+        const cookieVal = text.replace(/^\/(?:set_cookie|cookie)/, '').trim();
+        if (!cookieVal) {
+            return sendMessage(chatId, 'Отправьте значение sessionid:\n<code>/set_cookie ВАШ_SESSION_ID</code>');
+        }
+        let cleanSid = cookieVal;
+        const match = cookieVal.match(/sessionid=([^;\s]+)/);
+        if (match) cleanSid = match[1].trim();
+
+        process.env.AITU_SESSION_ID = cleanSid;
+        await sendMessage(chatId, '✅ <b>Cookie сохранен!</b> Проверяю подключение к learn.astanait.edu.kz...');
+        const testRes = await aitu.getUpcomingQuizzes(cleanSid);
+        if (testRes.ok) {
+            return sendMessage(chatId, '🎉 <b>Успешно подключено к AITU!</b>\nНайдено дедлайнов: <b>' + testRes.quizzes.length + '</b>\n\n' + aitu.formatQuizzesMessage(testRes), {
+                reply_markup: getMainKeyboard(chatId),
+                disable_web_page_preview: true
+            });
+        } else {
+            return sendMessage(chatId, '⚠️ Ошибка проверки сессии: ' + testRes.error + '\nУбедитесь, что sessionid скопирован корректно.', {
+                reply_markup: getMainKeyboard(chatId)
+            });
+        }
+    }
+
+    // 1.7. /test_reminder (Тестирование ежедневного напоминания Cron)
+    if (text === '/test_reminder' || text === '/cron') {
+        if (!isAdmin(chatId)) {
+            return sendMessage(chatId, 'Доступ запрещен.');
+        }
+        await sendMessage(chatId, '⏳ Запускаю тестовую проверку напоминаний по квизам...');
+        const result = await aitu.getUpcomingQuizzes();
+        if (!result.ok) {
+            return sendMessage(chatId, '❌ Ошибка: ' + result.error);
+        }
+        const urgent = result.quizzes.filter(q => !q.isPast && q.diffDays <= 3);
+        if (urgent.length === 0) {
+            return sendMessage(chatId, 'ℹ️ В ближайшие 3 дня срочных дедлайнов нет. Всего активных квизов в семестре: <b>' + result.quizzes.length + '</b>.');
+        }
+        let alertMsg = '🔔 <b>Тестовое напоминание о квизах AITU:</b>\n\n';
+        for (const item of urgent) {
+            const dateObj = new Date(item.dueDate);
+            const astanaTime = new Intl.DateTimeFormat('ru-RU', {
+                timeZone: 'Asia/Almaty',
+                day: 'numeric',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit'
+            }).format(dateObj);
+            alertMsg += '📚 <b>' + item.courseName + '</b>\n📝 <a href="' + item.link + '">' + item.title + '</a>\n⏰ Дедлайн: <b>' + astanaTime + '</b> (осталось ' + item.diffDays + ' дн.)\n\n';
+        }
+        return sendMessage(chatId, alertMsg, { disable_web_page_preview: true });
     }
 
     // 2. /help или "Инструкция"
