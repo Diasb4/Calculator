@@ -152,6 +152,9 @@ document.getElementById('calculate-gpa').addEventListener('click', function () {
     const resultDiv = document.getElementById('result');
     resultDiv.className = 'result success show';
     resultDiv.innerHTML = resultsHTML;
+    if (typeof window.trackCalculation === 'function') {
+        window.trackCalculation('gpa');
+    }
 });
 
 // Обработчик нажатия Enter в полях ввода

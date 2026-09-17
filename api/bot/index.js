@@ -4,6 +4,7 @@
 // Работает и как Vercel Serverless Webhook (/api/bot), и как локальный Long-Polling скрипт.
 
 const aitu = require('./aitu.js');
+const statsEngine = require('../stats/engine.js');
 const BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
 const RAW_ADMIN_IDS = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
 const ADMIN_CHAT_IDS = RAW_ADMIN_IDS
@@ -568,6 +569,7 @@ async function handleAdminPanel(chatId, messageId = null) {
         `• <code>AITU_SESSION</code>: ${hasAitu ? `✅ Сохранена (${sessionPreview})` : '⚠️ Не сохранена'}\n` +
         `• <code>TELEGRAM_SECRET_TOKEN</code>: ${hasSecret ? '✅ Включен' : '⚪ Не включен (опционально)'}\n\n` +
         `🛠 <b>Команды управления:</b>\n` +
+        `• <code>/stats</code> — анонимная статистика использования\n` +
         `• <code>/set_cookie &lt;sid&gt;</code> — обновить cookie AITU\n` +
         `• <code>/quizzes</code> — проверить текущие квизы и дедлайны\n` +
         `• <code>/test_reminder</code> — тест утреннего напоминания\n` +
@@ -578,15 +580,15 @@ async function handleAdminPanel(chatId, messageId = null) {
     const inlineKeyboard = {
         inline_keyboard: [
             [
-                { text: '📝 Проверить квизы AITU', callback_data: 'adm_quizzes' },
-                { text: '🔔 Тест напоминания', callback_data: 'adm_cron' }
+                { text: '📊 Статистика использования', callback_data: 'adm_stats' },
+                { text: '📝 Квизы AITU', callback_data: 'adm_quizzes' }
             ],
             [
-                { text: '🔄 Перепривязать Webhook в Vercel', callback_data: 'adm_setwebhook' },
-                { text: '📡 Проверить Webhook Info', callback_data: 'adm_webhookinfo' }
+                { text: '🔔 Тест напоминания', callback_data: 'adm_cron' },
+                { text: '📡 Webhook Info', callback_data: 'adm_webhookinfo' }
             ],
             [
-                { text: '👥 Список пользователей', callback_data: 'adm_users' },
+                { text: '🔄 Обновить Webhook', callback_data: 'adm_setwebhook' },
                 { text: '🏠 Главное меню', callback_data: 'adm_home' }
             ]
         ]
@@ -677,9 +679,19 @@ async function handleCallbackQuery(cq) {
             }
         }
 
-        if (data === 'adm_users') {
-            const list = Array.from(activeUsers).map(u => `• <code>${u}</code>`).join('\n') || 'Пока нет пользователей';
-            return sendMessage(chatId, `👥 <b>Активные пользователи:</b>\n\n${list}`);
+        if (data === 'adm_stats') {
+            const statsMsg = await statsEngine.formatStatsTelegram();
+            return sendMessage(chatId, statsMsg, {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '◀️ Назад в Панель управления', callback_data: 'adm_panel' }]
+                    ]
+                }
+            });
+        }
+
+        if (data === 'adm_panel') {
+            return handleAdminPanel(chatId, messageId);
         }
 
         if (data === 'adm_home') {
@@ -745,6 +757,9 @@ async function handleMessage(msg) {
     const text = msg.text.trim();
     const userName = msg.from.username ? `@${msg.from.username}` : `${msg.from.first_name || ''} ${msg.from.last_name || ''}`.trim();
     activeUsers.add(String(chatId));
+
+    const anonId = statsEngine.anonymizeUserId(chatId);
+    statsEngine.recordVisit({ anonId, platform: 'bot' }).catch(() => {});
 
     const session = getSession(chatId);
 
@@ -862,6 +877,15 @@ async function handleMessage(msg) {
         return handleAdminPanel(chatId);
     }
 
+    // 3.1. /stats (ТОЛЬКО ДЛЯ АДМИНА)
+    if (text === '/stats' || text === '📊 Статистика') {
+        if (!isAdmin(chatId)) {
+            return sendMessage(chatId, 'Команда не найдена. Напишите <code>/help</code> для просмотра доступных функций.', { reply_markup: getMainKeyboard(chatId) });
+        }
+        const statsMsg = await statsEngine.formatStatsTelegram();
+        return sendMessage(chatId, statsMsg, { reply_markup: getMainKeyboard(chatId) });
+    }
+
     // 4. /id
     if (text === '/id') {
         return sendMessage(chatId, `Ваш Telegram Chat ID: <code>${chatId}</code>\nИмя: <b>${esc(userName)}</b>\nПрава: <b>${isAdmin(chatId) ? 'Администратор' : 'Студент'}</b>`);
@@ -953,18 +977,21 @@ async function handleMessage(msg) {
         if (parts.length < 2) {
             return sendMessage(chatId, '❌ <b>Недостаточно данных.</b>\n<i>Формат:</i> <code>/calc РегМид РегЭнд [Файнал]</code>\n<i>Пример:</i> <code>/calc 80 85</code> или <code>/calc 80 85 90</code>');
         }
+        statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
         const res = calculateGradeReport(parts[0], parts[1], parts[2]);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (text.startsWith('/gpa')) {
         const raw = text.replace(/^\/gpa\s*/i, '');
+        statsEngine.recordCalculation({ calcType: 'gpa', platform: 'bot' }).catch(() => {});
         const res = calculateGPAReport(raw);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (text.startsWith('/cgpa') || text.startsWith('/cumulative') || text.startsWith('/totalgpa') || text.startsWith('/cum')) {
         const raw = text.replace(/^(\/cgpa|\/cumulative|\/totalgpa|\/cum)\s*/i, '');
+        statsEngine.recordCalculation({ calcType: 'cumulative', platform: 'bot' }).catch(() => {});
         const res = calculateCumulativeGPAReport(raw);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
@@ -974,6 +1001,7 @@ async function handleMessage(msg) {
         if (parts.length === 0) {
             return sendMessage(chatId, '❌ <b>Укажите количество пар в неделю.</b>\n<i>Пример:</i> <code>/att 3</code> или <code>/att 3 2</code>');
         }
+        statsEngine.recordCalculation({ calcType: 'attendance', platform: 'bot' }).catch(() => {});
         const res = calculateAttendanceReport(parts[0], parts[1]);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
@@ -1007,6 +1035,7 @@ async function handleMessage(msg) {
         const re = val;
         clearSession(chatId);
 
+        statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
         const forecast = calculateGradeReport(rm, re);
         const inlineKeyboard = {
             inline_keyboard: [
@@ -1028,18 +1057,21 @@ async function handleMessage(msg) {
         const re = session.data.re;
         clearSession(chatId);
 
+        statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
         const res = calculateGradeReport(rm, re, val);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (session.step === 'gpa_input') {
         clearSession(chatId);
+        statsEngine.recordCalculation({ calcType: 'gpa', platform: 'bot' }).catch(() => {});
         const res = calculateGPAReport(text);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (session.step === 'cgpa_input' || session.step === 'cum_input') {
         clearSession(chatId);
+        statsEngine.recordCalculation({ calcType: 'cumulative', platform: 'bot' }).catch(() => {});
         const res = calculateCumulativeGPAReport(text);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
@@ -1062,6 +1094,7 @@ async function handleMessage(msg) {
         const lessons = session.data.lessons;
         clearSession(chatId);
 
+        statsEngine.recordCalculation({ calcType: 'attendance', platform: 'bot' }).catch(() => {});
         const res = calculateAttendanceReport(lessons, missed);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
@@ -1091,6 +1124,7 @@ async function handleMessage(msg) {
     // 10. Попытка автоматического распознавания чисел (если пользователь просто отправил числа)
     const numTokens = text.split(/[\s,]+/).filter(Boolean).map(Number);
     if (numTokens.length >= 2 && numTokens.every(n => !isNaN(n) && n >= 0 && n <= 100)) {
+        statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
         if (numTokens.length === 2) {
             const res = calculateGradeReport(numTokens[0], numTokens[1]);
             return sendMessage(chatId, `💡 <i>Распознан расчёт РегМид = ${numTokens[0]}, РегЭнд = ${numTokens[1]}:</i>\n\n${res}`, { reply_markup: getMainKeyboard(chatId) });
@@ -1212,6 +1246,8 @@ module.exports.convertGradeReport = convertGradeReport;
 module.exports.isAdmin = isAdmin;
 module.exports.getMainKeyboard = getMainKeyboard;
 module.exports.getFoolproofHelpText = getFoolproofHelpText;
+module.exports.statsEngine = statsEngine;
+module.exports.anonymizeUserId = statsEngine.anonymizeUserId;
 
 // ==========================================
 // ЛОКАЛЬНЫЙ LONG-POLLING (ДЛЯ РАЗРАБОТКИ)

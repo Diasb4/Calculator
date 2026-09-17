@@ -523,6 +523,9 @@ function calculate() {
         }
 
         resultDiv.innerHTML = predictionHTML;
+        if (typeof window.trackCalculation === 'function') {
+            window.trackCalculation('total');
+        }
         return;
     }
 
@@ -582,6 +585,9 @@ function calculate() {
 
     resultDiv.className = `result ${status} show`;
     resultDiv.innerHTML = message + `<p>${comment}</p><p class="score">${detailsText}</p>`;
+    if (typeof window.trackCalculation === 'function') {
+        window.trackCalculation('total');
+    }
 }
 
 

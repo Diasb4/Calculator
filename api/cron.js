@@ -2,6 +2,7 @@
 // Vercel Cron handler для ежедневных напоминаний о квизах AITU
 
 const aitu = require('./bot/aitu.js');
+const statsEngine = require('./stats/engine.js');
 
 const BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
 const RAW_ADMIN_IDS = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
@@ -81,11 +82,33 @@ module.exports = async function handler(req, res) {
             }
             alertMsg += `Не забудьте сдать вовремя! 🚀`;
 
+            let statsLine = '';
+            try {
+                const stats = await statsEngine.getStatsSummary();
+                if (stats && (stats.dauYesterday > 0 || stats.calcsYesterday > 0)) {
+                    statsLine = `\n\n📊 <i>Вчера GradeMaster: <b>${stats.dauYesterday}</b> активных пользователей, <b>${stats.calcsYesterday}</b> расчётов.</i>`;
+                }
+            } catch { /* Optional */ }
+            alertMsg += statsLine;
+
             for (const adminId of ADMIN_CHAT_IDS) {
                 await sendTelegram(adminId, alertMsg);
             }
             return res.status(200).json({ ok: true, reminded: urgentQuizzes.length });
         }
+
+        // Если срочных дедлайнов нет, но есть статистика за вчера — отправляем утреннюю сводку
+        try {
+            const stats = await statsEngine.getStatsSummary();
+            if (stats && (stats.dauYesterday > 0 || stats.calcsYesterday > 0)) {
+                const morningNote = `☀️ <b>Доброе утро! GradeMaster:</b>\n` +
+                    `Срочных дедлайнов на ближайшие 3 дня нет (активных квизов: ${result.quizzes.length}).\n\n` +
+                    `📊 <i>Вчера сервисом воспользовались <b>${stats.dauYesterday}</b> студентов (сделано <b>${stats.calcsYesterday}</b> расчётов).</i>`;
+                for (const adminId of ADMIN_CHAT_IDS) {
+                    await sendTelegram(adminId, morningNote);
+                }
+            }
+        } catch { /* Optional */ }
 
         return res.status(200).json({ ok: true, message: 'No urgent quizzes today', total: result.quizzes.length });
     } catch (err) {

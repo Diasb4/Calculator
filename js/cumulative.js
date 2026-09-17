@@ -135,6 +135,9 @@ document.getElementById('calculate-cumulative').addEventListener('click', functi
     if (typeof applyTranslations === 'function') {
         applyTranslations();
     }
+    if (typeof window.trackCalculation === 'function') {
+        window.trackCalculation('cumulative');
+    }
 });
 
 

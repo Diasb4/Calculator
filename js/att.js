@@ -113,5 +113,8 @@ function calculateAttendance() {
         <div class="info">${translationHTML('att_note')}</div>`;
 
     resultDiv.innerHTML = resultHTML;
+    if (typeof window.trackCalculation === 'function') {
+        window.trackCalculation('attendance');
+    }
 }
 
