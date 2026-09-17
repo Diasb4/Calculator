@@ -1,23 +1,253 @@
 // api/bot/aitu.js
 // Модуль интеграции с платформой learn.astanait.edu.kz (Open edX)
 
+const os = require('os');
+const path = require('path');
+const fs = require('fs');
+
 const DEFAULT_COURSES = [
     { id: 'course-v1:AITU+PHIL01+26-27_C1_Y3', name: 'Philosophy' },
     { id: 'course-v1:AITU+Cloud101+26-27_C1_Y3', name: 'Cloud Technologies' },
     { id: 'course-v1:AITU+PM_NI_01+26-27_C1_Y3', name: 'Project Management' }
 ];
 
+const STORAGE_PREFIX = 'GM_AITU_SESSION:';
+let memorySessionCache = null;
+
+function getCacheFilePath() {
+    try {
+        return path.join(os.tmpdir(), 'gm_aitu_session.json');
+    } catch {
+        return null;
+    }
+}
+
+function readLocalCache() {
+    if (memorySessionCache && memorySessionCache.session) {
+        return memorySessionCache.session;
+    }
+    const cacheFile = getCacheFilePath();
+    if (cacheFile) {
+        try {
+            if (fs.existsSync(cacheFile)) {
+                const raw = fs.readFileSync(cacheFile, 'utf8');
+                const data = JSON.parse(raw);
+                if (data && data.session) {
+                    memorySessionCache = data;
+                    return data.session;
+                }
+            }
+        } catch {
+            // Ignore cache errors
+        }
+    }
+    return null;
+}
+
+function writeLocalCache(session) {
+    if (!session) return;
+    memorySessionCache = { session: String(session).trim(), updatedAt: Date.now() };
+    process.env.AITU_SESSION_ID = memorySessionCache.session;
+    const cacheFile = getCacheFilePath();
+    if (cacheFile) {
+        try {
+            fs.writeFileSync(cacheFile, JSON.stringify(memorySessionCache), 'utf8');
+        } catch {
+            // Ignore cache write errors
+        }
+    }
+}
+
+function clearLocalCache() {
+    memorySessionCache = null;
+    delete process.env.AITU_SESSION_ID;
+    const cacheFile = getCacheFilePath();
+    if (cacheFile) {
+        try {
+            if (fs.existsSync(cacheFile)) {
+                fs.unlinkSync(cacheFile);
+            }
+        } catch {
+            // Ignore unlink errors
+        }
+    }
+}
+
+/**
+ * Получить сохраненную сессию:
+ * 1. Из локального кэша процесса / tmp
+ * 2. Из закрепленного сообщения в чате администратора Telegram (getChat)
+ * 3. Из process.env.AITU_SESSION_ID
+ */
+async function getStoredSession(targetChatId) {
+    const local = readLocalCache();
+    if (local) {
+        return local;
+    }
+
+    const token = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    const chatId = targetChatId || (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+
+    if (token && chatId) {
+        try {
+            const res = await fetch(`https://api.telegram.org/bot${token}/getChat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: chatId }),
+                signal: AbortSignal.timeout(5000)
+            });
+            const data = await res.json();
+            const pinned = data?.result?.pinned_message;
+
+            if (pinned && pinned.text && pinned.text.includes(STORAGE_PREFIX)) {
+                const regex = new RegExp(`${STORAGE_PREFIX}([A-Za-z0-9+/=]+)`);
+                const match = pinned.text.match(regex);
+                if (match && match[1]) {
+                    try {
+                        const decoded = Buffer.from(match[1], 'base64').toString('utf8').trim();
+                        if (decoded) {
+                            writeLocalCache(decoded);
+                            return decoded;
+                        }
+                    } catch (decErr) {
+                        console.error('Failed to decode stored base64 session:', decErr.message);
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('getStoredSession: Telegram getChat error:', err.message);
+        }
+    }
+
+    const envSid = (process.env.AITU_SESSION_ID || '').trim();
+    if (envSid) {
+        writeLocalCache(envSid);
+        return envSid;
+    }
+
+    return null;
+}
+
+/**
+ * Сохранить сессию персистентно в Telegram (pinned message) и в локальный кэш
+ */
+async function saveStoredSession(sessionId, targetChatId) {
+    if (!sessionId) return false;
+    const cleanSid = String(sessionId).trim();
+    writeLocalCache(cleanSid);
+
+    const token = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
+    const chatId = targetChatId || (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+
+    if (!token || !chatId) {
+        console.warn('saveStoredSession: TELEGRAM_BOT_TOKEN or CHAT_ID missing, saved to local cache only');
+        return false;
+    }
+
+    const b64 = Buffer.from(cleanSid, 'utf8').toString('base64');
+    const nowStr = new Intl.DateTimeFormat('ru-RU', {
+        timeZone: 'Asia/Almaty',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    }).format(new Date());
+
+    const messageText = `🔐 <b>GradeMaster • Хранилище сессии AITU</b>\n` +
+        `<i>Служебное закрепленное сообщение. Бот использует его для автоматической утренней проверки квизов learn.astanait.edu.kz.</i>\n\n` +
+        `<code>${STORAGE_PREFIX}${b64}</code>\n\n` +
+        `🕒 <b>Обновлено:</b> ${nowStr} (Алматы)`;
+
+    try {
+        // 1. Проверяем текущее закрепленное сообщение
+        const chatRes = await fetch(`https://api.telegram.org/bot${token}/getChat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId }),
+            signal: AbortSignal.timeout(5000)
+        });
+        const chatData = await chatRes.json();
+        const pinnedMsg = chatData?.result?.pinned_message;
+
+        if (pinnedMsg && pinnedMsg.text && pinnedMsg.text.includes(STORAGE_PREFIX)) {
+            // Редактируем существующее закрепленное сообщение без спама новыми сообщениями
+            try {
+                const editRes = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        message_id: pinnedMsg.message_id,
+                        text: messageText,
+                        parse_mode: 'HTML'
+                    }),
+                    signal: AbortSignal.timeout(5000)
+                });
+                const editData = await editRes.json();
+                if (editData.ok) {
+                    return true;
+                }
+            } catch {
+                // Если не получилось отредактировать, отправим новое
+            }
+        }
+
+        // 2. Отправляем тихое сервисное сообщение
+        const sendRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: chatId,
+                text: messageText,
+                parse_mode: 'HTML',
+                disable_notification: true
+            }),
+            signal: AbortSignal.timeout(5000)
+        });
+        const sendData = await sendRes.json();
+        if (!sendData.ok || !sendData.result) {
+            console.error('saveStoredSession: sendMessage failed:', sendData);
+            return false;
+        }
+
+        const newMsgId = sendData.result.message_id;
+
+        // 3. Закрепляем его
+        await fetch(`https://api.telegram.org/bot${token}/pinChatMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: chatId,
+                message_id: newMsgId,
+                disable_notification: true
+            }),
+            signal: AbortSignal.timeout(5000)
+        }).catch(() => {});
+
+        return true;
+    } catch (err) {
+        console.error('saveStoredSession error:', err.message);
+        return false;
+    }
+}
+
 /**
  * Получить список предстоящих квизов из курсов learn.astanait.edu.kz
- * @param {string} sessionId - Cookie sessionid пользователя
+ * @param {string} [sessionId] - Cookie sessionid пользователя (если не указан, извлекается из персистентного хранилища)
  * @returns {Promise<{ ok: boolean, error?: string, sessionExpired?: boolean, quizzes: Array }>}
  */
 async function getUpcomingQuizzes(sessionId) {
-    const sid = (sessionId || process.env.AITU_SESSION_ID || '').trim();
+    let sid = (sessionId || '').trim();
+    if (!sid) {
+        sid = (await getStoredSession()) || '';
+    }
+
     if (!sid) {
         return {
             ok: false,
-            error: 'AITU_SESSION_ID не настроен. Добавьте его в переменные окружения Vercel.',
+            error: 'Сессия learn.astanait.edu.kz не настроена. Отправьте боту команду /set_cookie ВАШ_SESSION_ID.',
             sessionExpired: true,
             quizzes: []
         };
@@ -152,8 +382,9 @@ async function getUpcomingQuizzes(sessionId) {
 function formatQuizzesMessage(result) {
     if (!result.ok) {
         if (result.sessionExpired) {
-            return `⚠️ <b>Сессия AITU истекла!</b>\n\n` +
-                   `Пожалуйста, войдите в <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> через Microsoft SSO, скопируйте cookie <code>sessionid</code> и обновите переменную <code>AITU_SESSION_ID</code> в Vercel.`;
+            return `⚠️ <b>Сессия learn.astanait.edu.kz истекла!</b>\n\n` +
+                   `Пожалуйста, войдите в <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> через Microsoft SSO, скопируйте cookie <code>sessionid</code> и отправьте боту команду:\n<code>/set_cookie ВАШ_SESSION_ID</code>\n\n` +
+                   `💡 <i>Сессия будет автоматически сохранена в Telegram storage, и утренние напоминания продолжат работать без сбоев.</i>`;
         }
         return `❌ <b>Ошибка при проверке квизов:</b>\n${result.error || 'Неизвестная ошибка'}`;
     }
@@ -211,5 +442,11 @@ function formatQuizzesMessage(result) {
 module.exports = {
     getUpcomingQuizzes,
     formatQuizzesMessage,
+    getStoredSession,
+    saveStoredSession,
+    readLocalCache,
+    writeLocalCache,
+    clearLocalCache,
+    STORAGE_PREFIX,
     DEFAULT_COURSES
 };

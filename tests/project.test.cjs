@@ -508,4 +508,61 @@ test('Telegram bot: admin security and main keyboard isolation', () => {
     assert.match(help, /Калькулятор GPA/);
 });
 
+test('AITU: local cache stores and retrieves session', () => {
+    const aitu = require('../api/bot/aitu.js');
+    const testSession = 'test_sess_abc123';
+    aitu.writeLocalCache(testSession);
+    assert.equal(aitu.readLocalCache(), testSession);
+    assert.equal(process.env.AITU_SESSION_ID, testSession);
+});
+
+test('AITU: formatQuizzesMessage instructs user to use /set_cookie on session expiration', () => {
+    const aitu = require('../api/bot/aitu.js');
+    const expiredRes = { ok: false, sessionExpired: true, quizzes: [] };
+    const msg = aitu.formatQuizzesMessage(expiredRes);
+    assert.match(msg, /Сессия learn\.astanait\.edu\.kz истекла/);
+    assert.match(msg, /\/set_cookie ВАШ_SESSION_ID/);
+});
+
+test('AITU: getStoredSession extracts session from Telegram pinned message storage format', async () => {
+    const os = require('node:os');
+    const aitu = require('../api/bot/aitu.js');
+    const secretSession = '1|mock_user_session_token_xyz:12345';
+    const b64 = Buffer.from(secretSession, 'utf8').toString('base64');
+    const pinnedText = `🔐 GradeMaster • Хранилище сессии AITU\nGM_AITU_SESSION:${b64}\n🕒 17.09.2026`;
+
+    const originalFetch = global.fetch;
+    try {
+        global.fetch = async (url, opts) => {
+            if (url && url.includes('/getChat')) {
+                return {
+                    ok: true,
+                    json: async () => ({
+                        ok: true,
+                        result: {
+                            id: 123456,
+                            pinned_message: {
+                                message_id: 999,
+                                text: pinnedText
+                            }
+                        }
+                    })
+                };
+            }
+            return originalFetch ? originalFetch(url, opts) : Promise.reject(new Error('unhandled'));
+        };
+
+        aitu.clearLocalCache();
+        process.env.TELEGRAM_BOT_TOKEN = 'mock_bot_token';
+        process.env.TELEGRAM_CHAT_ID = '123456';
+
+        const retrieved = await aitu.getStoredSession('123456');
+        assert.equal(retrieved, secretSession);
+        assert.equal(aitu.readLocalCache(), secretSession);
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
+
 

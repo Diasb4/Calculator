@@ -543,22 +543,35 @@ async function handleAdminPanel(chatId, messageId = null) {
     const hasBotToken = Boolean(BOT_TOKEN);
     const hasAdminId = Boolean(ADMIN_CHAT_ID);
     const hasSecret = Boolean(process.env.TELEGRAM_SECRET_TOKEN);
+    const storedSession = await aitu.getStoredSession(chatId);
+    const hasAitu = Boolean(storedSession);
+    const sessionPreview = hasAitu
+        ? (storedSession.length > 20 ? `${storedSession.substring(0, 8)}...${storedSession.slice(-6)}` : 'Активна')
+        : 'Не настроена';
 
     const adminMsg = `⚙️ <b>ПАНЕЛЬ АДМИНИСТРАТОРА GRADEMASTER:</b>\n\n` +
         `👤 <b>Ваш Admin Chat ID:</b> <code>${chatId}</code>\n` +
         `🌐 <b>Web App URL:</b> ${WEBAPP_URL}\n` +
         `👥 <b>Активных пользователей в памяти:</b> ${activeUsers.size}\n\n` +
-        `🔑 <b>Статус переменных окружения (Vercel):</b>\n` +
+        `🔑 <b>Статус переменных окружения и сервисов:</b>\n` +
         `• <code>TELEGRAM_BOT_TOKEN</code>: ${hasBotToken ? '✅ Настроен' : '❌ Не задан'}\n` +
         `• <code>TELEGRAM_CHAT_ID</code>: ${hasAdminId ? '✅ Настроен' : '❌ Не задан'}\n` +
+        `• <code>AITU_SESSION</code>: ${hasAitu ? `✅ Сохранена (${sessionPreview})` : '⚠️ Не сохранена'}\n` +
         `• <code>TELEGRAM_SECRET_TOKEN</code>: ${hasSecret ? '✅ Включен' : '⚪ Не включен (опционально)'}\n\n` +
         `🛠 <b>Команды управления:</b>\n` +
+        `• <code>/set_cookie &lt;sid&gt;</code> — обновить cookie AITU\n` +
+        `• <code>/quizzes</code> — проверить текущие квизы и дедлайны\n` +
+        `• <code>/test_reminder</code> — тест утреннего напоминания\n` +
         `• <code>/reply &lt;chat_id&gt; &lt;текст&gt;</code> — ответить студенту\n` +
-        `• <code>/broadcast &lt;текст&gt;</code> — разослать объявление всем пользователям\n` +
+        `• <code>/broadcast &lt;текст&gt;</code> — разослать объявление всем\n` +
         `• <code>/status</code> — проверить соединение с Telegram API`;
 
     const inlineKeyboard = {
         inline_keyboard: [
+            [
+                { text: '📝 Проверить квизы AITU', callback_data: 'adm_quizzes' },
+                { text: '🔔 Тест напоминания', callback_data: 'adm_cron' }
+            ],
             [
                 { text: '🔄 Перепривязать Webhook в Vercel', callback_data: 'adm_setwebhook' },
                 { text: '📡 Проверить Webhook Info', callback_data: 'adm_webhookinfo' }
@@ -594,6 +607,41 @@ async function handleCallbackQuery(cq) {
     if (data.startsWith('adm_')) {
         if (!isAdmin(chatId)) {
             return answerCallbackQuery(cq.id, 'Доступ запрещен', true);
+        }
+
+        if (data === 'adm_quizzes') {
+            await sendMessage(chatId, '⏳ <i>Проверяю квизы и дедлайны на learn.astanait.edu.kz...</i>');
+            const result = await aitu.getUpcomingQuizzes();
+            const msgText = aitu.formatQuizzesMessage(result);
+            return sendMessage(chatId, msgText, {
+                reply_markup: getMainKeyboard(chatId),
+                disable_web_page_preview: true
+            });
+        }
+
+        if (data === 'adm_cron') {
+            await sendMessage(chatId, '⏳ Запускаю тестовую проверку напоминаний по квизам...');
+            const result = await aitu.getUpcomingQuizzes();
+            if (!result.ok) {
+                return sendMessage(chatId, '❌ Ошибка: ' + result.error);
+            }
+            const urgent = result.quizzes.filter(q => !q.isPast && q.diffDays <= 3);
+            if (urgent.length === 0) {
+                return sendMessage(chatId, 'ℹ️ В ближайшие 3 дня срочных дедлайнов нет. Всего активных квизов в семестре: <b>' + result.quizzes.length + '</b>.');
+            }
+            let alertMsg = '🔔 <b>Тестовое напоминание о квизах AITU:</b>\n\n';
+            for (const item of urgent) {
+                const dateObj = new Date(item.dueDate);
+                const astanaTime = new Intl.DateTimeFormat('ru-RU', {
+                    timeZone: 'Asia/Almaty',
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }).format(dateObj);
+                alertMsg += `📚 <b>${item.courseName}</b>\n📝 <a href="${item.link}">${item.title}</a>\n⏰ Дедлайн: <b>${astanaTime}</b> (осталось ${item.diffDays} дн.)\n\n`;
+            }
+            return sendMessage(chatId, alertMsg, { disable_web_page_preview: true });
         }
 
         if (data === 'adm_setwebhook') {
@@ -739,16 +787,20 @@ async function handleMessage(msg) {
         const match = cookieVal.match(/sessionid=([^;\s]+)/);
         if (match) cleanSid = match[1].trim();
 
-        process.env.AITU_SESSION_ID = cleanSid;
-        await sendMessage(chatId, '✅ <b>Cookie сохранен!</b> Проверяю подключение к learn.astanait.edu.kz...');
+        await sendMessage(chatId, '⏳ <i>Проверяю подключение к learn.astanait.edu.kz...</i>');
         const testRes = await aitu.getUpcomingQuizzes(cleanSid);
         if (testRes.ok) {
-            return sendMessage(chatId, '🎉 <b>Успешно подключено к AITU!</b>\nНайдено дедлайнов: <b>' + testRes.quizzes.length + '</b>\n\n' + aitu.formatQuizzesMessage(testRes), {
+            const saved = await aitu.saveStoredSession(cleanSid, chatId);
+            const pinNotice = saved
+                ? '📌 <i>Сессия успешно сохранена и закреплена в Telegram! Теперь утренний Vercel Cron будет автоматически проверять дедлайны каждый день без сбоев при перезапусках контейнера.</i>'
+                : '💾 <i>Сессия сохранена локально.</i>';
+
+            return sendMessage(chatId, `🎉 <b>Успешно подключено к AITU!</b>\nНайдено дедлайнов: <b>${testRes.quizzes.length}</b>\n\n${pinNotice}\n\n` + aitu.formatQuizzesMessage(testRes), {
                 reply_markup: getMainKeyboard(chatId),
                 disable_web_page_preview: true
             });
         } else {
-            return sendMessage(chatId, '⚠️ Ошибка проверки сессии: ' + testRes.error + '\nУбедитесь, что sessionid скопирован корректно.', {
+            return sendMessage(chatId, '⚠️ <b>Ошибка проверки сессии:</b> ' + testRes.error + '\n\nУбедитесь, что вы скопировали актуальный <code>sessionid</code> из браузера после входа в learn.astanait.edu.kz.', {
                 reply_markup: getMainKeyboard(chatId)
             });
         }

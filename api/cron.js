@@ -4,7 +4,7 @@
 const aitu = require('./bot/aitu.js');
 
 const BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
-const ADMIN_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || '').trim();
+const ADMIN_CHAT_ID = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
 const API_BASE = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 async function sendTelegram(chatId, text) {
@@ -41,7 +41,8 @@ module.exports = async function handler(req, res) {
                 await sendTelegram(
                     ADMIN_CHAT_ID,
                     `⚠️ <b>Внимание: Сессия learn.astanait.edu.kz истекла!</b>\n\n` +
-                    `Бот не смог проверить дедлайны по квизам. Пожалуйста, обновите <code>AITU_SESSION_ID</code> в настройках Vercel или отправьте боту команду <code>/set_cookie ВАШ_SESSION_ID</code>.`
+                    `Бот не смог проверить дедлайны по квизам. Пожалуйста, отправьте боту команду в чат:\n<code>/set_cookie ВАШ_SESSION_ID</code>\n\n` +
+                    `💡 <i>Сессия сохранится в Telegram storage и восстановит автоматические напоминания.</i>`
                 );
             }
             return res.status(200).json({ ok: false, error: result.error });
