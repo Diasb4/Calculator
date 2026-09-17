@@ -4,7 +4,10 @@
 const aitu = require('./bot/aitu.js');
 
 const BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
-const ADMIN_CHAT_ID = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+const RAW_ADMIN_IDS = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+const ADMIN_CHAT_IDS = RAW_ADMIN_IDS
+    ? RAW_ADMIN_IDS.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean)
+    : [];
 const API_BASE = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 async function sendTelegram(chatId, text) {
@@ -29,7 +32,7 @@ module.exports = async function handler(req, res) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    if (!ADMIN_CHAT_ID) {
+    if (ADMIN_CHAT_IDS.length === 0) {
         return res.status(500).json({ error: 'TELEGRAM_CHAT_ID is not configured' });
     }
 
@@ -38,12 +41,12 @@ module.exports = async function handler(req, res) {
 
         if (!result.ok) {
             if (result.sessionExpired) {
-                await sendTelegram(
-                    ADMIN_CHAT_ID,
-                    `⚠️ <b>Внимание: Сессия learn.astanait.edu.kz истекла!</b>\n\n` +
+                const expiredMsg = `⚠️ <b>Внимание: Сессия learn.astanait.edu.kz истекла!</b>\n\n` +
                     `Бот не смог проверить дедлайны по квизам. Пожалуйста, отправьте боту команду в чат:\n<code>/set_cookie ВАШ_SESSION_ID</code>\n\n` +
-                    `💡 <i>Сессия сохранится в Telegram storage и восстановит автоматические напоминания.</i>`
-                );
+                    `💡 <i>Сессия сохранится в Telegram storage и восстановит автоматические напоминания.</i>`;
+                for (const adminId of ADMIN_CHAT_IDS) {
+                    await sendTelegram(adminId, expiredMsg);
+                }
             }
             return res.status(200).json({ ok: false, error: result.error });
         }
@@ -78,7 +81,9 @@ module.exports = async function handler(req, res) {
             }
             alertMsg += `Не забудьте сдать вовремя! 🚀`;
 
-            await sendTelegram(ADMIN_CHAT_ID, alertMsg);
+            for (const adminId of ADMIN_CHAT_IDS) {
+                await sendTelegram(adminId, alertMsg);
+            }
             return res.status(200).json({ ok: true, reminded: urgentQuizzes.length });
         }
 

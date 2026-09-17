@@ -5,7 +5,11 @@
 
 const aitu = require('./aitu.js');
 const BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
-const ADMIN_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || '').trim();
+const RAW_ADMIN_IDS = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+const ADMIN_CHAT_IDS = RAW_ADMIN_IDS
+    ? RAW_ADMIN_IDS.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean)
+    : [];
+const ADMIN_CHAT_ID = ADMIN_CHAT_IDS[0] || '';
 const WEBAPP_URL = process.env.WEBAPP_URL || 'https://calculator-not-404.vercel.app';
 const API_BASE = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
@@ -17,7 +21,9 @@ const ATTENDANCE_LIMIT_PERCENT = 0.30;
 const userSessions = new Map();
 // Хранилище списка пользователей для рассылки админа
 const activeUsers = new Set();
-if (ADMIN_CHAT_ID) activeUsers.add(ADMIN_CHAT_ID);
+for (const id of ADMIN_CHAT_IDS) {
+    activeUsers.add(id);
+}
 
 function getSession(chatId) {
     const id = String(chatId);
@@ -91,7 +97,9 @@ function esc(str) {
 }
 
 function isAdmin(chatId) {
-    return Boolean(ADMIN_CHAT_ID && String(chatId).trim() === String(ADMIN_CHAT_ID).trim());
+    if (!chatId) return false;
+    const strId = String(chatId).trim();
+    return ADMIN_CHAT_IDS.includes(strId);
 }
 
 // ==========================================
@@ -101,7 +109,6 @@ function isAdmin(chatId) {
 function getMainKeyboard(chatId) {
     const isUserAdmin = isAdmin(chatId);
     const keyboard = [
-        [{ text: '📝 Квизы AITU' }],
         [{ text: 'Итоговая оценка' }, { text: 'Калькулятор GPA' }],
         [{ text: 'Кумулятивный GPA' }, { text: 'Посещаемость' }],
         [{ text: 'Конвертер GPA' }, { text: 'Отзыв / Поддержка' }],
@@ -109,7 +116,9 @@ function getMainKeyboard(chatId) {
     ];
 
     if (isUserAdmin) {
-        keyboard.unshift([{ text: 'Панель Администратора' }]);
+        keyboard.unshift(
+            [{ text: 'Панель Администратора' }, { text: '📝 Квизы AITU' }]
+        );
     }
 
     return {
@@ -763,8 +772,11 @@ async function handleMessage(msg) {
         });
     }
 
-    // 1.5. Квизы AITU (/quizzes, /aitu)
+    // 1.5. Квизы AITU (/quizzes, /aitu) - ТОЛЬКО ДЛЯ АДМИНИСТРАТОРА
     if (text === '📝 Квизы AITU' || text === '/quizzes' || text === '/aitu' || text === 'Квизы AITU' || text === 'Квизы') {
+        if (!isAdmin(chatId)) {
+            return sendMessage(chatId, 'Команда не найдена. Напишите <code>/help</code> для просмотра доступных функций.', { reply_markup: getMainKeyboard(chatId) });
+        }
         await sendMessage(chatId, '⏳ <i>Проверяю квизы и дедлайны на learn.astanait.edu.kz...</i>');
         const result = await aitu.getUpcomingQuizzes();
         const msgText = aitu.formatQuizzesMessage(result);
@@ -777,7 +789,7 @@ async function handleMessage(msg) {
     // 1.6. /set_cookie <sessionid> (Обновление сессии AITU)
     if (text.startsWith('/set_cookie') || text.startsWith('/cookie')) {
         if (!isAdmin(chatId)) {
-            return sendMessage(chatId, 'Доступ запрещен.');
+            return sendMessage(chatId, `❌ <b>Доступ запрещён.</b>\nКоманда <code>/set_cookie</code> доступна только администраторам бота.\n\n👤 Ваш Telegram Chat ID: <code>${chatId}</code>\n\n💡 <i>Передайте этот ID создателю бота для добавления в администраторы, либо просто перешлите ваш <code>sessionid</code> ему в личные сообщения.</i>`);
         }
         const cookieVal = text.replace(/^\/(?:set_cookie|cookie)/, '').trim();
         if (!cookieVal) {

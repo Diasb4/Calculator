@@ -501,6 +501,9 @@ test('Telegram bot: admin security and main keyboard isolation', () => {
     const hasAdminButton = studentKeyboard.keyboard.some(row => row.some(btn => btn.text.includes('Панель Администратора')));
     assert.equal(hasAdminButton, false, 'Admin button must NEVER be visible to normal students');
 
+    const hasQuizzesButton = studentKeyboard.keyboard.some(row => row.some(btn => btn.text.includes('Квизы')));
+    assert.equal(hasQuizzesButton, false, 'Quizzes button must NEVER be visible to normal students');
+
     // Help text check
     const help = bot.getFoolproofHelpText();
     assert.match(help, /ИНСТРУКЦИЯ ПО ИСПОЛЬЗОВАНИЮ БОТА/);
