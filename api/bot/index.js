@@ -190,7 +190,7 @@ function percentageToGradeInfo(percentage) {
 }
 
 // 1. Калькулятор итоговой оценки
-function calculateGradeReport(regmid, regend, finalGrade = null) {
+function calculateGradeReport(regmid, regend, finalGrade = null, isGauharUser = false) {
     regmid = parseFloat(regmid);
     regend = parseFloat(regend);
 
@@ -242,12 +242,22 @@ function calculateGradeReport(regmid, regend, finalGrade = null) {
             verdict = `⚠️ <b>Курс успешно сдан</b> (без стипендии, итоговый балл ${total.toFixed(2)}).`;
         }
 
+        let gauharNote = '';
+        if (isGauharUser) {
+            if (total >= 70) {
+                gauharNote = `\n\n🌟 <i>Ого, стипендия на горизонте! Главное теперь — не забудь карту, на которую её перечислят 💳</i>`;
+            } else {
+                gauharNote = `\n\n⚠️ <i>Гаухар, главное на экзамен не забудь прийти! Паспорт, ручку и голову возьми с собой обязательно 🧠</i>`;
+            }
+        }
+
         return `🎯 <b>ИТОГОВЫЙ РАСЧЁТ ОЦЕНКИ:</b>\n\n` +
             `📊 <b>РегТерм (60%):</b> ${regterm.toFixed(2)} (РегМид: ${regmid}, РегЭнд: ${regend})\n` +
             `📝 <b>Файнал (40%):</b> ${finalVal}\n` +
             `🏆 <b>Итоговый балл:</b> <code>${total.toFixed(2)}</code> (${gradeInfo ? gradeInfo.letter + ', GPA ' + gradeInfo.gpa.toFixed(2) : ''})\n\n` +
             `${verdict}\n\n` +
-            `<i>💡 Формула: (РегТерм × 0.6) + (Файнал × 0.4)</i>`;
+            `<i>💡 Формула: (РегТерм × 0.6) + (Файнал × 0.4)</i>` +
+            gauharNote;
     }
 
     // Прогноз на файнал (если файнал еще не сдан)
@@ -281,12 +291,21 @@ function calculateGradeReport(regmid, regend, finalGrade = null) {
         report += `💎 <b>Повышенная стипендия (90+):</b> минимум <b>${minHigh}</b> баллов\n`;
     }
 
-    report += `\n<i>⚠️ Важно: на самом экзамене необходимо набрать не менее 50 баллов для сдачи без пересдачи.</i>`;
+    let gauharNote = '';
+    if (isGauharUser) {
+        if (minRegular <= 70) {
+            gauharNote = `\n\n🌟 <i>Ого, стипендия на горизонте! Главное теперь — не забудь карту, на которую её перечислят 💳</i>`;
+        } else {
+            gauharNote = `\n\n⚠️ <i>Гаухар, главное на экзамен не забудь прийти! Паспорт, ручку и голову возьми с собой обязательно 🧠</i>`;
+        }
+    }
+
+    report += `\n<i>⚠️ Важно: на самом экзамене необходимо набрать не менее 50 баллов для сдачи без пересдачи.</i>` + gauharNote;
     return report;
 }
 
 // 2. Калькулятор GPA за семестр/триместр
-function calculateGPAReport(inputStr) {
+function calculateGPAReport(inputStr, isGauharUser = false) {
     if (!inputStr || typeof inputStr !== 'string') {
         return '❌ <b>Введите оценки и кредиты!</b>\n<i>Пример:</i> <code>90 3, 85 4, 95 2</code>\n(Балл_1 Кредиты_1, Балл_2 Кредиты_2)';
     }
@@ -348,14 +367,19 @@ function calculateGPAReport(inputStr) {
         }
 
         if (grade < 0 || grade > 100) {
-            return `❌ <b>Ошибка:</b> Оценка в предмете #${i + 1} должна быть от 0 до 100 (получено: ${grade}).`;
-        }
-        if (credits <= 0 || credits > 30) {
-            return `❌ <b>Ошибка:</b> Кредиты в предмете #${i + 1} должны быть больше 0 (получено: ${credits}).`;
+            return `❌ <b>Ошибка в предмете #${i + 1}:</b> Оценка должна быть от 0 до 100% (получено: ${grade}).`;
         }
 
-        const qp = gradeInfo.gpa * credits;
-        totalQualityPoints += qp;
+        if (credits <= 0) {
+            return `❌ <b>Ошибка в предмете #${i + 1}:</b> Кредиты должны быть больше 0 (получено: ${credits}).`;
+        }
+
+        if (!gradeInfo) {
+            gradeInfo = percentageToGradeInfo(grade);
+        }
+
+        const qualityPoints = gradeInfo.gpa * credits;
+        totalQualityPoints += qualityPoints;
         totalCredits += credits;
 
         rows.push({
@@ -391,11 +415,15 @@ function calculateGPAReport(inputStr) {
         `━━━━━━━━━━━━━━━━━━━━\n\n` +
         `${verdict}`;
 
+    if (isGauharUser) {
+        msg += `\n\n📸 <i>Гаухар, сделай скриншот и запиши куда-нибудь, а то через 10 минут опять забудешь и будешь заново считать 😉</i>`;
+    }
+
     return msg;
 }
 
 // 3. Калькулятор кумулятивного GPA
-function calculateCumulativeGPAReport(inputStr) {
+function calculateCumulativeGPAReport(inputStr, isGauharUser = false) {
     if (!inputStr || typeof inputStr !== 'string') {
         return '❌ <b>Введите GPA и кредиты триместров!</b>\n<i>Пример:</i> <code>3.5 15, 3.8 20, 3.2 18</code>\n(GPA_1 Кредиты_1, GPA_2 Кредиты_2)';
     }
@@ -444,11 +472,15 @@ function calculateCumulativeGPAReport(inputStr) {
         `━━━━━━━━━━━━━━━━━━━━\n\n` +
         `<i>💡 Рассчитывается как средневзвешенное значение по кредитам всех триместров.</i>`;
 
+    if (isGauharUser) {
+        msg += `\n\n📸 <i>Гаухар, сделай скриншот и запиши куда-нибудь, а то через 10 минут опять забудешь и будешь заново считать 😉</i>`;
+    }
+
     return msg;
 }
 
 // 4. Калькулятор посещаемости
-function calculateAttendanceReport(lessonsPerWeek, alreadyMissed = 0) {
+function calculateAttendanceReport(lessonsPerWeek, alreadyMissed = 0, isGauharUser = false) {
     const lessons = parseFloat(lessonsPerWeek);
     if (isNaN(lessons) || lessons < 1 || lessons > 20 || !Number.isInteger(lessons)) {
         return '❌ <b>Ошибка:</b> Количество пар в неделю должно быть целым числом от 1 до 20.\n<i>Пример:</i> <code>/att 3</code> или <code>/att 3 2</code> (где 2 — уже пропущено)';
@@ -486,6 +518,11 @@ function calculateAttendanceReport(lessonsPerWeek, alreadyMissed = 0) {
         statusHeader = '🟢 <b>ВСЁ В ПОРЯДКЕ! Безопасная зона посещаемости.</b>';
     }
 
+    let gauharNote = '';
+    if (isGauharUser) {
+        gauharNote = `\n\n🧠 <i>Гаухар, зная твою забывчивость, ты случайно прогуляешь на две пары больше, перепутаешь корпус и скажешь: «Ой, а я забыла, что сегодня вторник...» 📅😅 Не рискуй!</i>`;
+    }
+
     return `📋 <b>РАСЧЁТ ПОСЕЩАЕМОСТИ (10 недель семестра):</b>\n\n` +
         `${statusHeader}\n\n` +
         `• Пар в неделю: <b>${lessons}</b>\n` +
@@ -494,7 +531,8 @@ function calculateAttendanceReport(lessonsPerWeek, alreadyMissed = 0) {
         `• Уже пропущено: <b>${missed} пар (${currentPercent.toFixed(1)}%)</b>\n\n` +
         `📊 <b>Шкала риска:</b>\n[${bar}]\n\n` +
         `🚪 <b>Осталось безопасных пропусков:</b> <b>${remaining >= 0 ? remaining : 0} пар</b>\n\n` +
-        `<i>⚠️ Важно: При пропуске ${allowedAbsences + 1} пар и более студент автоматически отправляется на летник без права сдачи экзамена.</i>`;
+        `<i>⚠️ Важно: При пропуске ${allowedAbsences + 1} пар и более студент автоматически отправляется на летник без права сдачи экзамена.</i>` +
+        gauharNote;
 }
 
 // 5. Конвертер процента в GPA
@@ -519,8 +557,11 @@ function convertGradeReport(scoreInput) {
 // ПОШАГОВЫЙ ИНСТРУКЦИОННЫЙ ГИД ("КАК ДЛЯ ДЕБИЛОВ")
 // ==========================================
 
-function getFoolproofHelpText() {
-    return `📖 <b>ИНСТРУКЦИЯ ПО ИСПОЛЬЗОВАНИЮ БОТА:</b>\n\n` +
+function getFoolproofHelpText(isGauharUser = false) {
+    const gauharHeader = isGauharUser
+        ? `📖 <b>Специальная версия инструкции для Гаухар:</b>\n<i>Читать медленно, сохранить в закладки, перед сном перечитывать три раза, чтобы не забыть! 😉</i>\n\n━━━━━━━━━━━━━━━━━━━━\n`
+        : '';
+    return gauharHeader + `📖 <b>ИНСТРУКЦИЯ ПО ИСПОЛЬЗОВАНИЮ БОТА:</b>\n\n` +
         `Бот заменяет весь сайт <b>GradeMaster</b> прямо в Telegram. Все калькуляторы работают по кнопкам внизу или через команды.\n\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
         `🚀 <b>1. Калькулятор итоговой оценки</b>\n` +
@@ -781,7 +822,11 @@ async function handleCallbackQuery(cq) {
     if (data === 'wiz_feed') {
         session.step = 'feed_input';
         session.data = {};
-        return sendMessage(chatId, `💬 <b>Служба поддержки и отзывов:</b>\n\nНапишите ваше предложение, вопрос или сообщение об ошибке. Администратор получит его и ответит вам!`, { reply_markup: getCancelKeyboard() });
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const feedText = isGauharUser
+            ? `💬 <b>Служба поддержки и отзывов:</b>\n\nГаухар, ты точно хотела написать разработчику или случайно забыла, куда нажимала? 😉 Пиши свой вопрос или идею — создатель бота всё равно прочитает первым! 🫡`
+            : `💬 <b>Служба поддержки и отзывов:</b>\n\nНапишите ваше предложение, вопрос или сообщение об ошибке. Администратор получит его и ответит вам!`;
+        return sendMessage(chatId, feedText, { reply_markup: getCancelKeyboard() });
     }
 
     if (data === 'user_quizzes_refresh') {
@@ -846,6 +891,7 @@ async function handleMessage(msg) {
     statsEngine.recordVisit({ anonId, platform: 'bot' }).catch(() => {});
 
     const session = getSession(chatId);
+    const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
 
     // Обработка кнопки "Отмена / Главное меню"
     if (text === '❌ Отмена / Главное меню' || text === '/cancel') {
@@ -856,7 +902,6 @@ async function handleMessage(msg) {
     // 1. /start
     if (text === '/start' || text.startsWith('/start ')) {
         clearSession(chatId);
-        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
 
         let welcome;
         if (isGauharUser) {
@@ -890,7 +935,6 @@ async function handleMessage(msg) {
 
     // 1.5. Квизы AITU (/quizzes, /aitu) - Персональные квизы для каждого студента
     if (text === '📝 Квизы AITU' || text === '📝 Мои квизы AITU' || text === '/quizzes' || text === '/aitu' || text === 'Квизы AITU' || text === 'Квизы' || text === 'Мои квизы') {
-        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
         const userSid = await aitu.getUserSession(chatId);
 
         if (!userSid) {
@@ -958,7 +1002,6 @@ async function handleMessage(msg) {
         const testRes = await aitu.getUpcomingQuizzes(cleanSid);
         if (testRes.ok) {
             await aitu.saveUserSession(chatId, cleanSid);
-            const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
             const successNote = isGauharUser
                 ? `🎉 <b>Гаухар, сессия успешно подключена!</b> 🧠✨\nНайдено дедлайнов: <b>${testRes.quizzes.length}</b>\n\n` +
                   `✅ Теперь бот каждое утро в 08:00 и за 1 час до каждого дедлайна будет присылать персональные сигналы тревоги лично тебе, чтобы ты ничего не пропустила!\n\n`
@@ -979,7 +1022,6 @@ async function handleMessage(msg) {
     // 1.6.1. /logout или /del_cookie (Отключение персональной сессии)
     if (text === '/logout' || text === '/del_cookie' || text === '/disconnect') {
         await aitu.deleteUserSession(chatId);
-        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
         const logoutNote = isGauharUser
             ? '🚪 <b>Гаухар, твоя сессия отключена.</b>\nАвтоматические напоминания остановлены. Теперь вся надежда только на твою память! 😅'
             : '🚪 <b>Ваша сессия отключена.</b>\nАвтоматические напоминания по квизам остановлены, сессия удалена.';
@@ -1049,9 +1091,23 @@ async function handleMessage(msg) {
 
     // 2. /help или "Инструкция"
     if (text === '/help' || text === 'Инструкция' || text === '❓ Понятная инструкция') {
-        return sendMessage(chatId, getFoolproofHelpText(), {
+        return sendMessage(chatId, getFoolproofHelpText(isGauharUser), {
             reply_markup: getCalculatorsInlineKeyboard()
         });
+    }
+
+    // 2.1. Секретный тест памяти (Пасхалка для Гаухар)
+    if (text === '/memory' || text === '/память' || text === '/ктоя' || text === '/whoami') {
+        if (isGauharUser) {
+            const memoryQuiz = `🧠 <b>Экспресс-тест памяти для Гаухар:</b>\n\n` +
+                `1. Ты выключила утюг? 🤔\n` +
+                `2. Ты закрыла входную дверь? 🔑\n` +
+                `3. Ты сдала все квизы на learn.astanait.edu.kz? 📚\n\n` +
+                `<i>(Спойлер: насчёт третьего пункта мы сильно сомневаемся, бегом проверять по кнопке «📝 Мои квизы AITU»!)</i> ⚡️`;
+            return sendMessage(chatId, memoryQuiz, { reply_markup: getMainKeyboard(chatId) });
+        } else {
+            return sendMessage(chatId, `🧠 <b>Проверка памяти:</b>\n\nВаш Chat ID: <code>${chatId}</code>\nСессия AITU: <b>${(await aitu.getUserSession(chatId)) ? 'Подключена ✅' : 'Не подключена ❌'}</b>\n\nВсе системы работают штатно!`, { reply_markup: getMainKeyboard(chatId) });
+        }
     }
 
     // 3. /admin или "Панель Администратора" (ТОЛЬКО ДЛЯ АДМИНА)
@@ -1153,7 +1209,10 @@ async function handleMessage(msg) {
     if (text === 'Отзыв / Поддержка' || text === '💬 Отзыв / Поддержка') {
         session.step = 'feed_input';
         session.data = {};
-        return sendMessage(chatId, `<b>Служба поддержки и обратной связи:</b>\n\nНапишите ваше сообщение, вопрос или предложение. Администратор прочитает его и сможет ответить вам прямо здесь!`, { reply_markup: getCancelKeyboard() });
+        const feedPrompt = isGauharUser
+            ? `💬 <b>Служба поддержки и отзывов:</b>\n\nГаухар, ты точно хотела написать разработчику или случайно забыла, куда нажимала? 😉 Пиши свой вопрос или идею — создатель бота всё равно прочитает первым! 🫡`
+            : `<b>Служба поддержки и обратной связи:</b>\n\nНапишите ваше сообщение, вопрос или предложение. Администратор прочитает его и сможет ответить вам прямо здесь!`;
+        return sendMessage(chatId, feedPrompt, { reply_markup: getCancelKeyboard() });
     }
 
     // 8. Обработка быстрых команд одной строкой (/calc, /gpa, /cgpa, /att, /convert)
@@ -1163,21 +1222,21 @@ async function handleMessage(msg) {
             return sendMessage(chatId, '❌ <b>Недостаточно данных.</b>\n<i>Формат:</i> <code>/calc РегМид РегЭнд [Файнал]</code>\n<i>Пример:</i> <code>/calc 80 85</code> или <code>/calc 80 85 90</code>');
         }
         statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
-        const res = calculateGradeReport(parts[0], parts[1], parts[2]);
+        const res = calculateGradeReport(parts[0], parts[1], parts[2], isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (text.startsWith('/gpa')) {
         const raw = text.replace(/^\/gpa\s*/i, '');
         statsEngine.recordCalculation({ calcType: 'gpa', platform: 'bot' }).catch(() => {});
-        const res = calculateGPAReport(raw);
+        const res = calculateGPAReport(raw, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (text.startsWith('/cgpa') || text.startsWith('/cumulative') || text.startsWith('/totalgpa') || text.startsWith('/cum')) {
         const raw = text.replace(/^(\/cgpa|\/cumulative|\/totalgpa|\/cum)\s*/i, '');
         statsEngine.recordCalculation({ calcType: 'cumulative', platform: 'bot' }).catch(() => {});
-        const res = calculateCumulativeGPAReport(raw);
+        const res = calculateCumulativeGPAReport(raw, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
@@ -1187,7 +1246,7 @@ async function handleMessage(msg) {
             return sendMessage(chatId, '❌ <b>Укажите количество пар в неделю.</b>\n<i>Пример:</i> <code>/att 3</code> или <code>/att 3 2</code>');
         }
         statsEngine.recordCalculation({ calcType: 'attendance', platform: 'bot' }).catch(() => {});
-        const res = calculateAttendanceReport(parts[0], parts[1]);
+        const res = calculateAttendanceReport(parts[0], parts[1], isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
@@ -1221,7 +1280,7 @@ async function handleMessage(msg) {
         clearSession(chatId);
 
         statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
-        const forecast = calculateGradeReport(rm, re);
+        const forecast = calculateGradeReport(rm, re, null, isGauharUser);
         const inlineKeyboard = {
             inline_keyboard: [
                 [{ text: '📝 Я уже сдал экзамен — ввести Файнал', callback_data: `add_final_${rm}_${re}` }],
@@ -1243,21 +1302,21 @@ async function handleMessage(msg) {
         clearSession(chatId);
 
         statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
-        const res = calculateGradeReport(rm, re, val);
+        const res = calculateGradeReport(rm, re, val, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (session.step === 'gpa_input') {
         clearSession(chatId);
         statsEngine.recordCalculation({ calcType: 'gpa', platform: 'bot' }).catch(() => {});
-        const res = calculateGPAReport(text);
+        const res = calculateGPAReport(text, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (session.step === 'cgpa_input' || session.step === 'cum_input') {
         clearSession(chatId);
         statsEngine.recordCalculation({ calcType: 'cumulative', platform: 'bot' }).catch(() => {});
-        const res = calculateCumulativeGPAReport(text);
+        const res = calculateCumulativeGPAReport(text, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
@@ -1280,7 +1339,7 @@ async function handleMessage(msg) {
         clearSession(chatId);
 
         statsEngine.recordCalculation({ calcType: 'attendance', platform: 'bot' }).catch(() => {});
-        const res = calculateAttendanceReport(lessons, missed);
+        const res = calculateAttendanceReport(lessons, missed, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
@@ -1311,11 +1370,11 @@ async function handleMessage(msg) {
     if (numTokens.length >= 2 && numTokens.every(n => !isNaN(n) && n >= 0 && n <= 100)) {
         statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
         if (numTokens.length === 2) {
-            const res = calculateGradeReport(numTokens[0], numTokens[1]);
+            const res = calculateGradeReport(numTokens[0], numTokens[1], null, isGauharUser);
             return sendMessage(chatId, `💡 <i>Распознан расчёт РегМид = ${numTokens[0]}, РегЭнд = ${numTokens[1]}:</i>\n\n${res}`, { reply_markup: getMainKeyboard(chatId) });
         }
         if (numTokens.length === 3) {
-            const res = calculateGradeReport(numTokens[0], numTokens[1], numTokens[2]);
+            const res = calculateGradeReport(numTokens[0], numTokens[1], numTokens[2], isGauharUser);
             return sendMessage(chatId, `💡 <i>Распознан итоговый расчёт РегМид = ${numTokens[0]}, РегЭнд = ${numTokens[1]}, Файнал = ${numTokens[2]}:</i>\n\n${res}`, { reply_markup: getMainKeyboard(chatId) });
         }
     }

@@ -942,6 +942,96 @@ test('Cron & Bot: Gaukhar receives tailored alerts and greetings', async () => {
     }
 });
 
+test('Telegram Bot: Trolling pack 2.0 for Gaukhar (attendance, grade, GPA, help, memory, support)', async () => {
+    const bot = require('../api/bot/index.js');
+    const aitu = require('../api/bot/aitu.js');
+    const GAUHAR_ID = aitu.GAUHAR_CHAT_ID;
+
+    // 1. Attendance calculation trolling
+    const standardAtt = bot.calculateAttendanceReport(3, 1, false);
+    assert.doesNotMatch(standardAtt, /Гаухар/);
+
+    const gauharAtt = bot.calculateAttendanceReport(3, 1, true);
+    assert.match(gauharAtt, /Гаухар, зная твою забывчивость/);
+    assert.match(gauharAtt, /вторник/);
+
+    // 2. Grade forecast trolling (scholarship vs pass)
+    const gauharScholarship = bot.calculateGradeReport(85, 85, null, true);
+    assert.match(gauharScholarship, /стипендия на горизонте! Главное теперь — не забудь карту/);
+
+    const gauharPass = bot.calculateGradeReport(55, 55, null, true);
+    assert.match(gauharPass, /главное на экзамен не забудь прийти! Паспорт, ручку и голову/);
+
+    // 3. GPA & CGPA screenshot trolling
+    const gauharGPA = bot.calculateGPAReport('90 3, 85 4', true);
+    assert.match(gauharGPA, /Гаухар, сделай скриншот и запиши куда-нибудь/);
+
+    const gauharCGPA = bot.calculateCumulativeGPAReport('3.5 15, 3.8 20', true);
+    assert.match(gauharCGPA, /Гаухар, сделай скриншот и запиши куда-нибудь/);
+
+    // 4. Foolproof Help special edition for Gaukhar
+    const standardHelp = bot.getFoolproofHelpText(false);
+    assert.doesNotMatch(standardHelp, /Специальная версия инструкции для Гаухар/);
+
+    const gauharHelp = bot.getFoolproofHelpText(true);
+    assert.match(gauharHelp, /Специальная версия инструкции для Гаухар/);
+    assert.match(gauharHelp, /перед сном перечитывать три раза/);
+
+    // 5. Secret /memory express test
+    const originalFetch = global.fetch;
+    const sentMessages = [];
+    try {
+        global.fetch = async (url, opts) => {
+            if (url && url.includes('/sendMessage')) {
+                sentMessages.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: {} }) };
+            }
+            return { ok: true, json: async () => ({}) };
+        };
+
+        process.env.TELEGRAM_BOT_TOKEN = 'test_token';
+
+        const createReq = (text, chatId = GAUHAR_ID) => ({
+            method: 'POST',
+            headers: {},
+            body: {
+                message: {
+                    message_id: 2,
+                    chat: { id: chatId },
+                    from: { id: chatId, username: 'goshoch' },
+                    text
+                }
+            }
+        });
+        const mockRes = {
+            setHeader: () => {},
+            status: () => mockRes,
+            json: () => {}
+        };
+
+        // Gaukhar sends /memory
+        await bot(createReq('/memory'), mockRes);
+        assert.ok(sentMessages.length > 0);
+        const memMsg = sentMessages[sentMessages.length - 1];
+        assert.match(memMsg.text, /Экспресс-тест памяти для Гаухар/);
+        assert.match(memMsg.text, /выключила утюг/);
+        assert.match(memMsg.text, /закрыла входную дверь/);
+
+        // Gaukhar clicks "Отзыв / Поддержка"
+        await bot(createReq('Отзыв / Поддержка'), mockRes);
+        const feedMsg = sentMessages[sentMessages.length - 1];
+        assert.match(feedMsg.text, /Гаухар, ты точно хотела написать разработчику или случайно забыла/);
+
+        // Another user clicking "Отзыв / Поддержка" gets standard message
+        await bot(createReq('Отзыв / Поддержка', '999999'), mockRes);
+        const regularFeedMsg = sentMessages[sentMessages.length - 1];
+        assert.doesNotMatch(regularFeedMsg.text, /Гаухар/);
+
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
 
 
 
