@@ -795,6 +795,153 @@ test('Cron Multi-User: sends personalized alerts to multiple users concurrently'
     }
 });
 
+test('AITU: Gaukhar personalization and forgetfulness easter eggs', () => {
+    const aitu = require('../api/bot/aitu.js');
+
+    assert.equal(aitu.GAUHAR_CHAT_ID, '1365231049');
+    assert.equal(aitu.isGauhar('1365231049'), true);
+    assert.equal(aitu.isGauhar(1365231049), true);
+    assert.equal(aitu.isGauhar(' 1365231049 '), true);
+    assert.equal(aitu.isGauhar('999999'), false);
+
+    const mockQuiz = {
+        courseId: 'course-v1:AITU+PHIL01+26-27_C1_Y3',
+        courseName: 'Philosophy',
+        title: 'Quiz 2. Epistemology',
+        link: 'https://learn.astanait.edu.kz/jump_to/block_abc',
+        dueDate: new Date(Date.now() + 35 * 60 * 1000).toISOString(),
+        diffMinutes: 35,
+        diffHours: 0.6,
+        diffDays: 0,
+        isCriticalHour: true
+    };
+
+    // Standard vs Gaukhar critical hour alert
+    const standardAlert = aitu.formatCriticalHourAlert(mockQuiz, false);
+    assert.doesNotMatch(standardAlert.text, /Гаухар/);
+    assert.equal(standardAlert.replyMarkup?.inline_keyboard?.[0]?.[0]?.text, '🚀 Сдать квиз прямо сейчас');
+
+    const gauharAlert = aitu.formatCriticalHourAlert(mockQuiz, true);
+    assert.match(gauharAlert.text, /Гаухар, мы знаем, что ты забыла!/);
+    assert.match(gauharAlert.text, /память тебя опять подводит/);
+    assert.match(gauharAlert.text, /35 мин\./);
+    assert.equal(gauharAlert.replyMarkup?.inline_keyboard?.[0]?.[0]?.text, '🚀 Спасти оценку прямо сейчас');
+
+    // Standard vs Gaukhar quizzes message
+    const mockResult = {
+        ok: true,
+        quizzes: [mockQuiz]
+    };
+    const standardQuizzes = aitu.formatQuizzesMessage(mockResult, false);
+    assert.doesNotMatch(standardQuizzes, /Гаухар/);
+
+    const gauharQuizzes = aitu.formatQuizzesMessage(mockResult, true);
+    assert.match(gauharQuizzes, /Квизы и дедлайны для Гаухар/);
+    assert.match(gauharQuizzes, /Совет дня для Гаухар: поставь ещё три будильника/);
+
+    // Expired session for Gaukhar
+    const expiredRes = { ok: false, sessionExpired: true };
+    const gauharExpired = aitu.formatQuizzesMessage(expiredRes, true);
+    assert.match(gauharExpired, /Гаухар, твоя сессия learn\.astanait\.edu\.kz истекла!/);
+});
+
+test('Cron & Bot: Gaukhar receives tailored alerts and greetings', async () => {
+    const cron = require('../api/cron.js');
+    const aitu = require('../api/bot/aitu.js');
+    const bot = require('../api/bot/index.js');
+    cron.clearSentAlertsMemory();
+
+    const GAUHAR_ID = aitu.GAUHAR_CHAT_ID;
+    await aitu.saveUserSession(GAUHAR_ID, 'gaukhar_token');
+
+    const originalGetQuizzes = aitu.getUpcomingQuizzes;
+    const originalFetch = global.fetch;
+    const sentMessages = [];
+
+    try {
+        aitu.getUpcomingQuizzes = async (sid) => {
+            if (sid === 'gaukhar_token') {
+                return {
+                    ok: true,
+                    quizzes: [{
+                        courseId: 'course-v1:AITU+Cloud+26-27',
+                        courseName: 'Cloud Computing',
+                        title: 'Lab Test 1',
+                        blockId: 'block_cloud',
+                        link: 'https://learn.astanait.edu.kz/cloud',
+                        dueDate: new Date(Date.now() + 40 * 60 * 1000).toISOString(),
+                        diffMinutes: 40,
+                        diffHours: 0.7,
+                        diffDays: 0,
+                        isPast: false,
+                        isCriticalHour: true
+                    }]
+                };
+            }
+            return { ok: false, error: 'unknown' };
+        };
+
+        global.fetch = async (url, opts) => {
+            if (url && url.includes('/sendMessage')) {
+                sentMessages.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: {} }) };
+            }
+            return { ok: true, json: async () => ({}) };
+        };
+
+        process.env.TELEGRAM_BOT_TOKEN = 'test_token';
+        process.env.ADMIN_CHAT_ID = '';
+
+        let resultJson = null;
+        const mockRes = {
+            status: () => mockRes,
+            json: (data) => { resultJson = data; }
+        };
+
+        await cron({ headers: {} }, mockRes);
+
+        assert.equal(resultJson.ok, true);
+        assert.equal(resultJson.criticalSent, 1);
+
+        const gauharAlert = sentMessages.find(m => m.chat_id === GAUHAR_ID);
+        assert.ok(gauharAlert, 'Gaukhar must receive 1h critical alert');
+        assert.match(gauharAlert.text, /Гаухар, мы знаем, что ты забыла!/);
+        assert.equal(gauharAlert.reply_markup?.inline_keyboard?.[0]?.[0]?.text, '🚀 Спасти оценку прямо сейчас');
+
+        // Test /start personalized greeting for Gaukhar
+        sentMessages.length = 0;
+        const req = {
+            method: 'POST',
+            headers: {},
+            body: {
+                message: {
+                    message_id: 1,
+                    chat: { id: GAUHAR_ID },
+                    from: { id: GAUHAR_ID, username: 'goshoch' },
+                    text: '/start'
+                }
+            }
+        };
+        const res = {
+            setHeader: () => {},
+            status: () => res,
+            json: () => {}
+        };
+        await bot(req, res);
+
+        assert.ok(sentMessages.length > 0);
+        const welcomeMsg = sentMessages[0];
+        assert.match(welcomeMsg.text, /О, Гаухар \(@goshoch\), привет!/);
+        assert.match(welcomeMsg.text, /Не дать Гаухар всё забыть/);
+
+    } finally {
+        aitu.getUpcomingQuizzes = originalGetQuizzes;
+        global.fetch = originalFetch;
+        await aitu.deleteUserSession(GAUHAR_ID);
+        cron.clearSentAlertsMemory();
+    }
+});
+
 
 
 

@@ -128,6 +128,7 @@ async function processUserQuizzes(chatId, context) {
     let criticalSent = 0;
     let dailySent = 0;
 
+    const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(strChatId);
     const result = await aitu.getUpcomingQuizzesForUser(strChatId);
 
     if (!result.ok) {
@@ -135,10 +136,15 @@ async function processUserQuizzes(chatId, context) {
             const expKey = `expired:${strChatId}:${todayStr}`;
             const alreadyNotified = await hasAlertBeenSent(expKey);
             if (!alreadyNotified) {
-                const expiredMsg = `⚠️ <b>Твоя сессия learn.astanait.edu.kz истекла!</b>\n\n` +
-                    `Бот не может проверить дедлайны по твоим квизам. Пожалуйста, войди на платформу через Microsoft SSO, скопируй <code>sessionid</code> и отправь боту:\n\n` +
-                    `<code>/set_cookie ВАШ_SESSION_ID</code>\n\n` +
-                    `💡 <i>Сессия обновится, и автоматические напоминания сразу продолжат работать.</i>`;
+                const expiredMsg = isGauharUser
+                    ? `⚠️ <b>Гаухар, твоя сессия learn.astanait.edu.kz истекла!</b> 😱\n\n` +
+                      `Бот не может проверить твои дедлайны. Войди через Microsoft SSO, скопируй <code>sessionid</code> и отправь боту:\n\n` +
+                      `<code>/set_cookie ТВОЙ_SESSION_ID</code>\n\n` +
+                      `🧠 <i>Иначе забудешь сдать квиз!</i>`
+                    : `⚠️ <b>Твоя сессия learn.astanait.edu.kz истекла!</b>\n\n` +
+                      `Бот не может проверить дедлайны по твоим квизам. Пожалуйста, войди на платформу через Microsoft SSO, скопируй <code>sessionid</code> и отправь боту:\n\n` +
+                      `<code>/set_cookie ВАШ_SESSION_ID</code>\n\n` +
+                      `💡 <i>Сессия обновится, и автоматические напоминания сразу продолжат работать.</i>`;
                 await sendTelegram(strChatId, expiredMsg);
                 await markAlertAsSent(expKey);
             }
@@ -155,7 +161,7 @@ async function processUserQuizzes(chatId, context) {
         const alreadySent = await hasAlertBeenSent(quizKey);
 
         if (!alreadySent) {
-            const { text: alertText, replyMarkup } = aitu.formatCriticalHourAlert(item);
+            const { text: alertText, replyMarkup } = aitu.formatCriticalHourAlert(item, isGauharUser);
             await sendTelegram(strChatId, alertText, {
                 reply_markup: replyMarkup,
                 disable_notification: false // Максимальный приоритет: громкий звук и вибрация!
@@ -175,7 +181,9 @@ async function processUserQuizzes(chatId, context) {
         const urgentQuizzes = (result.quizzes || []).filter(q => !q.isPast && q.diffDays <= 3);
 
         if (urgentQuizzes.length > 0) {
-            let alertMsg = `🔔 <b>Напоминание о квизах AITU!</b>\n\n`;
+            let alertMsg = isGauharUser
+                ? `🔔 <b>Напоминание о квизах для Гаухар!</b> 🧠\n\n`
+                : `🔔 <b>Напоминание о квизах AITU!</b>\n\n`;
             for (const item of urgentQuizzes) {
                 const dateObj = new Date(item.dueDate);
                 const astanaTime = new Intl.DateTimeFormat('ru-RU', {
@@ -201,7 +209,9 @@ async function processUserQuizzes(chatId, context) {
                             `📝 <a href="${item.link}">${item.title}</a>\n` +
                             `⏰ Дедлайн: <b>${astanaTime}</b> (${badge})\n\n`;
             }
-            alertMsg += `Не забудь сдать вовремя! 🚀`;
+            alertMsg += isGauharUser
+                ? `Гаухар, не забудь сдать вовремя и поставь будильник! ⏰🚀`
+                : `Не забудь сдать вовремя! 🚀`;
 
             if (adminChatIds.includes(strChatId)) {
                 try {

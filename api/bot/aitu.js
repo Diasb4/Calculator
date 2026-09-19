@@ -13,6 +13,10 @@ const DEFAULT_COURSES = [
 ];
 
 const STORAGE_PREFIX = 'GM_AITU_SESSION:';
+const GAUHAR_CHAT_ID = '1365231049';
+function isGauhar(chatId) {
+    return String(chatId).trim() === GAUHAR_CHAT_ID;
+}
 let memorySessionCache = null;
 const userSessionsMemory = new Map();
 const quizSubscribersMemory = new Set();
@@ -538,9 +542,14 @@ async function getUpcomingQuizzes(sessionId) {
 /**
  * Красиво отформатировать список квизов для Telegram (HTML)
  */
-function formatQuizzesMessage(result) {
+function formatQuizzesMessage(result, isGauharUser = false) {
     if (!result.ok) {
         if (result.sessionExpired) {
+            if (isGauharUser) {
+                return `⚠️ <b>Гаухар, твоя сессия learn.astanait.edu.kz истекла!</b> 😱\n\n` +
+                       `Спокойно, без паники: войди в <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> через Microsoft SSO, скопируй cookie <code>sessionid</code> и отправь боту:\n<code>/set_cookie ТВОЙ_SESSION_ID</code>\n\n` +
+                       `🧠 <i>Иначе бот не сможет спасать тебя от забытых дедлайнов!</i>`;
+            }
             return `⚠️ <b>Сессия learn.astanait.edu.kz истекла!</b>\n\n` +
                    `Пожалуйста, войдите в <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> через Microsoft SSO, скопируйте cookie <code>sessionid</code> и отправьте боту команду:\n<code>/set_cookie ВАШ_SESSION_ID</code>\n\n` +
                    `💡 <i>Сессия будет автоматически сохранена в Telegram storage, и утренние напоминания продолжат работать без сбоев.</i>`;
@@ -552,10 +561,15 @@ function formatQuizzesMessage(result) {
     const past = result.quizzes.filter(q => q.isPast);
 
     if (upcoming.length === 0 && past.length === 0) {
+        if (isGauharUser) {
+            return `ℹ️ <b>Гаухар, квизов и дедлайнов не найдено!</b> 🥳\n\nЛибо ты сдала абсолютно всё, либо преподаватели ещё не открыли тесты. Можешь спокойно выдохнуть!`;
+        }
         return `ℹ️ <b>Квизы и дедлайны не найдены</b>\n\nВозможно, преподаватели еще не опубликовали даты тестов в курсах текущего семестра.`;
     }
 
-    let msg = `📋 <b>Квизы и дедлайны learn.astanait.edu.kz</b>\n\n`;
+    let msg = isGauharUser
+        ? `📋 <b>Квизы и дедлайны для Гаухар (learn.astanait.edu.kz)</b> 🧠\n\n`
+        : `📋 <b>Квизы и дедлайны learn.astanait.edu.kz</b>\n\n`;
 
     if (upcoming.length > 0) {
         msg += `🟢 <b>Предстоящие дедлайны:</b>\n`;
@@ -585,7 +599,9 @@ function formatQuizzesMessage(result) {
                    `⏰ Дедлайн: <b>${astanaTime}</b> (${remainingText})\n`;
         }
     } else {
-        msg += `🎉 <i>Активных предстоящих квизов нет! Все сдано или еще не началось.</i>\n`;
+        msg += isGauharUser
+            ? `🎉 <i>Гаухар, активных квизов нет! Ты всё закрыла (или они ещё не начались). Чудеса случаются! ✨</i>\n`
+            : `🎉 <i>Активных предстоящих квизов нет! Все сдано или еще не началось.</i>\n`;
     }
 
     if (past.length > 0) {
@@ -596,14 +612,18 @@ function formatQuizzesMessage(result) {
         }
     }
 
-    msg += `\n💡 <i>Бот автоматически проверяет дедлайны каждое утро и за 1 час до окончания.</i>`;
+    if (isGauharUser) {
+        msg += `\n💡 <i>Совет дня для Гаухар: поставь ещё три будильника ⏰ Бот на всякий случай напомнит за 1 час!</i>`;
+    } else {
+        msg += `\n💡 <i>Бот автоматически проверяет дедлайны каждое утро и за 1 час до окончания.</i>`;
+    }
     return msg;
 }
 
 /**
  * Сформировать экстренное оповещение за 1 час до дедлайна с кнопкой прямого перехода
  */
-function formatCriticalHourAlert(quiz) {
+function formatCriticalHourAlert(quiz, isGauharUser = false) {
     const dateObj = new Date(quiz.dueDate);
     const astanaTime = new Intl.DateTimeFormat('ru-RU', {
         timeZone: 'Asia/Almaty',
@@ -617,18 +637,33 @@ function formatCriticalHourAlert(quiz) {
         ? `<b>${quiz.diffMinutes} мин.</b>`
         : `<b>${quiz.diffHours || 1} ч.</b>`;
 
-    const text = `🚨🚨🚨 <b>ГОРЯЩИЙ ДЕДЛАЙН: ОСТАЛСЯ 1 ЧАС!</b> 🚨🚨🚨\n\n` +
-        `⚠️ <b>Внимание!</b> До закрытия квиза на <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> осталось ${remainingStr}!\n` +
-        `После окончания времени попытка сгорит, сдать квиз позже будет невозможно.\n\n` +
-        `📚 <b>Курс:</b> ${quiz.courseName}\n` +
-        `📝 <b>Квиз:</b> <a href="${quiz.link}">${quiz.title}</a>\n` +
-        `⏰ <b>Точный дедлайн:</b> <b>${astanaTime}</b> (Алматы)\n\n` +
-        `⚡️ <i>Срочно перейдите по ссылке ниже и сдайте работу вовремя!</i>`;
+    let text;
+    let buttonText = '🚀 Сдать квиз прямо сейчас';
+
+    if (isGauharUser) {
+        text = `🚨🚨🚨 <b>ГОРЯЩИЙ ДЕДЛАЙН: ОСТАЛСЯ 1 ЧАС!</b> 🚨🚨🚨\n\n` +
+            `👩‍🎓 <b>Гаухар, мы знаем, что ты забыла!</b>\n` +
+            `Но этот квиз сам себя не решит, а память тебя опять подводит... До закрытия осталось всего ${remainingStr}!\n` +
+            `Бросай всё и иди сдавать прямо сейчас, пока не поздно! 🏃‍♀️💨\n\n` +
+            `📚 <b>Курс:</b> ${quiz.courseName}\n` +
+            `📝 <b>Квиз:</b> <a href="${quiz.link}">${quiz.title}</a>\n` +
+            `⏰ <b>Точный дедлайн:</b> <b>${astanaTime}</b> (Алматы)\n\n` +
+            `⚡️ <i>После окончания времени сдать работу будет невозможно!</i>`;
+        buttonText = '🚀 Спасти оценку прямо сейчас';
+    } else {
+        text = `🚨🚨🚨 <b>ГОРЯЩИЙ ДЕДЛАЙН: ОСТАЛСЯ 1 ЧАС!</b> 🚨🚨🚨\n\n` +
+            `⚠️ <b>Внимание!</b> До закрытия квиза на <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> осталось ${remainingStr}!\n` +
+            `После окончания времени попытка сгорит, сдать квиз позже будет невозможно.\n\n` +
+            `📚 <b>Курс:</b> ${quiz.courseName}\n` +
+            `📝 <b>Квиз:</b> <a href="${quiz.link}">${quiz.title}</a>\n` +
+            `⏰ <b>Точный дедлайн:</b> <b>${astanaTime}</b> (Алматы)\n\n` +
+            `⚡️ <i>Срочно перейдите по ссылке ниже и сдайте работу вовремя!</i>`;
+    }
 
     const replyMarkup = {
         inline_keyboard: [
             [
-                { text: '🚀 Сдать квиз прямо сейчас', url: quiz.link }
+                { text: buttonText, url: quiz.link }
             ]
         ]
     };
@@ -645,6 +680,8 @@ module.exports = {
     getAllQuizUsers,
     formatQuizzesMessage,
     formatCriticalHourAlert,
+    isGauhar,
+    GAUHAR_CHAT_ID,
     getStoredSession,
     saveStoredSession,
     readLocalCache,

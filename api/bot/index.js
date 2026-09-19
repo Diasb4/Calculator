@@ -5,14 +5,20 @@
 
 const aitu = require('./aitu.js');
 const statsEngine = require('../stats/engine.js');
-const BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
+function getBotToken() {
+    return (process.env.TELEGRAM_BOT_TOKEN || '').trim();
+}
+
+function getApiBase() {
+    return `https://api.telegram.org/bot${getBotToken()}`;
+}
+
 const RAW_ADMIN_IDS = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
 const ADMIN_CHAT_IDS = RAW_ADMIN_IDS
     ? RAW_ADMIN_IDS.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean)
     : [];
 const ADMIN_CHAT_ID = ADMIN_CHAT_IDS[0] || '';
 const WEBAPP_URL = process.env.WEBAPP_URL || 'https://calculator-not-404.vercel.app';
-const API_BASE = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 const ATTENDANCE_WEEKS = 10;
 const ATTENDANCE_LIMIT_PERCENT = 0.30;
@@ -45,10 +51,11 @@ function clearSession(chatId) {
 // ==========================================
 
 async function apiCall(method, payload = {}) {
-    if (!BOT_TOKEN) {
+    const token = getBotToken();
+    if (!token) {
         throw new Error('TELEGRAM_BOT_TOKEN environment variable is not configured');
     }
-    const response = await fetch(`${API_BASE}/${method}`, {
+    const response = await fetch(`${getApiBase()}/${method}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -778,13 +785,17 @@ async function handleCallbackQuery(cq) {
     }
 
     if (data === 'user_quizzes_refresh') {
-        await sendMessage(chatId, '⏳ <i>Обновляю список квизов...</i>');
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const refreshText = isGauharUser
+            ? '⏳ <i>Обновляю квизы для Гаухар... Спойлер: проверь дедлайны ещё раз! 🔍</i>'
+            : '⏳ <i>Обновляю список квизов...</i>';
+        await sendMessage(chatId, refreshText);
         const userSid = await aitu.getUserSession(chatId);
         if (!userSid) {
             return sendMessage(chatId, '⚠️ Сессия не найдена. Отправьте команду /set_cookie ВАШ_SESSION_ID.');
         }
         const result = await aitu.getUpcomingQuizzes(userSid);
-        const msgText = aitu.formatQuizzesMessage(result);
+        const msgText = aitu.formatQuizzesMessage(result, isGauharUser);
         return sendMessage(chatId, msgText, {
             reply_markup: {
                 inline_keyboard: [
@@ -800,7 +811,11 @@ async function handleCallbackQuery(cq) {
 
     if (data === 'user_logout') {
         await aitu.deleteUserSession(chatId);
-        return sendMessage(chatId, '🚪 <b>Ваша сессия отключена.</b>\nАвтоматические напоминания остановлены.', {
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const logoutNote = isGauharUser
+            ? '🚪 <b>Гаухар, твоя сессия отключена.</b>\nАвтоматические напоминания остановлены. Теперь вся надежда только на твою память! 😅'
+            : '🚪 <b>Ваша сессия отключена.</b>\nАвтоматические напоминания остановлены.';
+        return sendMessage(chatId, logoutNote, {
             reply_markup: getMainKeyboard(chatId)
         });
     }
@@ -841,15 +856,32 @@ async function handleMessage(msg) {
     // 1. /start
     if (text === '/start' || text.startsWith('/start ')) {
         clearSession(chatId);
-        const welcome = `👋 <b>Добро пожаловать в GradeMaster Bot!</b> 🎓\n\n` +
-            `Этот бот — ваша <b>полная замена сайту</b> для всех академических расчётов:\n\n` +
-            `🚀 <b>Итоговая оценка</b> — расчет РегТерма и прогноз на стипендию (обычная/повышенная).\n` +
-            `📊 <b>Калькулятор GPA</b> — средний балл за триместр с учетом кредитов.\n` +
-            `📈 <b>Кумулятивный GPA</b> — общий балл за всё время учебы.\n` +
-            `📋 <b>Посещаемость</b> — лимит 30% пропусков и расчет оставшихся пар.\n` +
-            `🔄 <b>Конвертер баллов</b> — перевод % в буквенную оценку и GPA.\n` +
-            `💬 <b>Поддержка</b> — прямая связь с администрацией.\n\n` +
-            `👇 <i>Выберите нужный калькулятор на кнопках ниже:</i>`;
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+
+        let welcome;
+        if (isGauharUser) {
+            welcome = `👋 <b>О, Гаухар (@goshoch), привет!</b> 🧠⚡️\n\n` +
+                `Режим <i>«Не дать Гаухар всё забыть»</i> успешно активирован!\n\n` +
+                `Ты точно помнишь, зачем сюда зашла, или тебе уже пора напомнить про дедлайны? 😉\n\n` +
+                `Этот бот посчитает твои оценки, посещаемость и напомнит о горящих квизах:\n\n` +
+                `🚀 <b>Итоговая оценка</b> — расчет РегТерма и прогноз на стипендию.\n` +
+                `📊 <b>Калькулятор GPA</b> — средний балл за триместр.\n` +
+                `📈 <b>Кумулятивный GPA</b> — общий балл за всё время учебы.\n` +
+                `📋 <b>Посещаемость</b> — лимит 30% пропусков.\n` +
+                `🔄 <b>Конвертер баллов</b> — перевод % в букву и GPA.\n` +
+                `💬 <b>Поддержка</b> — связь с создателем бота.\n\n` +
+                `👇 <i>Выбирай нужный калькулятор на кнопках ниже:</i>`;
+        } else {
+            welcome = `👋 <b>Добро пожаловать в GradeMaster Bot!</b> 🎓\n\n` +
+                `Этот бот — ваша <b>полная замена сайту</b> для всех академических расчётов:\n\n` +
+                `🚀 <b>Итоговая оценка</b> — расчет РегТерма и прогноз на стипендию (обычная/повышенная).\n` +
+                `📊 <b>Калькулятор GPA</b> — средний балл за триместр с учетом кредитов.\n` +
+                `📈 <b>Кумулятивный GPA</b> — общий балл за всё время учебы.\n` +
+                `📋 <b>Посещаемость</b> — лимит 30% пропусков и расчет оставшихся пар.\n` +
+                `🔄 <b>Конвертер баллов</b> — перевод % в буквенную оценку и GPA.\n` +
+                `💬 <b>Поддержка</b> — прямая связь с администрацией.\n\n` +
+                `👇 <i>Выберите нужный калькулятор на кнопках ниже:</i>`;
+        }
 
         return sendMessage(chatId, welcome, {
             reply_markup: getMainKeyboard(chatId)
@@ -858,20 +890,33 @@ async function handleMessage(msg) {
 
     // 1.5. Квизы AITU (/quizzes, /aitu) - Персональные квизы для каждого студента
     if (text === '📝 Квизы AITU' || text === '📝 Мои квизы AITU' || text === '/quizzes' || text === '/aitu' || text === 'Квизы AITU' || text === 'Квизы' || text === 'Мои квизы') {
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
         const userSid = await aitu.getUserSession(chatId);
 
         if (!userSid) {
-            const setupMsg = `📝 <b>Персональные квизы learn.astanait.edu.kz</b>\n\n` +
-                `Вы можете подключить автоматические напоминания лично для себя:\n` +
-                `• 🎯 Бот проверяет только ваши личные курсы и присылает ваши дедлайны.\n` +
-                `• ☀️ Каждое утро в 08:00 — сводка квизов на ближайшие 3 дня.\n` +
-                `• 🚨 За 1 час до конца дедлайна — громкое экстренное оповещение со звуком и кнопкой сдачи!\n\n` +
-                `👉 <b>Как подключить за 1 минуту:</b>\n` +
-                `1. Войдите на <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> через браузер на компьютере.\n` +
-                `2. Нажмите <b>F12</b> (Инструменты разработчика) ➔ вкладка <b>Application (Приложение)</b> ➔ <b>Cookies</b> ➔ скопируйте значение <code>sessionid</code>.\n` +
-                `3. Отправьте боту команду в этот чат:\n` +
-                `<code>/set_cookie ВАШ_SESSION_ID</code>\n\n` +
-                `🔒 <i>100% изоляция: ваша сессия доступна только вам и хранится в защищенном виде.</i>`;
+            const setupMsg = isGauharUser
+                ? `📝 <b>Персональные квизы learn.astanait.edu.kz для Гаухар</b> 🧠\n\n` +
+                  `Подключи автоматические напоминания лично для себя, чтобы ничего не забыть:\n` +
+                  `• 🎯 Бот проверяет твои личные курсы и присылает твои дедлайны.\n` +
+                  `• ☀️ Каждое утро в 08:00 — сводка квизов на ближайшие 3 дня.\n` +
+                  `• 🚨 За 1 час до конца дедлайна — громкое экстренное оповещение с сиреной и кнопкой сдачи!\n\n` +
+                  `👉 <b>Как подключить за 1 минуту:</b>\n` +
+                  `1. Войди на <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> через браузер на компьютере.\n` +
+                  `2. Нажми <b>F12</b> ➔ вкладка <b>Application (Приложение)</b> ➔ <b>Cookies</b> ➔ скопируй значение <code>sessionid</code>.\n` +
+                  `3. Отправь боту команду сюда в чат:\n` +
+                  `<code>/set_cookie ТВОЙ_SESSION_ID</code>\n\n` +
+                  `🔒 <i>Твоя сессия хранится изолированно и доступна только тебе.</i>`
+                : `📝 <b>Персональные квизы learn.astanait.edu.kz</b>\n\n` +
+                  `Вы можете подключить автоматические напоминания лично для себя:\n` +
+                  `• 🎯 Бот проверяет только ваши личные курсы и присылает ваши дедлайны.\n` +
+                  `• ☀️ Каждое утро в 08:00 — сводка квизов на ближайшие 3 дня.\n` +
+                  `• 🚨 За 1 час до конца дедлайна — громкое экстренное оповещение со звуком и кнопкой сдачи!\n\n` +
+                  `👉 <b>Как подключить за 1 минуту:</b>\n` +
+                  `1. Войдите на <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> через браузер на компьютере.\n` +
+                  `2. Нажмите <b>F12</b> (Инструменты разработчика) ➔ вкладка <b>Application (Приложение)</b> ➔ <b>Cookies</b> ➔ скопируйте значение <code>sessionid</code>.\n` +
+                  `3. Отправьте боту команду в этот чат:\n` +
+                  `<code>/set_cookie ВАШ_SESSION_ID</code>\n\n` +
+                  `🔒 <i>100% изоляция: ваша сессия доступна только вам и хранится в защищенном виде.</i>`;
 
             return sendMessage(chatId, setupMsg, {
                 reply_markup: getMainKeyboard(chatId),
@@ -879,9 +924,12 @@ async function handleMessage(msg) {
             });
         }
 
-        await sendMessage(chatId, '⏳ <i>Проверяю ваши квизы и дедлайны на learn.astanait.edu.kz...</i>');
+        const checkingText = isGauharUser
+            ? '⏳ <i>Сверяю дедлайны для Гаухар... Спойлер: ты наверняка забыла минимум про один 🔍</i>'
+            : '⏳ <i>Проверяю ваши квизы и дедлайны на learn.astanait.edu.kz...</i>';
+        await sendMessage(chatId, checkingText);
         const result = await aitu.getUpcomingQuizzes(userSid);
-        const msgText = aitu.formatQuizzesMessage(result);
+        const msgText = aitu.formatQuizzesMessage(result, isGauharUser);
         const sessionKeyboard = {
             inline_keyboard: [
                 [
@@ -910,9 +958,14 @@ async function handleMessage(msg) {
         const testRes = await aitu.getUpcomingQuizzes(cleanSid);
         if (testRes.ok) {
             await aitu.saveUserSession(chatId, cleanSid);
-            return sendMessage(chatId, `🎉 <b>Успешно подключено к AITU!</b>\nНайдено дедлайнов: <b>${testRes.quizzes.length}</b>\n\n` +
-                `✅ Теперь бот каждое утро в 08:00 и экстренно за 1 час до дедлайна будет присылать персональные напоминания лично тебе!\n\n` +
-                aitu.formatQuizzesMessage(testRes), {
+            const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+            const successNote = isGauharUser
+                ? `🎉 <b>Гаухар, сессия успешно подключена!</b> 🧠✨\nНайдено дедлайнов: <b>${testRes.quizzes.length}</b>\n\n` +
+                  `✅ Теперь бот каждое утро в 08:00 и за 1 час до каждого дедлайна будет присылать персональные сигналы тревоги лично тебе, чтобы ты ничего не пропустила!\n\n`
+                : `🎉 <b>Успешно подключено к AITU!</b>\nНайдено дедлайнов: <b>${testRes.quizzes.length}</b>\n\n` +
+                  `✅ Теперь бот каждое утро в 08:00 и экстренно за 1 час до дедлайна будет присылать персональные напоминания лично тебе!\n\n`;
+
+            return sendMessage(chatId, successNote + aitu.formatQuizzesMessage(testRes, isGauharUser), {
                 reply_markup: getMainKeyboard(chatId),
                 disable_web_page_preview: true
             });
@@ -926,7 +979,11 @@ async function handleMessage(msg) {
     // 1.6.1. /logout или /del_cookie (Отключение персональной сессии)
     if (text === '/logout' || text === '/del_cookie' || text === '/disconnect') {
         await aitu.deleteUserSession(chatId);
-        return sendMessage(chatId, '🚪 <b>Ваша сессия отключена.</b>\nАвтоматические напоминания по квизам остановлены, сессия удалена.', {
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const logoutNote = isGauharUser
+            ? '🚪 <b>Гаухар, твоя сессия отключена.</b>\nАвтоматические напоминания остановлены. Теперь вся надежда только на твою память! 😅'
+            : '🚪 <b>Ваша сессия отключена.</b>\nАвтоматические напоминания по квизам остановлены, сессия удалена.';
+        return sendMessage(chatId, logoutNote, {
             reply_markup: getMainKeyboard(chatId)
         });
     }
