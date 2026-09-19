@@ -567,5 +567,235 @@ test('AITU: getStoredSession extracts session from Telegram pinned message stora
     }
 });
 
+test('AITU: formatCriticalHourAlert produces loud siren warning and direct inline action button', () => {
+    const aitu = require('../api/bot/aitu.js');
+    const mockQuiz = {
+        courseId: 'course-v1:AITU+PHIL01+26-27_C1_Y3',
+        courseName: 'Philosophy',
+        title: 'Quiz 2. Epistemology',
+        link: 'https://learn.astanait.edu.kz/courses/course-v1:AITU+PHIL01+26-27_C1_Y3/jump_to/block_abc',
+        dueDate: new Date(Date.now() + 45 * 60 * 1000).toISOString(),
+        diffMinutes: 45,
+        diffHours: 0.8,
+        diffDays: 0,
+        isCriticalHour: true
+    };
+
+    const alert = aitu.formatCriticalHourAlert(mockQuiz);
+    assert.match(alert.text, /ГОРЯЩИЙ ДЕДЛАЙН: ОСТАЛСЯ 1 ЧАС!/);
+    assert.match(alert.text, /45 мин\./);
+    assert.match(alert.text, /Philosophy/);
+    assert.match(alert.text, /Quiz 2\. Epistemology/);
+    assert.ok(alert.replyMarkup?.inline_keyboard?.[0]?.[0]?.url.includes('jump_to/block_abc'));
+    assert.equal(alert.replyMarkup?.inline_keyboard?.[0]?.[0]?.text, '🚀 Сдать квиз прямо сейчас');
+});
+
+test('Cron: sends critical 1-hour alert with sound and deduplicates repeated invocations', async () => {
+    const cron = require('../api/cron.js');
+    const aitu = require('../api/bot/aitu.js');
+    cron.clearSentAlertsMemory();
+
+    const originalGetQuizzes = aitu.getUpcomingQuizzes;
+    const originalFetch = global.fetch;
+
+    const sentTelegrams = [];
+
+    try {
+        aitu.getUpcomingQuizzes = async () => ({
+            ok: true,
+            quizzes: [
+                {
+                    courseId: 'course-v1:AITU+Cloud101+26-27_C1_Y3',
+                    courseName: 'Cloud Technologies',
+                    title: 'Midterm Quiz 1',
+                    blockId: 'block_xyz789',
+                    link: 'https://learn.astanait.edu.kz/courses/test/jump_to/block_xyz789',
+                    dueDate: new Date(Date.now() + 50 * 60 * 1000).toISOString(),
+                    diffMinutes: 50,
+                    diffHours: 0.8,
+                    diffDays: 0,
+                    isPast: false,
+                    isCriticalHour: true
+                }
+            ]
+        });
+
+        global.fetch = async (url, opts) => {
+            if (url && url.includes('/sendMessage')) {
+                const body = JSON.parse(opts.body);
+                sentTelegrams.push(body);
+                return {
+                    ok: true,
+                    json: async () => ({ ok: true, result: { message_id: 111 } })
+                };
+            }
+            return { ok: true, json: async () => ({}) };
+        };
+
+        process.env.TELEGRAM_BOT_TOKEN = 'test_token_123';
+        process.env.ADMIN_CHAT_ID = '999888';
+
+        // 1. First invocation: should send critical alert with disable_notification: false
+        let mockResJson = null;
+        let mockResStatus = 200;
+        const mockRes = {
+            status: (s) => { mockResStatus = s; return mockRes; },
+            json: (data) => { mockResJson = data; return mockRes; }
+        };
+
+        await cron({ headers: {} }, mockRes);
+
+        assert.equal(mockResStatus, 200);
+        assert.equal(mockResJson.ok, true);
+        assert.equal(mockResJson.type, 'critical_1h');
+        assert.equal(mockResJson.criticalSent, 1);
+        assert.equal(sentTelegrams.length, 1);
+        assert.equal(sentTelegrams[0].chat_id, '999888');
+        assert.equal(sentTelegrams[0].disable_notification, false, 'Notification sound/vibrate must be active');
+        assert.match(sentTelegrams[0].text, /ГОРЯЩИЙ ДЕДЛАЙН: ОСТАЛСЯ 1 ЧАС!/);
+        assert.ok(sentTelegrams[0].reply_markup?.inline_keyboard?.[0]?.[0]?.text.includes('Сдать квиз'));
+
+        // 2. Second invocation: must NOT re-send duplicate alert
+        mockResJson = null;
+        await cron({ headers: {} }, mockRes);
+
+        assert.equal(mockResStatus, 200);
+        assert.equal(mockResJson.criticalQuizzes, 1);
+        assert.equal(sentTelegrams.length, 1, 'Duplicate 1h alert must NOT be sent');
+    } finally {
+        aitu.getUpcomingQuizzes = originalGetQuizzes;
+        global.fetch = originalFetch;
+        cron.clearSentAlertsMemory();
+    }
+});
+
+test('AITU Multi-User: isolated user sessions and subscriber registry', async () => {
+    const aitu = require('../api/bot/aitu.js');
+
+    // Save sessions for 2 distinct users
+    await aitu.saveUserSession('user_111', 'token_user_111');
+    await aitu.saveUserSession('user_222', 'token_user_222');
+
+    // Verify isolation
+    assert.equal(await aitu.getUserSession('user_111'), 'token_user_111');
+    assert.equal(await aitu.getUserSession('user_222'), 'token_user_222');
+    assert.equal(await aitu.getUserSession('user_333_unknown'), null);
+
+    // Verify both are in subscribers list
+    const subscribers = await aitu.getAllQuizUsers();
+    assert.ok(subscribers.includes('user_111'));
+    assert.ok(subscribers.includes('user_222'));
+
+    // Delete one session and verify
+    await aitu.deleteUserSession('user_111');
+    assert.equal(await aitu.getUserSession('user_111'), null);
+    assert.equal(await aitu.getUserSession('user_222'), 'token_user_222');
+
+    // Clean up
+    await aitu.deleteUserSession('user_222');
+});
+
+test('Cron Multi-User: sends personalized alerts to multiple users concurrently', async () => {
+    const cron = require('../api/cron.js');
+    const aitu = require('../api/bot/aitu.js');
+    cron.clearSentAlertsMemory();
+
+    // Register 2 users
+    await aitu.saveUserSession('student_alice', 'alice_token');
+    await aitu.saveUserSession('student_bob', 'bob_token');
+
+    const originalGetQuizzes = aitu.getUpcomingQuizzes;
+    const originalFetch = global.fetch;
+    const sentMessages = [];
+
+    try {
+        // Mock getUpcomingQuizzes to return different quizzes based on session
+        aitu.getUpcomingQuizzes = async (sid) => {
+            if (sid === 'alice_token') {
+                return {
+                    ok: true,
+                    quizzes: [{
+                        courseId: 'AITU+MATH',
+                        courseName: 'Mathematics',
+                        title: 'Math Quiz 1',
+                        blockId: 'math_q1',
+                        link: 'https://learn.astanait.edu.kz/math',
+                        dueDate: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+                        diffMinutes: 30,
+                        diffHours: 0.5,
+                        diffDays: 0,
+                        isPast: false,
+                        isCriticalHour: true
+                    }]
+                };
+            }
+            if (sid === 'bob_token') {
+                return {
+                    ok: true,
+                    quizzes: [{
+                        courseId: 'AITU+PHYS',
+                        courseName: 'Physics',
+                        title: 'Physics Quiz 3',
+                        blockId: 'phys_q3',
+                        link: 'https://learn.astanait.edu.kz/phys',
+                        dueDate: new Date(Date.now() + 45 * 60 * 1000).toISOString(),
+                        diffMinutes: 45,
+                        diffHours: 0.8,
+                        diffDays: 0,
+                        isPast: false,
+                        isCriticalHour: true
+                    }]
+                };
+            }
+            return { ok: false, error: 'unknown token' };
+        };
+
+        global.fetch = async (url, opts) => {
+            if (url && url.includes('/sendMessage')) {
+                sentMessages.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: {} }) };
+            }
+            return { ok: true, json: async () => ({}) };
+        };
+
+        process.env.TELEGRAM_BOT_TOKEN = 'test_token';
+        process.env.ADMIN_CHAT_ID = ''; // Clear admin so only subscribers are processed
+
+        let resultJson = null;
+        const mockRes = {
+            status: () => mockRes,
+            json: (data) => { resultJson = data; }
+        };
+
+        await cron({ headers: {} }, mockRes);
+
+        assert.equal(resultJson.ok, true);
+        assert.equal(resultJson.criticalSent, 2);
+
+        // Verify Alice received Math and Bob received Physics
+        const aliceMsg = sentMessages.find(m => m.chat_id === 'student_alice');
+        const bobMsg = sentMessages.find(m => m.chat_id === 'student_bob');
+
+        assert.ok(aliceMsg, 'Alice should receive message');
+        assert.ok(bobMsg, 'Bob should receive message');
+        assert.match(aliceMsg.text, /Mathematics/);
+        assert.match(bobMsg.text, /Physics/);
+
+        // Verify deduplication on 2nd run
+        sentMessages.length = 0;
+        await cron({ headers: {} }, mockRes);
+        assert.equal(sentMessages.length, 0, 'No duplicate messages sent on next check');
+
+    } finally {
+        aitu.getUpcomingQuizzes = originalGetQuizzes;
+        global.fetch = originalFetch;
+        await aitu.deleteUserSession('student_alice');
+        await aitu.deleteUserSession('student_bob');
+        cron.clearSentAlertsMemory();
+    }
+});
+
+
+
 
 

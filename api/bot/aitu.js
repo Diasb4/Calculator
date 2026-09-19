@@ -4,6 +4,7 @@
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
+const statsEngine = require('../stats/engine.js');
 
 const DEFAULT_COURSES = [
     { id: 'course-v1:AITU+PHIL01+26-27_C1_Y3', name: 'Philosophy' },
@@ -13,6 +14,8 @@ const DEFAULT_COURSES = [
 
 const STORAGE_PREFIX = 'GM_AITU_SESSION:';
 let memorySessionCache = null;
+const userSessionsMemory = new Map();
+const quizSubscribersMemory = new Set();
 
 function getCacheFilePath() {
     try {
@@ -234,6 +237,157 @@ async function saveStoredSession(sessionId, targetChatId) {
 }
 
 /**
+ * Получить сохраненную сессию для конкретного пользователя:
+ * 1. Из памяти процесса userSessionsMemory
+ * 2. Из Redis по ключу gm:user:${chatId}:session
+ * 3. Если это администратор, проверяем getStoredSession
+ */
+async function getUserSession(chatId) {
+    if (!chatId) return getStoredSession();
+    const strId = String(chatId).trim();
+
+    if (userSessionsMemory.has(strId)) {
+        return userSessionsMemory.get(strId);
+    }
+
+    try {
+        if (typeof statsEngine.kvCommand === 'function') {
+            const res = await statsEngine.kvCommand(['GET', `gm:user:${strId}:session`]);
+            if (res && typeof res === 'string' && res.trim()) {
+                const clean = res.trim();
+                userSessionsMemory.set(strId, clean);
+                quizSubscribersMemory.add(strId);
+                return clean;
+            }
+        }
+    } catch (err) {
+        console.warn(`getUserSession error for ${strId}:`, err.message);
+    }
+
+    const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+    const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+    if (adminIds.includes(strId)) {
+        const adminSid = await getStoredSession(strId);
+        if (adminSid) {
+            userSessionsMemory.set(strId, adminSid);
+            return adminSid;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Сохранить персональную сессию пользователя
+ */
+async function saveUserSession(chatId, sessionId) {
+    if (!chatId || !sessionId) return false;
+    const strId = String(chatId).trim();
+    const cleanSid = String(sessionId).trim();
+
+    userSessionsMemory.set(strId, cleanSid);
+    quizSubscribersMemory.add(strId);
+
+    try {
+        if (typeof statsEngine.kvCommand === 'function') {
+            await statsEngine.kvCommand(['SET', `gm:user:${strId}:session`, cleanSid, 'EX', 2592000]);
+            await statsEngine.kvCommand(['SADD', 'gm:quiz_subscribers', strId]);
+        }
+    } catch (err) {
+        console.warn(`saveUserSession Redis error for ${strId}:`, err.message);
+    }
+
+    const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+    const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+    if (adminIds.includes(strId)) {
+        await saveStoredSession(cleanSid, strId);
+    }
+
+    return true;
+}
+
+/**
+ * Удалить персональную сессию пользователя (отписка)
+ */
+async function deleteUserSession(chatId) {
+    if (!chatId) return false;
+    const strId = String(chatId).trim();
+
+    userSessionsMemory.delete(strId);
+    quizSubscribersMemory.delete(strId);
+
+    try {
+        if (typeof statsEngine.kvCommand === 'function') {
+            await statsEngine.kvCommand(['DEL', `gm:user:${strId}:session`]);
+            await statsEngine.kvCommand(['SREM', 'gm:quiz_subscribers', strId]);
+        }
+    } catch (err) {
+        console.warn(`deleteUserSession Redis error for ${strId}:`, err.message);
+    }
+
+    const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+    const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+    if (adminIds.includes(strId)) {
+        clearLocalCache();
+    }
+
+    return true;
+}
+
+/**
+ * Получить список всех пользователей, подписанных на напоминания по квизам
+ */
+async function getAllQuizUsers() {
+    const users = new Set(quizSubscribersMemory);
+
+    try {
+        if (typeof statsEngine.kvCommand === 'function') {
+            const redisMembers = await statsEngine.kvCommand(['SMEMBERS', 'gm:quiz_subscribers']);
+            if (Array.isArray(redisMembers)) {
+                for (const m of redisMembers) {
+                    if (m) users.add(String(m).trim());
+                }
+            }
+        }
+    } catch (err) {
+        console.warn('getAllQuizUsers Redis error:', err.message);
+    }
+
+    const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+    const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+    for (const adm of adminIds) {
+        users.add(adm);
+    }
+
+    return Array.from(users).filter(Boolean);
+}
+
+/**
+ * Получить квизы для конкретного пользователя (по chatId)
+ */
+async function getUpcomingQuizzesForUser(chatId) {
+    const sid = await getUserSession(chatId);
+    if (sid) {
+        return module.exports.getUpcomingQuizzes(sid);
+    }
+    const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+    const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+    if (!chatId || adminIds.includes(String(chatId).trim())) {
+        const globalSid = await getStoredSession();
+        if (globalSid) {
+            return module.exports.getUpcomingQuizzes(globalSid);
+        }
+        return module.exports.getUpcomingQuizzes();
+    }
+    return {
+        ok: false,
+        error: 'Сессия learn.astanait.edu.kz не подключена. Отправьте боту команду /set_cookie ВАШ_SESSION_ID.',
+        sessionExpired: true,
+        quizzes: []
+    };
+}
+
+/**
  * Получить список предстоящих квизов из курсов learn.astanait.edu.kz
  * @param {string} [sessionId] - Cookie sessionid пользователя (если не указан, извлекается из персистентного хранилища)
  * @returns {Promise<{ ok: boolean, error?: string, sessionExpired?: boolean, quizzes: Array }>}
@@ -341,8 +495,11 @@ async function getUpcomingQuizzes(sessionId) {
                 if (dateMatch) {
                     const dueUtc = new Date(dateMatch[1]);
                     const diffMs = dueUtc.getTime() - now.getTime();
-                    const diffHours = Math.round(diffMs / (1000 * 60 * 60));
-                    const diffDays = Math.floor(diffHours / 24);
+                    const diffMinutes = Math.round(diffMs / (1000 * 60));
+                    const diffHours = Number((diffMs / (1000 * 60 * 60)).toFixed(1));
+                    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                    const isPast = diffMs < 0;
+                    const isCriticalHour = !isPast && diffMinutes > 0 && diffMinutes <= 75;
 
                     allQuizzes.push({
                         courseId: course.id,
@@ -352,9 +509,11 @@ async function getUpcomingQuizzes(sessionId) {
                         link: `https://learn.astanait.edu.kz/courses/${course.id}/jump_to/${blockId}`,
                         dueDate: dueUtc.toISOString(),
                         dueString: descMatch ? descMatch[1] : null,
+                        diffMinutes,
                         diffHours,
                         diffDays,
-                        isPast: diffMs < 0,
+                        isPast,
+                        isCriticalHour,
                         isQuiz
                     });
                 }
@@ -411,7 +570,9 @@ function formatQuizzesMessage(result) {
             }).format(dateObj);
 
             let remainingText = '';
-            if (item.diffDays > 1) {
+            if (item.diffMinutes !== undefined && item.diffMinutes <= 60 && item.diffMinutes > 0) {
+                remainingText = `🚨 <b>ОСТАЛОСЬ ${item.diffMinutes} МИН.!</b>`;
+            } else if (item.diffDays > 1) {
                 remainingText = `⏳ осталось ${item.diffDays} дн.`;
             } else if (item.diffHours > 0) {
                 remainingText = `🔥 <b>осталось ${item.diffHours} ч.!</b>`;
@@ -435,18 +596,62 @@ function formatQuizzesMessage(result) {
         }
     }
 
-    msg += `\n💡 <i>Бот автоматически проверяет дедлайны каждое утро.</i>`;
+    msg += `\n💡 <i>Бот автоматически проверяет дедлайны каждое утро и за 1 час до окончания.</i>`;
     return msg;
+}
+
+/**
+ * Сформировать экстренное оповещение за 1 час до дедлайна с кнопкой прямого перехода
+ */
+function formatCriticalHourAlert(quiz) {
+    const dateObj = new Date(quiz.dueDate);
+    const astanaTime = new Intl.DateTimeFormat('ru-RU', {
+        timeZone: 'Asia/Almaty',
+        day: 'numeric',
+        month: 'long',
+        hour: '2-digit',
+        minute: '2-digit'
+    }).format(dateObj);
+
+    const remainingStr = (quiz.diffMinutes !== undefined && quiz.diffMinutes <= 60 && quiz.diffMinutes > 0)
+        ? `<b>${quiz.diffMinutes} мин.</b>`
+        : `<b>${quiz.diffHours || 1} ч.</b>`;
+
+    const text = `🚨🚨🚨 <b>ГОРЯЩИЙ ДЕДЛАЙН: ОСТАЛСЯ 1 ЧАС!</b> 🚨🚨🚨\n\n` +
+        `⚠️ <b>Внимание!</b> До закрытия квиза на <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> осталось ${remainingStr}!\n` +
+        `После окончания времени попытка сгорит, сдать квиз позже будет невозможно.\n\n` +
+        `📚 <b>Курс:</b> ${quiz.courseName}\n` +
+        `📝 <b>Квиз:</b> <a href="${quiz.link}">${quiz.title}</a>\n` +
+        `⏰ <b>Точный дедлайн:</b> <b>${astanaTime}</b> (Алматы)\n\n` +
+        `⚡️ <i>Срочно перейдите по ссылке ниже и сдайте работу вовремя!</i>`;
+
+    const replyMarkup = {
+        inline_keyboard: [
+            [
+                { text: '🚀 Сдать квиз прямо сейчас', url: quiz.link }
+            ]
+        ]
+    };
+
+    return { text, replyMarkup };
 }
 
 module.exports = {
     getUpcomingQuizzes,
+    getUpcomingQuizzesForUser,
+    getUserSession,
+    saveUserSession,
+    deleteUserSession,
+    getAllQuizUsers,
     formatQuizzesMessage,
+    formatCriticalHourAlert,
     getStoredSession,
     saveStoredSession,
     readLocalCache,
     writeLocalCache,
     clearLocalCache,
     STORAGE_PREFIX,
-    DEFAULT_COURSES
+    DEFAULT_COURSES,
+    _userSessionsMemory: userSessionsMemory,
+    _quizSubscribersMemory: quizSubscribersMemory
 };

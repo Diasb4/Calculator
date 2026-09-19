@@ -1,59 +1,178 @@
 // api/cron.js
-// Vercel Cron handler для ежедневных напоминаний о квизах AITU
+// Vercel Cron handler для ежедневных и экстренных напоминаний о квизах AITU
+// Поддерживает полностью изолированные персональные проверки для каждого студента
 
+const os = require('node:os');
+const path = require('node:path');
+const fs = require('node:fs');
 const aitu = require('./bot/aitu.js');
 const statsEngine = require('./stats/engine.js');
 
-const BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
-const RAW_ADMIN_IDS = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
-const ADMIN_CHAT_IDS = RAW_ADMIN_IDS
-    ? RAW_ADMIN_IDS.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean)
-    : [];
-const API_BASE = `https://api.telegram.org/bot${BOT_TOKEN}`;
+function getBotToken() {
+    return (process.env.TELEGRAM_BOT_TOKEN || '').trim();
+}
 
-async function sendTelegram(chatId, text) {
-    if (!BOT_TOKEN || !chatId) return;
-    const res = await fetch(`${API_BASE}/sendMessage`, {
+function getAdminChatIds() {
+    const raw = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+    return raw ? raw.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+}
+
+const sentAlertsMemory = new Set();
+
+function getAlertsCacheFilePath() {
+    try {
+        return path.join(os.tmpdir(), 'gm_sent_alerts.json');
+    } catch {
+        return null;
+    }
+}
+
+function readSentAlertsFile() {
+    const p = getAlertsCacheFilePath();
+    if (!p) return new Set();
+    try {
+        if (fs.existsSync(p)) {
+            const arr = JSON.parse(fs.readFileSync(p, 'utf8'));
+            return new Set(Array.isArray(arr) ? arr : []);
+        }
+    } catch {
+        // Ignore file read errors
+    }
+    return new Set();
+}
+
+function writeSentAlertsFile(set) {
+    const p = getAlertsCacheFilePath();
+    if (!p) return;
+    try {
+        fs.writeFileSync(p, JSON.stringify(Array.from(set)), 'utf8');
+    } catch {
+        // Ignore file write errors
+    }
+}
+
+async function hasAlertBeenSent(alertKey) {
+    if (sentAlertsMemory.has(alertKey)) return true;
+
+    const fileSet = readSentAlertsFile();
+    if (fileSet.has(alertKey)) {
+        sentAlertsMemory.add(alertKey);
+        return true;
+    }
+
+    if (typeof statsEngine.kvCommand === 'function') {
+        try {
+            const res = await statsEngine.kvCommand(['GET', `gm:alert:${alertKey}`]);
+            if (res) {
+                sentAlertsMemory.add(alertKey);
+                return true;
+            }
+        } catch {
+            // Ignore Redis read errors
+        }
+    }
+
+    return false;
+}
+
+async function markAlertAsSent(alertKey) {
+    sentAlertsMemory.add(alertKey);
+
+    const fileSet = readSentAlertsFile();
+    fileSet.add(alertKey);
+    writeSentAlertsFile(fileSet);
+
+    if (typeof statsEngine.kvCommand === 'function') {
+        try {
+            // Храним отметку об отправке 3 дня (259200 сек)
+            await statsEngine.kvCommand(['SET', `gm:alert:${alertKey}`, '1', 'EX', 259200]);
+        } catch {
+            // Ignore Redis write errors
+        }
+    }
+}
+
+function clearSentAlertsMemory() {
+    sentAlertsMemory.clear();
+    const p = getAlertsCacheFilePath();
+    if (p && fs.existsSync(p)) {
+        try {
+            fs.unlinkSync(p);
+        } catch {}
+    }
+}
+
+async function sendTelegram(chatId, text, options = {}) {
+    const token = getBotToken();
+    if (!token || !chatId) return;
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             chat_id: chatId,
             text,
             parse_mode: 'HTML',
-            disable_web_page_preview: true
+            disable_web_page_preview: true,
+            ...options
         })
     });
     return res.json();
 }
 
-module.exports = async function handler(req, res) {
-    // Проверка CRON_SECRET от Vercel (если настроен)
-    const authHeader = req.headers['authorization'];
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
+/**
+ * Проверка и отправка уведомлений для одного конкретного студента
+ */
+async function processUserQuizzes(chatId, context) {
+    const { isMorningWindow, forceSend, todayStr, adminChatIds } = context;
+    const strChatId = String(chatId).trim();
+    let criticalSent = 0;
+    let dailySent = 0;
 
-    if (ADMIN_CHAT_IDS.length === 0) {
-        return res.status(500).json({ error: 'TELEGRAM_CHAT_ID is not configured' });
-    }
+    const result = await aitu.getUpcomingQuizzesForUser(strChatId);
 
-    try {
-        const result = await aitu.getUpcomingQuizzes();
-
-        if (!result.ok) {
-            if (result.sessionExpired) {
-                const expiredMsg = `⚠️ <b>Внимание: Сессия learn.astanait.edu.kz истекла!</b>\n\n` +
-                    `Бот не смог проверить дедлайны по квизам. Пожалуйста, отправьте боту команду в чат:\n<code>/set_cookie ВАШ_SESSION_ID</code>\n\n` +
-                    `💡 <i>Сессия сохранится в Telegram storage и восстановит автоматические напоминания.</i>`;
-                for (const adminId of ADMIN_CHAT_IDS) {
-                    await sendTelegram(adminId, expiredMsg);
-                }
+    if (!result.ok) {
+        if (result.sessionExpired) {
+            const expKey = `expired:${strChatId}:${todayStr}`;
+            const alreadyNotified = await hasAlertBeenSent(expKey);
+            if (!alreadyNotified) {
+                const expiredMsg = `⚠️ <b>Твоя сессия learn.astanait.edu.kz истекла!</b>\n\n` +
+                    `Бот не может проверить дедлайны по твоим квизам. Пожалуйста, войди на платформу через Microsoft SSO, скопируй <code>sessionid</code> и отправь боту:\n\n` +
+                    `<code>/set_cookie ВАШ_SESSION_ID</code>\n\n` +
+                    `💡 <i>Сессия обновится, и автоматические напоминания сразу продолжат работать.</i>`;
+                await sendTelegram(strChatId, expiredMsg);
+                await markAlertAsSent(expKey);
             }
-            return res.status(200).json({ ok: false, error: result.error });
         }
+        return { chatId: strChatId, ok: false, error: result.error, criticalSent, dailySent };
+    }
 
-        // Фильтруем квизы, до дедлайна которых осталось <= 3 дней
-        const urgentQuizzes = result.quizzes.filter(q => !q.isPast && q.diffDays <= 3);
+    // =========================================================================
+    // 1. ЭКСТРЕННЫЕ ОПОВЕЩЕНИЯ ЗА 1 ЧАС ДО ДЕДЛАЙНА (🔥 САМАЯ ГОРЯЧАЯ НАПОМИНАЛКА)
+    // =========================================================================
+    const criticalQuizzes = (result.quizzes || []).filter(q => !q.isPast && q.isCriticalHour);
+    for (const item of criticalQuizzes) {
+        const quizKey = `1h:${strChatId}:${item.courseId}:${item.blockId}`;
+        const alreadySent = await hasAlertBeenSent(quizKey);
+
+        if (!alreadySent) {
+            const { text: alertText, replyMarkup } = aitu.formatCriticalHourAlert(item);
+            await sendTelegram(strChatId, alertText, {
+                reply_markup: replyMarkup,
+                disable_notification: false // Максимальный приоритет: громкий звук и вибрация!
+            });
+            await markAlertAsSent(quizKey);
+            criticalSent++;
+        }
+    }
+
+    // =========================================================================
+    // 2. РЕГУЛЯРНАЯ УТРЕННЯЯ СВОДКА (Квизы на 3 дня + статистика для админа)
+    // =========================================================================
+    const dailyKey = `daily:${strChatId}:${todayStr}`;
+    const alreadySentDaily = await hasAlertBeenSent(dailyKey);
+
+    if (!alreadySentDaily && (isMorningWindow || forceSend)) {
+        const urgentQuizzes = (result.quizzes || []).filter(q => !q.isPast && q.diffDays <= 3);
 
         if (urgentQuizzes.length > 0) {
             let alertMsg = `🔔 <b>Напоминание о квизах AITU!</b>\n\n`;
@@ -68,7 +187,9 @@ module.exports = async function handler(req, res) {
                 }).format(dateObj);
 
                 let badge = '';
-                if (item.diffDays <= 0) {
+                if (item.diffMinutes !== undefined && item.diffMinutes <= 60 && item.diffMinutes > 0) {
+                    badge = `🚨 <b>ОСТАЛОСЬ ${item.diffMinutes} МИН.!</b>`;
+                } else if (item.diffDays <= 0) {
                     badge = '🚨 <b>СЕГОДНЯ!</b>';
                 } else if (item.diffDays === 1) {
                     badge = '🔥 <b>ЗАВТРА!</b>';
@@ -80,39 +201,130 @@ module.exports = async function handler(req, res) {
                             `📝 <a href="${item.link}">${item.title}</a>\n` +
                             `⏰ Дедлайн: <b>${astanaTime}</b> (${badge})\n\n`;
             }
-            alertMsg += `Не забудьте сдать вовремя! 🚀`;
+            alertMsg += `Не забудь сдать вовремя! 🚀`;
 
-            let statsLine = '';
+            if (adminChatIds.includes(strChatId)) {
+                try {
+                    const stats = await statsEngine.getStatsSummary();
+                    if (stats && (stats.dauYesterday > 0 || stats.calcsYesterday > 0)) {
+                        alertMsg += `\n\n📊 <i>Вчера GradeMaster: <b>${stats.dauYesterday}</b> активных пользователей, <b>${stats.calcsYesterday}</b> расчётов.</i>`;
+                    }
+                } catch { /* Optional */ }
+            }
+
+            await sendTelegram(strChatId, alertMsg);
+            await markAlertAsSent(dailyKey);
+            dailySent++;
+        } else if (adminChatIds.includes(strChatId)) {
+            // Утренняя сводка админу при отсутствии дедлайнов
             try {
                 const stats = await statsEngine.getStatsSummary();
                 if (stats && (stats.dauYesterday > 0 || stats.calcsYesterday > 0)) {
-                    statsLine = `\n\n📊 <i>Вчера GradeMaster: <b>${stats.dauYesterday}</b> активных пользователей, <b>${stats.calcsYesterday}</b> расчётов.</i>`;
+                    const morningNote = `☀️ <b>Доброе утро! GradeMaster:</b>\n` +
+                        `Срочных дедлайнов на ближайшие 3 дня нет (активных квизов: ${result.quizzes.length}).\n\n` +
+                        `📊 <i>Вчера сервисом воспользовались <b>${stats.dauYesterday}</b> студентов (сделано <b>${stats.calcsYesterday}</b> расчётов).</i>`;
+                    await sendTelegram(strChatId, morningNote);
+                    await markAlertAsSent(dailyKey);
+                    dailySent++;
                 }
             } catch { /* Optional */ }
-            alertMsg += statsLine;
-
-            for (const adminId of ADMIN_CHAT_IDS) {
-                await sendTelegram(adminId, alertMsg);
-            }
-            return res.status(200).json({ ok: true, reminded: urgentQuizzes.length });
         }
-
-        // Если срочных дедлайнов нет, но есть статистика за вчера — отправляем утреннюю сводку
-        try {
-            const stats = await statsEngine.getStatsSummary();
-            if (stats && (stats.dauYesterday > 0 || stats.calcsYesterday > 0)) {
-                const morningNote = `☀️ <b>Доброе утро! GradeMaster:</b>\n` +
-                    `Срочных дедлайнов на ближайшие 3 дня нет (активных квизов: ${result.quizzes.length}).\n\n` +
-                    `📊 <i>Вчера сервисом воспользовались <b>${stats.dauYesterday}</b> студентов (сделано <b>${stats.calcsYesterday}</b> расчётов).</i>`;
-                for (const adminId of ADMIN_CHAT_IDS) {
-                    await sendTelegram(adminId, morningNote);
-                }
-            }
-        } catch { /* Optional */ }
-
-        return res.status(200).json({ ok: true, message: 'No urgent quizzes today', total: result.quizzes.length });
-    } catch (err) {
-        console.error('Cron error:', err);
-        return res.status(500).json({ error: err.message });
     }
+
+    return {
+        chatId: strChatId,
+        ok: true,
+        quizzesCount: (result.quizzes || []).length,
+        criticalQuizzesCount: criticalQuizzes.length,
+        criticalSent,
+        dailySent
+    };
+}
+
+module.exports = async function handler(req, res) {
+    // Проверка CRON_SECRET от Vercel (если настроен)
+    const authHeader = req ? req.headers?.['authorization'] : null;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const adminChatIds = getAdminChatIds();
+    let allRegisteredUsers = [];
+    try {
+        allRegisteredUsers = await aitu.getAllQuizUsers();
+    } catch (err) {
+        console.warn('getAllQuizUsers warning in cron:', err.message);
+    }
+
+    const targetUsers = Array.from(new Set([...allRegisteredUsers, ...adminChatIds])).filter(Boolean);
+
+    if (targetUsers.length === 0) {
+        return res.status(500).json({ error: 'No quiz users or TELEGRAM_CHAT_ID configured' });
+    }
+
+    const todayStr = statsEngine.getTodayDateStr ? statsEngine.getTodayDateStr() : new Date().toISOString().slice(0, 10);
+    const astanaHour = Number(new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Almaty',
+        hour: 'numeric',
+        hour12: false
+    }).format(new Date()));
+
+    const isMorningWindow = astanaHour >= 6 && astanaHour <= 11;
+    const forceSend = req && req.query && req.query.force === '1';
+
+    const context = {
+        isMorningWindow,
+        forceSend,
+        todayStr,
+        adminChatIds
+    };
+
+    // Параллельная проверка всех студентов (до 6+ человек)
+    const userResults = await Promise.allSettled(
+        targetUsers.map(chatId => processUserQuizzes(chatId, context))
+    );
+
+    let totalCriticalSent = 0;
+    let totalDailySent = 0;
+    let totalCriticalQuizzes = 0;
+    const summary = [];
+
+    for (const r of userResults) {
+        if (r.status === 'fulfilled') {
+            totalCriticalSent += r.value.criticalSent || 0;
+            totalDailySent += r.value.dailySent || 0;
+            totalCriticalQuizzes += r.value.criticalQuizzesCount || 0;
+            summary.push(r.value);
+        } else {
+            console.error('Error processing user in cron:', r.reason);
+            summary.push({ ok: false, error: r.reason?.message });
+        }
+    }
+
+    if (totalCriticalSent > 0) {
+        return res.status(200).json({
+            ok: true,
+            type: 'critical_1h',
+            criticalSent: totalCriticalSent,
+            criticalQuizzes: totalCriticalQuizzes,
+            usersChecked: targetUsers.length,
+            details: summary
+        });
+    }
+
+    return res.status(200).json({
+        ok: true,
+        message: 'All users checked successfully',
+        usersChecked: targetUsers.length,
+        criticalSent: totalCriticalSent,
+        criticalQuizzes: totalCriticalQuizzes,
+        dailySent: totalDailySent,
+        details: summary
+    });
 };
+
+module.exports.hasAlertBeenSent = hasAlertBeenSent;
+module.exports.markAlertAsSent = markAlertAsSent;
+module.exports.clearSentAlertsMemory = clearSentAlertsMemory;
+module.exports.sendTelegram = sendTelegram;
+module.exports.processUserQuizzes = processUserQuizzes;

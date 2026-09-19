@@ -343,6 +343,7 @@ module.exports = {
     recordCalculation,
     getStatsSummary,
     formatStatsTelegram,
+    kvCommand,
     _memoryStore: memoryStore
 };
 

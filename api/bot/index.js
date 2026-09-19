@@ -120,6 +120,10 @@ function getMainKeyboard(chatId) {
         keyboard.unshift(
             [{ text: 'Панель Администратора' }, { text: '📝 Квизы AITU' }]
         );
+    } else if (chatId && aitu._userSessionsMemory && aitu._userSessionsMemory.has(String(chatId))) {
+        keyboard.unshift(
+            [{ text: '📝 Мои квизы AITU' }]
+        );
     }
 
     return {
@@ -559,10 +563,17 @@ async function handleAdminPanel(chatId, messageId = null) {
         ? (storedSession.length > 20 ? `${storedSession.substring(0, 8)}...${storedSession.slice(-6)}` : 'Активна')
         : 'Не настроена';
 
+    let quizUsersCount = 0;
+    try {
+        const qUsers = await aitu.getAllQuizUsers();
+        quizUsersCount = qUsers.length;
+    } catch {}
+
     const adminMsg = `⚙️ <b>ПАНЕЛЬ АДМИНИСТРАТОРА GRADEMASTER:</b>\n\n` +
         `👤 <b>Ваш Admin Chat ID:</b> <code>${chatId}</code>\n` +
         `🌐 <b>Web App URL:</b> ${WEBAPP_URL}\n` +
-        `👥 <b>Активных пользователей в памяти:</b> ${activeUsers.size}\n\n` +
+        `👥 <b>Активных пользователей в памяти:</b> ${activeUsers.size}\n` +
+        `📝 <b>Студентов с напоминаниями по квизам:</b> <b>${quizUsersCount}</b> чел.\n\n` +
         `🔑 <b>Статус переменных окружения и сервисов:</b>\n` +
         `• <code>TELEGRAM_BOT_TOKEN</code>: ${hasBotToken ? '✅ Настроен' : '❌ Не задан'}\n` +
         `• <code>TELEGRAM_CHAT_ID</code>: ${hasAdminId ? '✅ Настроен' : '❌ Не задан'}\n` +
@@ -572,6 +583,7 @@ async function handleAdminPanel(chatId, messageId = null) {
         `• <code>/stats</code> — анонимная статистика использования\n` +
         `• <code>/set_cookie &lt;sid&gt;</code> — обновить cookie AITU\n` +
         `• <code>/quizzes</code> — проверить текущие квизы и дедлайны\n` +
+        `• <code>/test_1h</code> — экстренное напоминание (за 1 час)\n` +
         `• <code>/test_reminder</code> — тест утреннего напоминания\n` +
         `• <code>/reply &lt;chat_id&gt; &lt;текст&gt;</code> — ответить студенту\n` +
         `• <code>/broadcast &lt;текст&gt;</code> — разослать объявление всем\n` +
@@ -584,11 +596,14 @@ async function handleAdminPanel(chatId, messageId = null) {
                 { text: '📝 Квизы AITU', callback_data: 'adm_quizzes' }
             ],
             [
-                { text: '🔔 Тест напоминания', callback_data: 'adm_cron' },
-                { text: '📡 Webhook Info', callback_data: 'adm_webhookinfo' }
+                { text: '🚨 Тест 1ч дедлайна', callback_data: 'adm_test_1h' },
+                { text: '🔔 Тест напоминания', callback_data: 'adm_cron' }
             ],
             [
-                { text: '🔄 Обновить Webhook', callback_data: 'adm_setwebhook' },
+                { text: '📡 Webhook Info', callback_data: 'adm_webhookinfo' },
+                { text: '🔄 Обновить Webhook', callback_data: 'adm_setwebhook' }
+            ],
+            [
                 { text: '🏠 Главное меню', callback_data: 'adm_home' }
             ]
         ]
@@ -627,6 +642,32 @@ async function handleCallbackQuery(cq) {
             return sendMessage(chatId, msgText, {
                 reply_markup: getMainKeyboard(chatId),
                 disable_web_page_preview: true
+            });
+        }
+
+        if (data === 'adm_test_1h') {
+            await sendMessage(chatId, '⏳ Генерирую тестовое оповещение за 1 час до дедлайна...');
+            const result = await aitu.getUpcomingQuizzes();
+            let targetQuiz = null;
+            if (result.ok && result.quizzes && result.quizzes.length > 0) {
+                targetQuiz = result.quizzes.find(q => !q.isPast) || result.quizzes[0];
+            }
+            if (!targetQuiz) {
+                targetQuiz = {
+                    courseName: 'Philosophy',
+                    title: 'Quiz 2. Epistemological Paradigms',
+                    link: 'https://learn.astanait.edu.kz/courses/course-v1:AITU+PHIL01+26-27_C1_Y3/course/',
+                    dueDate: new Date(Date.now() + 48 * 60 * 1000).toISOString(),
+                    diffMinutes: 48,
+                    diffHours: 0.8,
+                    diffDays: 0,
+                    isCriticalHour: true
+                };
+            }
+            const { text: alertText, replyMarkup } = aitu.formatCriticalHourAlert(targetQuiz);
+            return sendMessage(chatId, alertText, {
+                reply_markup: replyMarkup,
+                disable_notification: false
             });
         }
 
@@ -736,6 +777,34 @@ async function handleCallbackQuery(cq) {
         return sendMessage(chatId, `💬 <b>Служба поддержки и отзывов:</b>\n\nНапишите ваше предложение, вопрос или сообщение об ошибке. Администратор получит его и ответит вам!`, { reply_markup: getCancelKeyboard() });
     }
 
+    if (data === 'user_quizzes_refresh') {
+        await sendMessage(chatId, '⏳ <i>Обновляю список квизов...</i>');
+        const userSid = await aitu.getUserSession(chatId);
+        if (!userSid) {
+            return sendMessage(chatId, '⚠️ Сессия не найдена. Отправьте команду /set_cookie ВАШ_SESSION_ID.');
+        }
+        const result = await aitu.getUpcomingQuizzes(userSid);
+        const msgText = aitu.formatQuizzesMessage(result);
+        return sendMessage(chatId, msgText, {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '🔄 Обновить', callback_data: 'user_quizzes_refresh' },
+                        { text: '🚪 Отключить сессию', callback_data: 'user_logout' }
+                    ]
+                ]
+            },
+            disable_web_page_preview: true
+        });
+    }
+
+    if (data === 'user_logout') {
+        await aitu.deleteUserSession(chatId);
+        return sendMessage(chatId, '🚪 <b>Ваша сессия отключена.</b>\nАвтоматические напоминания остановлены.', {
+            reply_markup: getMainKeyboard(chatId)
+        });
+    }
+
     if (data.startsWith('add_final_')) {
         const parts = data.split('_');
         const rm = parts[2];
@@ -787,25 +856,48 @@ async function handleMessage(msg) {
         });
     }
 
-    // 1.5. Квизы AITU (/quizzes, /aitu) - ТОЛЬКО ДЛЯ АДМИНИСТРАТОРА
-    if (text === '📝 Квизы AITU' || text === '/quizzes' || text === '/aitu' || text === 'Квизы AITU' || text === 'Квизы') {
-        if (!isAdmin(chatId)) {
-            return sendMessage(chatId, 'Команда не найдена. Напишите <code>/help</code> для просмотра доступных функций.', { reply_markup: getMainKeyboard(chatId) });
+    // 1.5. Квизы AITU (/quizzes, /aitu) - Персональные квизы для каждого студента
+    if (text === '📝 Квизы AITU' || text === '📝 Мои квизы AITU' || text === '/quizzes' || text === '/aitu' || text === 'Квизы AITU' || text === 'Квизы' || text === 'Мои квизы') {
+        const userSid = await aitu.getUserSession(chatId);
+
+        if (!userSid) {
+            const setupMsg = `📝 <b>Персональные квизы learn.astanait.edu.kz</b>\n\n` +
+                `Вы можете подключить автоматические напоминания лично для себя:\n` +
+                `• 🎯 Бот проверяет только ваши личные курсы и присылает ваши дедлайны.\n` +
+                `• ☀️ Каждое утро в 08:00 — сводка квизов на ближайшие 3 дня.\n` +
+                `• 🚨 За 1 час до конца дедлайна — громкое экстренное оповещение со звуком и кнопкой сдачи!\n\n` +
+                `👉 <b>Как подключить за 1 минуту:</b>\n` +
+                `1. Войдите на <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> через браузер на компьютере.\n` +
+                `2. Нажмите <b>F12</b> (Инструменты разработчика) ➔ вкладка <b>Application (Приложение)</b> ➔ <b>Cookies</b> ➔ скопируйте значение <code>sessionid</code>.\n` +
+                `3. Отправьте боту команду в этот чат:\n` +
+                `<code>/set_cookie ВАШ_SESSION_ID</code>\n\n` +
+                `🔒 <i>100% изоляция: ваша сессия доступна только вам и хранится в защищенном виде.</i>`;
+
+            return sendMessage(chatId, setupMsg, {
+                reply_markup: getMainKeyboard(chatId),
+                disable_web_page_preview: true
+            });
         }
-        await sendMessage(chatId, '⏳ <i>Проверяю квизы и дедлайны на learn.astanait.edu.kz...</i>');
-        const result = await aitu.getUpcomingQuizzes();
+
+        await sendMessage(chatId, '⏳ <i>Проверяю ваши квизы и дедлайны на learn.astanait.edu.kz...</i>');
+        const result = await aitu.getUpcomingQuizzes(userSid);
         const msgText = aitu.formatQuizzesMessage(result);
+        const sessionKeyboard = {
+            inline_keyboard: [
+                [
+                    { text: '🔄 Обновить', callback_data: 'user_quizzes_refresh' },
+                    { text: '🚪 Отключить сессию', callback_data: 'user_logout' }
+                ]
+            ]
+        };
         return sendMessage(chatId, msgText, {
-            reply_markup: getMainKeyboard(chatId),
+            reply_markup: sessionKeyboard,
             disable_web_page_preview: true
         });
     }
 
-    // 1.6. /set_cookie <sessionid> (Обновление сессии AITU)
+    // 1.6. /set_cookie <sessionid> (Персональное подключение сессии AITU)
     if (text.startsWith('/set_cookie') || text.startsWith('/cookie')) {
-        if (!isAdmin(chatId)) {
-            return sendMessage(chatId, `❌ <b>Доступ запрещён.</b>\nКоманда <code>/set_cookie</code> доступна только администраторам бота.\n\n👤 Ваш Telegram Chat ID: <code>${chatId}</code>\n\n💡 <i>Передайте этот ID создателю бота для добавления в администраторы, либо просто перешлите ваш <code>sessionid</code> ему в личные сообщения.</i>`);
-        }
         const cookieVal = text.replace(/^\/(?:set_cookie|cookie)/, '').trim();
         if (!cookieVal) {
             return sendMessage(chatId, 'Отправьте значение sessionid:\n<code>/set_cookie ВАШ_SESSION_ID</code>');
@@ -817,12 +909,10 @@ async function handleMessage(msg) {
         await sendMessage(chatId, '⏳ <i>Проверяю подключение к learn.astanait.edu.kz...</i>');
         const testRes = await aitu.getUpcomingQuizzes(cleanSid);
         if (testRes.ok) {
-            const saved = await aitu.saveStoredSession(cleanSid, chatId);
-            const pinNotice = saved
-                ? '📌 <i>Сессия успешно сохранена и закреплена в Telegram! Теперь утренний Vercel Cron будет автоматически проверять дедлайны каждый день без сбоев при перезапусках контейнера.</i>'
-                : '💾 <i>Сессия сохранена локально.</i>';
-
-            return sendMessage(chatId, `🎉 <b>Успешно подключено к AITU!</b>\nНайдено дедлайнов: <b>${testRes.quizzes.length}</b>\n\n${pinNotice}\n\n` + aitu.formatQuizzesMessage(testRes), {
+            await aitu.saveUserSession(chatId, cleanSid);
+            return sendMessage(chatId, `🎉 <b>Успешно подключено к AITU!</b>\nНайдено дедлайнов: <b>${testRes.quizzes.length}</b>\n\n` +
+                `✅ Теперь бот каждое утро в 08:00 и экстренно за 1 час до дедлайна будет присылать персональные напоминания лично тебе!\n\n` +
+                aitu.formatQuizzesMessage(testRes), {
                 reply_markup: getMainKeyboard(chatId),
                 disable_web_page_preview: true
             });
@@ -831,6 +921,14 @@ async function handleMessage(msg) {
                 reply_markup: getMainKeyboard(chatId)
             });
         }
+    }
+
+    // 1.6.1. /logout или /del_cookie (Отключение персональной сессии)
+    if (text === '/logout' || text === '/del_cookie' || text === '/disconnect') {
+        await aitu.deleteUserSession(chatId);
+        return sendMessage(chatId, '🚪 <b>Ваша сессия отключена.</b>\nАвтоматические напоминания по квизам остановлены, сессия удалена.', {
+            reply_markup: getMainKeyboard(chatId)
+        });
     }
 
     // 1.7. /test_reminder (Тестирование ежедневного напоминания Cron)
@@ -860,6 +958,36 @@ async function handleMessage(msg) {
             alertMsg += '📚 <b>' + item.courseName + '</b>\n📝 <a href="' + item.link + '">' + item.title + '</a>\n⏰ Дедлайн: <b>' + astanaTime + '</b> (осталось ' + item.diffDays + ' дн.)\n\n';
         }
         return sendMessage(chatId, alertMsg, { disable_web_page_preview: true });
+    }
+
+    // 1.8. /test_1h (Тестирование экстренного оповещения за 1 час)
+    if (text === '/test_1h' || text === '/urgent') {
+        if (!isAdmin(chatId)) {
+            return sendMessage(chatId, 'Доступ запрещен.');
+        }
+        await sendMessage(chatId, '⏳ Генерирую тестовое оповещение за 1 час до дедлайна...');
+        const result = await aitu.getUpcomingQuizzes();
+        let targetQuiz = null;
+        if (result.ok && result.quizzes && result.quizzes.length > 0) {
+            targetQuiz = result.quizzes.find(q => !q.isPast) || result.quizzes[0];
+        }
+        if (!targetQuiz) {
+            targetQuiz = {
+                courseName: 'Philosophy',
+                title: 'Quiz 2. Epistemological Paradigms',
+                link: 'https://learn.astanait.edu.kz/courses/course-v1:AITU+PHIL01+26-27_C1_Y3/course/',
+                dueDate: new Date(Date.now() + 48 * 60 * 1000).toISOString(),
+                diffMinutes: 48,
+                diffHours: 0.8,
+                diffDays: 0,
+                isCriticalHour: true
+            };
+        }
+        const { text: alertText, replyMarkup } = aitu.formatCriticalHourAlert(targetQuiz);
+        return sendMessage(chatId, alertText, {
+            reply_markup: replyMarkup,
+            disable_notification: false
+        });
     }
 
     // 2. /help или "Инструкция"
