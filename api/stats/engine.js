@@ -52,23 +52,25 @@ function anonymizeUserId(rawId) {
 /**
  * Execute Redis REST command via Upstash / Vercel KV REST API
  */
-async function kvCommand(commandArray) {
-    const url = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '').trim();
+async function kvCommand(commandArray, timeoutMs = 3000) {
+    const rawUrl = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '').trim();
     const token = (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '').trim();
 
-    if (!url || !token) {
+    if (!rawUrl || !token) {
         return null; // Signals fallback to memoryStore
     }
 
+    const cleanUrl = rawUrl.replace(/\/+$/, '');
+
     try {
-        const res = await fetch(url, {
+        const res = await fetch(cleanUrl, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(commandArray),
-            signal: AbortSignal.timeout(4000)
+            signal: AbortSignal.timeout(timeoutMs)
         });
 
         if (!res.ok) {
@@ -79,6 +81,9 @@ async function kvCommand(commandArray) {
         const data = await res.json();
         return data?.result !== undefined ? data.result : null;
     } catch (err) {
+        if (err.name === 'TimeoutError' || err.name === 'AbortError' || err.message?.includes('aborted')) {
+            return null; // Graceful timeout fallback to memoryStore without polluting logs
+        }
         console.warn('KV command network warning:', err.message);
         return null;
     }
@@ -87,15 +92,16 @@ async function kvCommand(commandArray) {
 /**
  * Execute a pipeline of Redis REST commands in a single HTTP request
  */
-async function kvPipeline(commands) {
-    const url = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '').trim();
+async function kvPipeline(commands, timeoutMs = 2500) {
+    const rawUrl = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '').trim();
     const token = (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '').trim();
 
-    if (!url || !token || !Array.isArray(commands) || commands.length === 0) {
+    if (!rawUrl || !token || !Array.isArray(commands) || commands.length === 0) {
         return null;
     }
 
-    const pipelineUrl = url.endsWith('/pipeline') ? url : `${url}/pipeline`;
+    const cleanUrl = rawUrl.replace(/\/+$/, '');
+    const pipelineUrl = cleanUrl.endsWith('/pipeline') ? cleanUrl : `${cleanUrl}/pipeline`;
 
     try {
         const res = await fetch(pipelineUrl, {
@@ -105,7 +111,7 @@ async function kvPipeline(commands) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(commands),
-            signal: AbortSignal.timeout(5000)
+            signal: AbortSignal.timeout(timeoutMs)
         });
 
         if (!res.ok) {
@@ -116,6 +122,9 @@ async function kvPipeline(commands) {
         const data = await res.json();
         return Array.isArray(data) ? data.map(item => item?.result) : null;
     } catch (err) {
+        if (err.name === 'TimeoutError' || err.name === 'AbortError' || err.message?.includes('aborted')) {
+            return null; // Graceful timeout fallback to memoryStore without polluting logs
+        }
         console.warn('KV pipeline network warning:', err.message);
         return null;
     }
@@ -154,7 +163,7 @@ async function recordVisit({ anonId, platform = 'bot' }) {
         ['SADD', 'gm:users:all', cleanId]
     ];
 
-    const pipelineRes = await kvPipeline(commands);
+    const pipelineRes = await kvPipeline(commands, 1500);
     return pipelineRes !== null;
 }
 
@@ -184,7 +193,7 @@ async function recordCalculation({ calcType = 'total', platform = 'bot' }) {
         ['INCR', `gm:calcs:platform:${platform}`]
     ];
 
-    const pipelineRes = await kvPipeline(commands);
+    const pipelineRes = await kvPipeline(commands, 1500);
     return pipelineRes !== null;
 }
 
@@ -230,7 +239,7 @@ async function getStatsSummary() {
             ['SUNION', ...past30DaysKeys]              // 14: MAU unique union
         ];
 
-        const results = await kvPipeline(commands);
+        const results = await kvPipeline(commands, 3500);
 
         if (results && results.length >= 13) {
             const dauToday = parseInt(results[0], 10) || 0;

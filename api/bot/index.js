@@ -902,7 +902,7 @@ async function handleMessage(msg) {
     activeUsers.add(String(chatId));
 
     const anonId = statsEngine.anonymizeUserId(chatId);
-    statsEngine.recordVisit({ anonId, platform: 'bot' }).catch(() => {});
+    await statsEngine.recordVisit({ anonId, platform: 'bot' }).catch(() => {});
 
     const session = getSession(chatId);
     const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
@@ -1235,21 +1235,21 @@ async function handleMessage(msg) {
         if (parts.length < 2) {
             return sendMessage(chatId, '❌ <b>Недостаточно данных.</b>\n<i>Формат:</i> <code>/calc РегМид РегЭнд [Файнал]</code>\n<i>Пример:</i> <code>/calc 80 85</code> или <code>/calc 80 85 90</code>');
         }
-        statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
         const res = calculateGradeReport(parts[0], parts[1], parts[2], isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (text.startsWith('/gpa')) {
         const raw = text.replace(/^\/gpa\s*/i, '');
-        statsEngine.recordCalculation({ calcType: 'gpa', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'gpa', platform: 'bot' }).catch(() => {});
         const res = calculateGPAReport(raw, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (text.startsWith('/cgpa') || text.startsWith('/cumulative') || text.startsWith('/totalgpa') || text.startsWith('/cum')) {
         const raw = text.replace(/^(\/cgpa|\/cumulative|\/totalgpa|\/cum)\s*/i, '');
-        statsEngine.recordCalculation({ calcType: 'cumulative', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'cumulative', platform: 'bot' }).catch(() => {});
         const res = calculateCumulativeGPAReport(raw, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
@@ -1259,7 +1259,7 @@ async function handleMessage(msg) {
         if (parts.length === 0) {
             return sendMessage(chatId, '❌ <b>Укажите количество пар в неделю.</b>\n<i>Пример:</i> <code>/att 3</code> или <code>/att 3 2</code>');
         }
-        statsEngine.recordCalculation({ calcType: 'attendance', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'attendance', platform: 'bot' }).catch(() => {});
         const res = calculateAttendanceReport(parts[0], parts[1], isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
@@ -1293,7 +1293,7 @@ async function handleMessage(msg) {
         const re = val;
         clearSession(chatId);
 
-        statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
         const forecast = calculateGradeReport(rm, re, null, isGauharUser);
         const inlineKeyboard = {
             inline_keyboard: [
@@ -1315,21 +1315,21 @@ async function handleMessage(msg) {
         const re = session.data.re;
         clearSession(chatId);
 
-        statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
         const res = calculateGradeReport(rm, re, val, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (session.step === 'gpa_input') {
         clearSession(chatId);
-        statsEngine.recordCalculation({ calcType: 'gpa', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'gpa', platform: 'bot' }).catch(() => {});
         const res = calculateGPAReport(text, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (session.step === 'cgpa_input' || session.step === 'cum_input') {
         clearSession(chatId);
-        statsEngine.recordCalculation({ calcType: 'cumulative', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'cumulative', platform: 'bot' }).catch(() => {});
         const res = calculateCumulativeGPAReport(text, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
@@ -1352,7 +1352,7 @@ async function handleMessage(msg) {
         const lessons = session.data.lessons;
         clearSession(chatId);
 
-        statsEngine.recordCalculation({ calcType: 'attendance', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'attendance', platform: 'bot' }).catch(() => {});
         const res = calculateAttendanceReport(lessons, missed, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
@@ -1383,7 +1383,7 @@ async function handleMessage(msg) {
     // 10. Попытка автоматического распознавания чисел (если пользователь просто отправил числа)
     const numTokens = text.split(/[\s,]+/).filter(Boolean).map(Number);
     if (numTokens.length >= 2 && numTokens.every(n => !isNaN(n) && n >= 0 && n <= 100)) {
-        statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
         if (numTokens.length === 2) {
             const res = calculateGradeReport(numTokens[0], numTokens[1], null, isGauharUser);
             return sendMessage(chatId, `💡 <i>Распознан расчёт РегМид = ${numTokens[0]}, РегЭнд = ${numTokens[1]}:</i>\n\n${res}`, { reply_markup: getMainKeyboard(chatId) });
