@@ -20,6 +20,19 @@ const ADMIN_CHAT_IDS = RAW_ADMIN_IDS
 const ADMIN_CHAT_ID = ADMIN_CHAT_IDS[0] || '';
 const WEBAPP_URL = process.env.WEBAPP_URL || 'https://calculator-not-404.vercel.app';
 
+function getAdminChatIds() {
+    const raw = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+    if (raw) {
+        return raw.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean);
+    }
+    return ADMIN_CHAT_IDS;
+}
+
+function getPrimaryAdminId() {
+    const ids = getAdminChatIds();
+    return ids[0] || ADMIN_CHAT_ID || '';
+}
+
 const ATTENDANCE_WEEKS = 10;
 const ATTENDANCE_LIMIT_PERCENT = 0.30;
 
@@ -107,7 +120,7 @@ function esc(str) {
 function isAdmin(chatId) {
     if (!chatId) return false;
     const strId = String(chatId).trim();
-    return ADMIN_CHAT_IDS.includes(strId);
+    return getAdminChatIds().includes(strId);
 }
 
 // ==========================================
@@ -602,8 +615,9 @@ async function handleAdminPanel(chatId, messageId = null) {
         return sendMessage(chatId, '❌ <b>Доступ запрещён.</b> Эта команда доступна только создателю бота.');
     }
 
-    const hasBotToken = Boolean(BOT_TOKEN);
-    const hasAdminId = Boolean(ADMIN_CHAT_ID);
+    const hasBotToken = Boolean(getBotToken());
+    const primaryAdmin = getPrimaryAdminId();
+    const hasAdminId = Boolean(primaryAdmin);
     const hasSecret = Boolean(process.env.TELEGRAM_SECRET_TOKEN);
     const storedSession = await aitu.getStoredSession(chatId);
     const hasAitu = Boolean(storedSession);
@@ -1351,13 +1365,14 @@ async function handleMessage(msg) {
 
     if (session.step === 'feed_input') {
         clearSession(chatId);
-        if (ADMIN_CHAT_ID && String(chatId) !== String(ADMIN_CHAT_ID)) {
+        const targetAdmin = getPrimaryAdminId();
+        if (targetAdmin && String(chatId) !== String(targetAdmin)) {
             try {
                 const notify = `📨 <b>Новое обращение от студента:</b>\n\n` +
                     `👤 <b>От:</b> ${esc(userName)} (ID: <code>${chatId}</code>)\n` +
                     `💬 <b>Текст:</b>\n${esc(text)}\n\n` +
                     `<i>💡 Чтобы ответить студенту, отправьте:</i>\n<code>/reply ${chatId} Ваш ответ</code>`;
-                await sendMessage(ADMIN_CHAT_ID, notify);
+                await sendMessage(targetAdmin, notify);
             } catch (e) {
                 console.error('Failed to notify admin:', e);
             }
@@ -1380,13 +1395,14 @@ async function handleMessage(msg) {
     }
 
     // 11. Нераспознанное сообщение — пересылка админу как вопрос/отзыв
-    if (ADMIN_CHAT_ID && String(chatId) !== String(ADMIN_CHAT_ID)) {
+    const targetAdmin = getPrimaryAdminId();
+    if (targetAdmin && String(chatId) !== String(targetAdmin)) {
         try {
             const notify = `📨 <b>Сообщение от студента:</b>\n\n` +
                 `👤 <b>От:</b> ${esc(userName)} (ID: <code>${chatId}</code>)\n` +
                 `💬 <b>Текст:</b>\n${esc(text)}\n\n` +
                 `<i>💡 Чтобы ответить:</i> <code>/reply ${chatId} Ваш ответ</code>`;
-            await sendMessage(ADMIN_CHAT_ID, notify);
+            await sendMessage(targetAdmin, notify);
         } catch (e) {
             console.error('Admin forward error:', e);
         }
@@ -1415,7 +1431,7 @@ module.exports = async function handler(req, res) {
         const setupParam = query.setup || query.action || (urlObj ? urlObj.searchParams.get('setup') || urlObj.searchParams.get('action') : null);
 
         if (setupParam === '1' || setupParam === 'setWebhook') {
-            if (!BOT_TOKEN) {
+            if (!getBotToken()) {
                 return res.status(500).json({
                     ok: false,
                     error: 'TELEGRAM_BOT_TOKEN не задан в переменных окружения Vercel'

@@ -511,6 +511,93 @@ test('Telegram bot: admin security and main keyboard isolation', () => {
     assert.match(help, /Калькулятор GPA/);
 });
 
+test('Telegram bot: admin panel and setup handler execute without ReferenceError', async () => {
+    const bot = require('../api/bot/index.js');
+    const originalFetch = global.fetch;
+    const originalToken = process.env.TELEGRAM_BOT_TOKEN;
+    const originalAdmin = process.env.ADMIN_CHAT_ID;
+
+    const sentMessages = [];
+    try {
+        global.fetch = async (url, opts) => {
+            if (url && url.includes('/sendMessage')) {
+                sentMessages.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: { message_id: 123 } }) };
+            }
+            if (url && url.includes('/setWebhook')) {
+                return { ok: true, json: async () => ({ ok: true, result: true }) };
+            }
+            if (url && url.includes('/getMe')) {
+                return { ok: true, json: async () => ({ ok: true, result: { username: 'test_bot' } }) };
+            }
+            return { ok: true, json: async () => ({ ok: true }) };
+        };
+
+        process.env.TELEGRAM_BOT_TOKEN = 'test_token_admin_999';
+        process.env.ADMIN_CHAT_ID = '777888';
+
+        // 1. Calling /admin as admin must NOT throw ReferenceError: BOT_TOKEN is not defined
+        const adminReq = {
+            method: 'POST',
+            headers: {},
+            body: {
+                message: {
+                    message_id: 1,
+                    chat: { id: '777888' },
+                    from: { id: '777888', username: 'admin_user' },
+                    text: '/admin'
+                }
+            }
+        };
+
+        let responsePayload = null;
+        let responseCode = null;
+        const mockRes = {
+            setHeader: () => {},
+            status: (code) => { responseCode = code; return mockRes; },
+            json: (data) => { responsePayload = data; }
+        };
+
+        await bot(adminReq, mockRes);
+        assert.equal(responseCode, 200);
+        assert.equal(responsePayload?.ok, true);
+
+        const lastMsg = sentMessages[sentMessages.length - 1];
+        assert.ok(lastMsg);
+        assert.match(lastMsg.text, /ПАНЕЛЬ АДМИНИСТРАТОРА GRADEMASTER/);
+        assert.match(lastMsg.text, /TELEGRAM_BOT_TOKEN.*Настроен/);
+
+        // 2. Calling GET /api/bot?setup=1
+        let setupPayload = null;
+        const mockSetupRes = {
+            setHeader: () => {},
+            status: (code) => { responseCode = code; return mockSetupRes; },
+            json: (data) => { setupPayload = data; }
+        };
+        await bot({ method: 'GET', query: { setup: '1' } }, mockSetupRes);
+        assert.equal(responseCode, 200);
+        assert.equal(setupPayload?.ok, true);
+        assert.match(setupPayload?.message, /Webhook успешно привязан/);
+
+        // 3. Calling GET /api/bot?setup=1 without BOT_TOKEN
+        delete process.env.TELEGRAM_BOT_TOKEN;
+        let noTokenPayload = null;
+        const mockNoTokenRes = {
+            setHeader: () => {},
+            status: (code) => { responseCode = code; return mockNoTokenRes; },
+            json: (data) => { noTokenPayload = data; }
+        };
+        await bot({ method: 'GET', query: { setup: '1' } }, mockNoTokenRes);
+        assert.equal(responseCode, 500);
+        assert.match(noTokenPayload?.error, /TELEGRAM_BOT_TOKEN не задан/);
+
+    } finally {
+        global.fetch = originalFetch;
+        process.env.TELEGRAM_BOT_TOKEN = originalToken;
+        process.env.ADMIN_CHAT_ID = originalAdmin;
+    }
+});
+
 test('AITU: local cache stores and retrieves session', () => {
     const aitu = require('../api/bot/aitu.js');
     const testSession = 'test_sess_abc123';
