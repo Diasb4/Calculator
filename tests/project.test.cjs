@@ -1512,16 +1512,16 @@ test('LMS & Learn: marking assignments and quizzes completed isolates them from 
             'UID:evt_101@lms.astanait.edu.kz',
             'SUMMARY:Assignment 1. Lab1 is due',
             'CATEGORIES:Computer Networks',
-            `DTSTART:${new Date(Date.now() + 3600000 * 2).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
-            `DTEND:${new Date(Date.now() + 3600000 * 2).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+            `DTSTART:${new Date(Date.now() + 3600000 * 1).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+            `DTEND:${new Date(Date.now() + 3600000 * 1).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
             'DESCRIPTION:https://lms.astanait.edu.kz/mod/assign/view.php?id=79995',
             'END:VEVENT',
             'BEGIN:VEVENT',
             'UID:evt_102@lms.astanait.edu.kz',
             'SUMMARY:Assignment 2. Lab2 is due',
             'CATEGORIES:Computer Networks',
-            `DTSTART:${new Date(Date.now() + 3600000 * 24).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
-            `DTEND:${new Date(Date.now() + 3600000 * 24).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+            `DTSTART:${new Date(Date.now() + 3600000 * 2).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+            `DTEND:${new Date(Date.now() + 3600000 * 2).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
             'DESCRIPTION:https://lms.astanait.edu.kz/mod/assign/view.php?id=79996',
             'END:VEVENT',
             'END:VCALENDAR'
@@ -1786,6 +1786,295 @@ test('Telegram Bot: /done command, keyboards, and callback query flows for compl
     } finally {
         global.fetch = originalFetch;
     }
+});
+
+test('Top-3: SWR in-memory caching and snapshot fallback on 502/timeout for LMS and Learn', async () => {
+    const lms = require('../api/bot/lms.js');
+    const aitu = require('../api/bot/aitu.js');
+
+    const originalFetch = global.fetch;
+    let fetchCount = 0;
+    let shouldFail = false;
+
+    try {
+        const dummyIcal = [
+            'BEGIN:VCALENDAR',
+            'VERSION:2.0',
+            'BEGIN:VEVENT',
+            'UID:swr_evt_1@lms.astanait.edu.kz',
+            'SUMMARY:Lab Assignment 1 is due',
+            'CATEGORIES:Cloud Computing',
+            `DTSTART:${new Date(Date.now() + 3600000 * 2).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+            `DTEND:${new Date(Date.now() + 3600000 * 2).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+            'DESCRIPTION:https://lms.astanait.edu.kz/mod/assign/view.php?id=123',
+            'END:VEVENT',
+            'END:VCALENDAR'
+        ].join('\r\n');
+
+        global.fetch = async (url) => {
+            fetchCount++;
+            if (shouldFail) {
+                return {
+                    ok: false,
+                    status: 502,
+                    text: async () => '502 Bad Gateway'
+                };
+            }
+            if (url && url.includes('export_execute.php')) {
+                return {
+                    ok: true,
+                    status: 200,
+                    text: async () => dummyIcal
+                };
+            }
+            if (url && url.includes('/dashboard')) {
+                return {
+                    ok: true,
+                    status: 200,
+                    text: async () => `<a href="/courses/course-v1:AITU+Cloud101+26-27_C1_Y3/course/">Cloud</a>`
+                };
+            }
+            if (url && url.includes('/course/')) {
+                return {
+                    ok: true,
+                    status: 200,
+                    text: async () => `<a class="outline-button" id="block@swr_q1"><h4 class="subsection-title">Quiz 1</h4><div data-datetime="${new Date(Date.now() + 3600000 * 3).toISOString()}" data-string="до"></div></a>`
+                };
+            }
+            return { ok: true, status: 200, text: async () => '' };
+        };
+
+        const calUrl = 'https://lms.astanait.edu.kz/calendar/export_execute.php?userid=77&authtoken=swr_token';
+        lms._lmsCacheMemory.clear();
+        lms._lmsLastSuccessfulSnapshot.clear();
+
+        // 1. First LMS fetch succeeds and primes cache and snapshot
+        fetchCount = 0;
+        const res1 = await lms.getUpcomingDeadlines(calUrl);
+        assert.ok(res1.ok);
+        assert.strictEqual(fetchCount, 1);
+        assert.strictEqual(res1.quizzesCount, 1);
+
+        // 2. Second immediate call uses SWR memory cache without network fetch
+        const res2 = await lms.getUpcomingDeadlines(calUrl);
+        assert.ok(res2.ok);
+        assert.strictEqual(fetchCount, 1, 'Subsequent call within 60s must use SWR cache');
+
+        // 3. Upstream LMS goes down (502 Bad Gateway) -> snapshot fallback is served with isStale: true
+        shouldFail = true;
+        const resStale = await lms.getUpcomingDeadlines(calUrl, true);
+        assert.ok(resStale.ok, 'Must succeed with stale snapshot');
+        assert.strictEqual(resStale.isStale, true);
+        const staleFormatted = lms.formatLmsDeadlinesMessage(resStale);
+        assert.match(staleFormatted, /Сервер LMS сейчас перегружен/);
+        assert.match(staleFormatted, /Lab Assignment 1/);
+
+        // 4. AITU Learn SWR caching & snapshot fallback
+        aitu._quizCacheMemory.clear();
+        aitu._quizLastSuccessfulSnapshot.clear();
+        shouldFail = false;
+        fetchCount = 0;
+
+        const dummySid = 'sid_swr_test_xyz';
+        const qRes1 = await aitu.getUpcomingQuizzes(dummySid);
+        assert.ok(qRes1.ok);
+        assert.strictEqual(qRes1.quizzes.length, 1);
+        const qFetchInitial = fetchCount;
+
+        // Second call within 60s
+        const qRes2 = await aitu.getUpcomingQuizzes(dummySid);
+        assert.ok(qRes2.ok);
+        assert.strictEqual(fetchCount, qFetchInitial, 'Subsequent quiz call within 60s must use SWR cache');
+
+        // Learn server fails -> snapshot fallback
+        shouldFail = true;
+        const qStale = await aitu.getUpcomingQuizzes(dummySid, true);
+        assert.ok(qStale.ok);
+        assert.strictEqual(qStale.isStale, true);
+        const qStaleMsg = aitu.formatQuizzesMessage(qStale);
+        assert.match(qStaleMsg, /Сервер Learn сейчас перегружен/);
+        assert.match(qStaleMsg, /Quiz 1/);
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
+test('Top-2 & Top-4: Default weekly view, getEndOfWeek, and interactive course filtering', () => {
+    const lms = require('../api/bot/lms.js');
+    const aitu = require('../api/bot/aitu.js');
+    const bot = require('../api/bot/index.js');
+
+    // 1. Test getEndOfWeek calculation in UTC+5
+    const testNow = new Date('2026-09-23T10:00:00Z'); // Wednesday
+    const endOfWeek = lms.getEndOfWeek(testNow);
+    assert.strictEqual(endOfWeek.toISOString(), '2026-09-27T18:59:59.999Z');
+
+    // 2. LMS mock result with events on current week and future weeks across different courses
+    const mockLms = {
+        ok: true,
+        academicEvents: [
+            {
+                id: 'ev_week',
+                courseName: 'Computer Networks',
+                title: 'CN Lab 1',
+                dueDate: '2026-09-25T12:00:00Z',
+                diffDays: 2,
+                diffHours: 48,
+                diffMinutes: 2880,
+                link: 'https://lms.astanait.edu.kz/mod/assign/view.php?id=1'
+            },
+            {
+                id: 'ev_next',
+                courseName: 'Operating Systems',
+                title: 'OS Assignment 2',
+                dueDate: '2026-10-15T12:00:00Z',
+                diffDays: 22,
+                diffHours: 528,
+                diffMinutes: 31680,
+                link: 'https://lms.astanait.edu.kz/mod/assign/view.php?id=2'
+            }
+        ]
+    };
+
+    // Default view: week mode (only this week's items shown)
+    const weekMsg = lms.formatLmsDeadlinesMessage(mockLms, false, false, 'week');
+    assert.match(weekMsg, /CN Lab 1/);
+    assert.doesNotMatch(weekMsg, /OS Assignment 2/);
+    assert.match(weekMsg, /Показаны задачи на эту неделю: <b>1<\/b>/);
+
+    // Full semester view: all items shown
+    const allMsg = lms.formatLmsDeadlinesMessage(mockLms, false, false, 'all');
+    assert.match(allMsg, /CN Lab 1/);
+    assert.match(allMsg, /OS Assignment 2/);
+
+    // Course filter: filter by 'Computer Networks'
+    const cnMsg = lms.formatLmsDeadlinesMessage(mockLms, false, false, 'all', 'Computer Networks');
+    assert.match(cnMsg, /CN Lab 1/);
+    assert.doesNotMatch(cnMsg, /OS Assignment 2/);
+
+    // Course filter: filter by 'Operating Systems'
+    const osMsg = lms.formatLmsDeadlinesMessage(mockLms, false, false, 'all', 'Operating Systems');
+    assert.match(osMsg, /OS Assignment 2/);
+    assert.doesNotMatch(osMsg, /CN Lab 1/);
+
+    // Keyboards support week and all modes
+    const kbWeek = bot.getLmsSessionKeyboard(mockLms, 'week');
+    assert.ok(kbWeek.inline_keyboard.some(r => r.some(b => b.callback_data === 'lms_view_all')));
+    assert.ok(kbWeek.inline_keyboard.some(r => r.some(b => b.callback_data === 'lms_courses_menu')));
+
+    const kbAll = bot.getLmsSessionKeyboard(mockLms, 'all');
+    assert.ok(kbAll.inline_keyboard.some(r => r.some(b => b.callback_data === 'lms_view_week')));
+
+    // 3. AITU Learn course filtering and week view
+    const mockLearn = {
+        ok: true,
+        quizzes: [
+            {
+                id: 'q_curr',
+                courseName: 'Philosophy',
+                title: 'Philosophy Quiz 1',
+                dueDate: '2026-09-25T15:00:00Z',
+                diffDays: 2,
+                diffHours: 48,
+                diffMinutes: 2880,
+                isPast: false,
+                isCompleted: false,
+                link: 'https://learn.astanait.edu.kz/q1'
+            },
+            {
+                id: 'q_later',
+                courseName: 'Cloud Computing',
+                title: 'Cloud Quiz 5',
+                dueDate: '2026-11-05T15:00:00Z',
+                diffDays: 45,
+                diffHours: 1000,
+                diffMinutes: 60000,
+                isPast: false,
+                isCompleted: false,
+                link: 'https://learn.astanait.edu.kz/q5'
+            }
+        ]
+    };
+
+    const learnWeekMsg = aitu.formatQuizzesMessage(mockLearn, false, false, 'week');
+    assert.match(learnWeekMsg, /Philosophy Quiz 1/);
+    assert.doesNotMatch(learnWeekMsg, /Cloud Quiz 5/);
+
+    const learnFilterMsg = aitu.formatQuizzesMessage(mockLearn, false, false, 'all', 'Cloud Computing');
+    assert.match(learnFilterMsg, /Cloud Quiz 5/);
+    assert.doesNotMatch(learnFilterMsg, /Philosophy Quiz 1/);
+});
+
+test('Top-6: Natural language academic query parser and AITU rules verification', () => {
+    const bot = require('../api/bot/index.js');
+
+    // 1. Standard question for final score needed
+    const q1 = bot.parseNaturalLanguageAcademicQuery('сколько надо на файнале если регмид 80 регенд 70');
+    assert.ok(q1);
+    assert.match(q1, /ПРОГНОЗ НА ЭКЗАМЕН/);
+    assert.match(q1, /75\.00/);
+
+    // 2. Question for specific target grade B+ (85)
+    const q2 = bot.parseNaturalLanguageAcademicQuery('сколько надо на файнале на B+ если рм 85 рэ 80');
+    assert.ok(q2);
+    assert.match(q2, /Сколько нужно на экзамене для B\+:/);
+    assert.match(q2, /89 баллов/);
+
+    // 3. Question verifying given final score: "хватит ли 75 на экзамене на B+ если рм 85 рэ 80"
+    const q3 = bot.parseNaturalLanguageAcademicQuery('хватит ли 75 на экзамене на B+ если рм 85 рэ 80');
+    assert.ok(q3);
+    assert.match(q3, /НЕТ, НЕ ХВАТИТ/);
+    assert.match(q3, /79.50/);
+
+    // 4. Question verifying given final score: "хватит ли 90 на экзамене на стипендию если рм 80 рэ 80"
+    const q4 = bot.parseNaturalLanguageAcademicQuery('хватит ли 90 на экзамене на стипендию если рм 80 рэ 80');
+    assert.ok(q4);
+    assert.match(q4, /ДА, ХВАТИТ С ЗАПАСОМ/);
+    assert.match(q4, /84.00/);
+
+    // 5. AITU final exam passing threshold: score < 50 on final is rejected regardless of high midterm
+    const q5 = bot.parseNaturalLanguageAcademicQuery('хватит ли 45 на файнале если регмид 95 регенд 95');
+    assert.ok(q5);
+    assert.match(q5, /НЕТ, НЕ ХВАТИТ/);
+    assert.match(q5, /минимум 50 баллов/);
+
+    // 6. AITU admission threshold: midterm < 25 rejects admission
+    const q6 = bot.parseNaturalLanguageAcademicQuery('сколько нужно на экзамене если регмид 20 регенд 80');
+    assert.ok(q6);
+    assert.match(q6, /Недопуск к экзамену/);
+    assert.match(q6, /не менее <b>25<\/b>/);
+
+    // 7. Non-academic text returns null
+    assert.strictEqual(bot.parseNaturalLanguageAcademicQuery('привет как дела'), null);
+});
+
+test('Rate Limiter: 5-minute timeout on NLP queries and feedback, admins exempt, wizards unblocked', async () => {
+    const bot = require('../api/bot/index.js');
+    const studentChatId = 'student_rl_test_456';
+    const adminChatId = (process.env.ADMIN_CHAT_ID || '1365231049').split(/[,\s;]+/)[0];
+
+    bot._userRateLimits.clear();
+
+    // 1. Initial check: allowed
+    const rl1 = bot.checkRateLimit(studentChatId);
+    assert.strictEqual(rl1.allowed, true);
+
+    // Record rate limit (user sent an NLP query or feedback)
+    bot.recordRateLimit(studentChatId);
+
+    // 2. Immediate second check: rejected with remaining time
+    const rl2 = bot.checkRateLimit(studentChatId);
+    assert.strictEqual(rl2.allowed, false);
+    assert.ok(rl2.remainingMin > 0);
+    assert.match(rl2.message, /1 раз в 5 минут/);
+
+    // 3. Admin is exempt even right after recording
+    bot.recordRateLimit(adminChatId);
+    const rlAdmin = bot.checkRateLimit(adminChatId);
+    assert.strictEqual(rlAdmin.allowed, true, 'Admins must never be rate limited');
+
+    // Cleanup
+    bot._userRateLimits.clear();
 });
 
 

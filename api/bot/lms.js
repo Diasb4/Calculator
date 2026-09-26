@@ -20,6 +20,27 @@ function isGauhar(chatId) {
 const lmsUserSessionsMemory = new Map();
 const lmsSubscribersMemory = new Set();
 const lmsCompletedEventsMemory = new Map();
+const lmsCacheMemory = new Map(); // cacheKey -> { timestamp, data }
+const lmsLastSuccessfulSnapshot = new Map(); // cacheKey -> { timestamp, data }
+const LMS_CACHE_TTL_MS = 60 * 1000; // 60 секунд SWR
+
+/**
+ * Вычислить дату конца текущей недели (Воскресенье 23:59:59.999 по времени Астаны UTC+5)
+ */
+function getEndOfWeek(nowDate = new Date()) {
+    const nowUtcMs = nowDate.getTime();
+    const almatyMs = nowUtcMs + 5 * 3600 * 1000;
+    const almatyDate = new Date(almatyMs);
+    const day = almatyDate.getUTCDay(); // 0 is Sunday, 1..6 is Mon..Sat
+    const daysToSunday = (7 - (day === 0 ? 7 : day));
+    const endOfWeekAlmatyMs = Date.UTC(
+        almatyDate.getUTCFullYear(),
+        almatyDate.getUTCMonth(),
+        almatyDate.getUTCDate() + daysToSunday,
+        23, 59, 59, 999
+    );
+    return new Date(endOfWeekAlmatyMs - 5 * 3600 * 1000);
+}
 
 function getLmsCacheFilePath() {
     try {
@@ -429,17 +450,33 @@ function parseIcalEvents(icalText) {
 /**
  * Получить список всех актуальных дедлайнов LMS по сессии или URL календаря
  */
-async function getUpcomingDeadlines(sessionOrUrl) {
+async function getUpcomingDeadlines(sessionOrUrl, forceRefresh = false) {
     if (!sessionOrUrl) {
         return { ok: false, error: 'Сессия LMS не настроена' };
     }
 
     let calendarUrl = String(sessionOrUrl).trim();
+    const cacheKey = calendarUrl;
+
+    if (!forceRefresh && lmsCacheMemory.has(cacheKey)) {
+        const cached = lmsCacheMemory.get(cacheKey);
+        if (Date.now() - cached.timestamp < LMS_CACHE_TTL_MS) {
+            return JSON.parse(JSON.stringify(cached.data));
+        }
+    }
 
     // Если передан не URL, а кука MoodleSession — генерируем постоянный URL
     if (!calendarUrl.startsWith('http://') && !calendarUrl.startsWith('https://')) {
         const genRes = await generatePermanentCalendarUrl(calendarUrl);
         if (!genRes.ok) {
+            if (lmsLastSuccessfulSnapshot.has(cacheKey)) {
+                const snap = lmsLastSuccessfulSnapshot.get(cacheKey);
+                return {
+                    ...JSON.parse(JSON.stringify(snap.data)),
+                    isStale: true,
+                    staleTimestamp: snap.timestamp
+                };
+            }
             return genRes;
         }
         calendarUrl = genRes.calendarUrl;
@@ -458,11 +495,27 @@ async function getUpcomingDeadlines(sessionOrUrl) {
         }
 
         if (!res.ok) {
+            if (lmsLastSuccessfulSnapshot.has(cacheKey)) {
+                const snap = lmsLastSuccessfulSnapshot.get(cacheKey);
+                return {
+                    ...JSON.parse(JSON.stringify(snap.data)),
+                    isStale: true,
+                    staleTimestamp: snap.timestamp
+                };
+            }
             return { ok: false, error: `LMS server returned status ${res.status}` };
         }
 
         const icalText = await res.text();
         if (!icalText.includes('BEGIN:VCALENDAR')) {
+            if (lmsLastSuccessfulSnapshot.has(cacheKey)) {
+                const snap = lmsLastSuccessfulSnapshot.get(cacheKey);
+                return {
+                    ...JSON.parse(JSON.stringify(snap.data)),
+                    isStale: true,
+                    staleTimestamp: snap.timestamp
+                };
+            }
             return { ok: false, error: 'Ответ сервера не является iCalendar' };
         }
 
@@ -472,7 +525,7 @@ async function getUpcomingDeadlines(sessionOrUrl) {
         const academicEvents = activeEvents.filter(e => !e.isAttendance);
         const attendanceEvents = activeEvents.filter(e => e.isAttendance);
 
-        return {
+        const data = {
             ok: true,
             calendarUrl,
             allEvents,
@@ -481,7 +534,21 @@ async function getUpcomingDeadlines(sessionOrUrl) {
             attendanceEvents,
             quizzesCount: academicEvents.length
         };
+
+        // Сохраняем в кэш и в snapshot
+        lmsCacheMemory.set(cacheKey, { timestamp: Date.now(), data });
+        lmsLastSuccessfulSnapshot.set(cacheKey, { timestamp: Date.now(), data });
+
+        return JSON.parse(JSON.stringify(data));
     } catch (err) {
+        if (lmsLastSuccessfulSnapshot.has(cacheKey)) {
+            const snap = lmsLastSuccessfulSnapshot.get(cacheKey);
+            return {
+                ...JSON.parse(JSON.stringify(snap.data)),
+                isStale: true,
+                staleTimestamp: snap.timestamp
+            };
+        }
         return { ok: false, error: `Ошибка загрузки дедлайнов LMS: ${err.message}` };
     }
 }
@@ -489,12 +556,12 @@ async function getUpcomingDeadlines(sessionOrUrl) {
 /**
  * Получить дедлайны LMS для конкретного пользователя (по chatId)
  */
-async function getUpcomingDeadlinesForUser(chatId) {
+async function getUpcomingDeadlinesForUser(chatId, forceRefresh = false) {
     const sessionOrUrl = await getUserLmsSession(chatId);
     if (!sessionOrUrl) {
         return { ok: false, sessionExpired: true, notConfigured: true, error: 'Сессия LMS не привязана' };
     }
-    const res = await getUpcomingDeadlines(sessionOrUrl);
+    const res = await getUpcomingDeadlines(sessionOrUrl, forceRefresh);
     if (!res.ok) return res;
 
     const completedSet = await getUserCompletedLmsEvents(chatId);
@@ -513,8 +580,13 @@ async function getUpcomingDeadlinesForUser(chatId) {
 
 /**
  * Форматирование списка дедлайнов LMS в красивое HTML-сообщение
+ * @param {Object} result
+ * @param {boolean} isGauharUser
+ * @param {boolean} showCompletedOnly
+ * @param {'week'|'all'} viewMode Режим отображения: 'week' (по умолчанию - текущая неделя) или 'all' (весь семестр)
+ * @param {string|null} targetCourse Фильтр по конкретному предмету
  */
-function formatLmsDeadlinesMessage(result, isGauharUser = false, showCompletedOnly = false) {
+function formatLmsDeadlinesMessage(result, isGauharUser = false, showCompletedOnly = false, viewMode = 'week', targetCourse = null) {
     if (!result || !result.ok) {
         if (result?.notConfigured || result?.sessionExpired) {
             const gauharPrefix = isGauharUser ? `Гаухар, мы знаем, что ты забыла подключить LMS! 😅\n\n` : '';
@@ -531,14 +603,22 @@ function formatLmsDeadlinesMessage(result, isGauharUser = false, showCompletedOn
         return `❌ <b>Ошибка загрузки дедлайнов LMS:</b>\n${result?.error || 'Неизвестная ошибка'}`;
     }
 
+    let staleBanner = '';
+    if (result.isStale) {
+        const timeStr = result.staleTimestamp
+            ? new Intl.DateTimeFormat('ru-RU', { timeZone: 'Asia/Almaty', hour: '2-digit', minute: '2-digit' }).format(new Date(result.staleTimestamp))
+            : 'недавно';
+        staleBanner = `⚠️ <i>Сервер LMS сейчас перегружен. Показана сохранённая копия дедлайнов от ${timeStr} 📦</i>\n\n`;
+    }
+
     if (showCompletedOnly) {
         const completed = result.completedAcademicEvents || [];
         if (completed.length === 0) {
-            return `📋 <b>Сданные задания Moodle LMS:</b>\n\n` +
+            return staleBanner + `📋 <b>Сданные задания Moodle LMS:</b>\n\n` +
                 `У вас пока нет отмеченных сданных заданий.\n` +
                 `Чтобы скрыть сданное задание из списка активных дедлайнов, нажмите кнопку «✅ Отметить сданное».`;
         }
-        let compText = `📋 <b>Ваши сданные задания Moodle LMS (${completed.length}):</b>\n\n`;
+        let compText = staleBanner + `📋 <b>Ваши сданные задания Moodle LMS (${completed.length}):</b>\n\n`;
         for (const item of completed) {
             compText += `✅ <b>${item.courseName}</b>\n` +
                         `• <a href="${item.link}">${item.title}</a>\n\n`;
@@ -547,32 +627,114 @@ function formatLmsDeadlinesMessage(result, isGauharUser = false, showCompletedOn
         return compText;
     }
 
-    const assignments = (result.activeAcademicEvents !== undefined)
+    let assignments = (result.activeAcademicEvents !== undefined)
         ? result.activeAcademicEvents
         : (result.academicEvents || []);
 
+    if (targetCourse) {
+        const cleanTarget = String(targetCourse).trim().toLowerCase();
+        assignments = assignments.filter(e => e.courseName && e.courseName.toLowerCase().includes(cleanTarget));
+    }
+
     if (assignments.length === 0) {
+        if (targetCourse) {
+            return staleBanner + `ℹ️ <b>По предмету «${targetCourse}» активных дедлайнов не найдено!</b> 🥳`;
+        }
         if (result.completedCount && result.completedCount > 0) {
             if (isGauharUser) {
-                return `🎉 <b>Гаухар, все задания в LMS сданы!</b> 🧠✨\n` +
+                return staleBanner + `🎉 <b>Гаухар, все задания в LMS сданы!</b> 🧠✨\n` +
                     `Ты закрыла все задания (сдано: <b>${result.completedCount}</b>)! Бот больше не потревожит тебя тревожными сигналами. Отличная работа! ☕🥳`;
             }
-            return `🎉 <b>Все задания в Moodle LMS сданы!</b>\n` +
+            return staleBanner + `🎉 <b>Все задания в Moodle LMS сданы!</b>\n` +
                 `Вы отметили сданными все задания (всего: <b>${result.completedCount}</b>). Бот исключил их из напоминаний. Отличная работа! 👏`;
         }
         if (isGauharUser) {
-            return `🎉 <b>Гаухар, активных заданий в LMS нет!</b>\n` +
+            return staleBanner + `🎉 <b>Гаухар, активных заданий в LMS нет!</b>\n` +
                 `Ты всё сдала (или преподаватели ещё не создали дедлайны). Можно спокойно пить чай! ☕✨`;
         }
-        return `🎉 <b>В Moodle LMS нет горящих дедлайнов!</b>\nВсе задания и лабораторные сданы. Отличная работа! 👏`;
+        return staleBanner + `🎉 <b>В Moodle LMS нет горящих дедлайнов!</b>\nВсе задания и лабораторные сданы. Отличная работа! 👏`;
     }
 
-    let text = isGauharUser
-        ? `📚 <b>Дедлайны Moodle LMS для Гаухар:</b> 🧠\n<i>(Смотри внимательно и ничего не откладывай!)</i>\n\n`
-        : `📚 <b>Актуальные дедлайны Moodle LMS (AITU):</b>\n\n`;
+    // Режим текущей недели (по умолчанию)
+    if (viewMode === 'week' && !targetCourse) {
+        const endOfWeek = getEndOfWeek();
+        const weekAssignments = assignments.filter(e => new Date(e.dueDate) <= endOfWeek);
 
-    // Выводим только реальные учебные задания (лабы, отчеты, квизы)
-    for (let i = 0; i < Math.min(assignments.length, 8); i++) {
+        if (weekAssignments.length === 0) {
+            let emptyWeekMsg = isGauharUser
+                ? `🎉 <b>Гаухар, на этой неделе горящих дедлайнов нет!</b> ☕️✨\n\n` +
+                  `Все ближайшие задания запланированы уже на следующей неделе (всего в семестре: <b>${assignments.length}</b>).\n` +
+                  `Нажми кнопку ниже, чтобы заглянуть в расписание на весь семестр!`
+                : `🎉 <b>На этой неделе (до конца воскресенья) горящих дедлайнов нет!</b> ☕️\n\n` +
+                  `Ближайшие задания запланированы на следующей неделе (всего в семестре: <b>${assignments.length}</b>).\n` +
+                  `Нажмите кнопку <b>«🗓 Показать весь семестр»</b> ниже, чтобы посмотреть их.`;
+            if (result.completedCount && result.completedCount > 0) {
+                emptyWeekMsg += `\n\n✅ <i>Сдано вами: <b>${result.completedCount}</b> заданий (скрыты из напоминаний)</i>`;
+            }
+            return staleBanner + emptyWeekMsg;
+        }
+
+        let text = isGauharUser
+            ? `📅 <b>Дедлайны LMS на эту неделю для Гаухар:</b> 🧠\n<i>(Смотри внимательно и ничего не откладывай!)</i>\n\n`
+            : `📅 <b>Дедлайны Moodle LMS на эту неделю:</b>\n\n`;
+
+        const dayGroups = new Map();
+        for (const item of weekAssignments) {
+            const dateObj = new Date(item.dueDate);
+            const dayName = new Intl.DateTimeFormat('ru-RU', {
+                timeZone: 'Asia/Almaty',
+                weekday: 'short',
+                day: 'numeric',
+                month: 'short'
+            }).format(dateObj);
+            const capDay = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+            if (!dayGroups.has(capDay)) dayGroups.set(capDay, []);
+            dayGroups.get(capDay).push(item);
+        }
+
+        for (const [day, items] of dayGroups.entries()) {
+            text += `🗓 <b>${day}:</b>\n`;
+            for (const item of items) {
+                const dateObj = new Date(item.dueDate);
+                const astanaTime = new Intl.DateTimeFormat('ru-RU', {
+                    timeZone: 'Asia/Almaty',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }).format(dateObj);
+
+                let badge = '';
+                if (item.diffMinutes <= 60 && item.diffMinutes > 0) {
+                    badge = `🚨 <b>ОСТАЛОСЬ ${item.diffMinutes} МИН.!</b>`;
+                } else if (item.diffDays <= 0) {
+                    badge = '🚨 <b>СЕГОДНЯ!</b>';
+                } else if (item.diffDays === 1) {
+                    badge = '🔥 <b>ЗАВТРА!</b>';
+                } else {
+                    badge = `⏳ через ${item.diffDays} дн.`;
+                }
+
+                const icon = item.isQuiz ? '📝' : '📌';
+                text += `${icon} <b>${item.courseName}</b> — <a href="${item.link}">${item.title}</a>\n` +
+                        `⏰ До <b>${astanaTime}</b> (${badge})\n\n`;
+            }
+        }
+
+        if (result.completedCount && result.completedCount > 0) {
+            text += `✅ <i>Сдано вами: <b>${result.completedCount}</b> заданий (скрыты из напоминаний)</i>\n\n`;
+        }
+
+        text += `💡 <i>Показаны задачи на эту неделю: <b>${weekAssignments.length}</b>. Всего в семестре: <b>${assignments.length}</b>.</i>`;
+        return staleBanner + text;
+    }
+
+    // Режим всего семестра ('all') или просмотр одного курса
+    let text = targetCourse
+        ? `🔍 <b>Дедлайны по предмету: ${targetCourse}</b>\n\n`
+        : (isGauharUser
+            ? `📚 <b>Все дедлайны Moodle LMS на семестр для Гаухар:</b> 🧠\n\n`
+            : `📚 <b>Все актуальные дедлайны Moodle LMS на семестр:</b>\n\n`);
+
+    for (let i = 0; i < Math.min(assignments.length, 12); i++) {
         const item = assignments[i];
         const dateObj = new Date(item.dueDate);
         const astanaTime = new Intl.DateTimeFormat('ru-RU', {
@@ -604,8 +766,8 @@ function formatLmsDeadlinesMessage(result, isGauharUser = false, showCompletedOn
         text += `✅ <i>Сдано вами: <b>${result.completedCount}</b> заданий (скрыты из напоминаний)</i>\n\n`;
     }
 
-    text += `<i>💡 Нажмите на название задания, чтобы сразу открыть страницу сдачи.</i>`;
-    return text;
+    text += `<i>💡 Нажмите на название задания, чтобы сразу перейти на страницу сдачи.</i>`;
+    return staleBanner + text;
 }
 
 /**
@@ -665,7 +827,10 @@ module.exports = {
     markLmsEventCompleted,
     unmarkLmsEventCompleted,
     clearUserCompletedLmsEvents,
+    getEndOfWeek,
     _lmsUserSessionsMemory: lmsUserSessionsMemory,
     _lmsSubscribersMemory: lmsSubscribersMemory,
-    _lmsCompletedEventsMemory: lmsCompletedEventsMemory
+    _lmsCompletedEventsMemory: lmsCompletedEventsMemory,
+    _lmsCacheMemory: lmsCacheMemory,
+    _lmsLastSuccessfulSnapshot: lmsLastSuccessfulSnapshot
 };

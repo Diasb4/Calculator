@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const statsEngine = require('../stats/engine.js');
+const { getEndOfWeek } = require('./lms.js');
 
 const DEFAULT_COURSES = [
     { id: 'course-v1:AITU+PHIL01+26-27_C1_Y3', name: 'Philosophy' },
@@ -22,6 +23,9 @@ let memorySessionCache = null;
 const userSessionsMemory = new Map();
 const quizSubscribersMemory = new Set();
 const quizCompletedMemory = new Map();
+const quizCacheMemory = new Map(); // cacheKey -> { timestamp, data }
+const quizLastSuccessfulSnapshot = new Map(); // cacheKey -> { timestamp, data }
+const QUIZ_CACHE_TTL_MS = 60 * 1000; // 60 секунд SWR
 
 function getCacheFilePath() {
     try {
@@ -487,17 +491,17 @@ async function getAllQuizUsers() {
 /**
  * Получить квизы для конкретного пользователя (по chatId)
  */
-async function getUpcomingQuizzesForUser(chatId) {
+async function getUpcomingQuizzesForUser(chatId, forceRefresh = false) {
     const sid = await getUserSession(chatId);
     let res;
     if (sid) {
-        res = await module.exports.getUpcomingQuizzes(sid);
+        res = await module.exports.getUpcomingQuizzes(sid, forceRefresh);
     } else {
         const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
         const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
         if (!chatId || adminIds.includes(String(chatId).trim())) {
             const globalSid = await getStoredSession();
-            res = globalSid ? await module.exports.getUpcomingQuizzes(globalSid) : await module.exports.getUpcomingQuizzes();
+            res = globalSid ? await module.exports.getUpcomingQuizzes(globalSid, forceRefresh) : await module.exports.getUpcomingQuizzes(undefined, forceRefresh);
         } else {
             return {
                 ok: false,
@@ -542,9 +546,10 @@ function getCalendarDayDiff(targetDate, nowDate = new Date()) {
 /**
  * Получить список предстоящих квизов из курсов learn.astanait.edu.kz
  * @param {string} [sessionId] - Cookie sessionid пользователя (если не указан, извлекается из персистентного хранилища)
- * @returns {Promise<{ ok: boolean, error?: string, sessionExpired?: boolean, quizzes: Array }>}
+ * @param {boolean} [forceRefresh=false] - Игнорировать кэш и запросить свежие данные
+ * @returns {Promise<{ ok: boolean, error?: string, sessionExpired?: boolean, quizzes: Array, isStale?: boolean, staleTimestamp?: number }>}
  */
-async function getUpcomingQuizzes(sessionId) {
+async function getUpcomingQuizzes(sessionId, forceRefresh = false) {
     let sid = (sessionId || '').trim();
     if (!sid) {
         sid = (await getStoredSession()) || '';
@@ -559,6 +564,15 @@ async function getUpcomingQuizzes(sessionId) {
         };
     }
 
+    const cacheKey = sid;
+
+    if (!forceRefresh && quizCacheMemory.has(cacheKey)) {
+        const cached = quizCacheMemory.get(cacheKey);
+        if (Date.now() - cached.timestamp < QUIZ_CACHE_TTL_MS) {
+            return JSON.parse(JSON.stringify(cached.data));
+        }
+    }
+
     const headers = {
         'Cookie': `sessionid=${sid}; openedx-language-preference=ru`,
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -567,139 +581,177 @@ async function getUpcomingQuizzes(sessionId) {
 
     let coursesToScan = [...DEFAULT_COURSES];
 
-    // 1. Пытаемся получить список активных курсов с дашборда
     try {
-        const dashRes = await fetch('https://learn.astanait.edu.kz/dashboard', {
-            headers,
-            redirect: 'manual',
-            signal: AbortSignal.timeout(6000)
-        });
+        // 1. Пытаемся получить список активных курсов с дашборда
+        try {
+            const dashRes = await fetch('https://learn.astanait.edu.kz/dashboard', {
+                headers,
+                redirect: 'manual',
+                signal: AbortSignal.timeout(6000)
+            });
 
-        if (dashRes.status === 302 || dashRes.status === 401 || dashRes.status === 403) {
-            const loc = dashRes.headers.get('location') || '';
-            if (loc.includes('login') || dashRes.status === 401 || dashRes.status === 403) {
-                return {
-                    ok: false,
-                    error: 'Сессия learn.astanait.edu.kz устарела (требуется повторный вход через Microsoft SSO).',
-                    sessionExpired: true,
-                    quizzes: []
-                };
-            }
-        }
-
-        if (dashRes.ok) {
-            const dashHtml = await dashRes.text();
-            const courseMatches = [...dashHtml.matchAll(/href="[^"]*\/courses\/([^"\/]+)\/course\/"/g)];
-            const activeCourseIds = new Set();
-            for (const m of courseMatches) {
-                const cId = m[1];
-                // Фильтруем курсы: берем только текущий учебный год 26-27 (чтобы не парсить архивные прошлые курсы)
-                if (cId && cId.includes('26-27')) {
-                    activeCourseIds.add(cId);
+            if (dashRes.status === 302 || dashRes.status === 401 || dashRes.status === 403) {
+                const loc = dashRes.headers.get('location') || '';
+                if (loc.includes('login') || dashRes.status === 401 || dashRes.status === 403) {
+                    return {
+                        ok: false,
+                        error: 'Сессия learn.astanait.edu.kz устарела (требуется повторный вход через Microsoft SSO).',
+                        sessionExpired: true,
+                        quizzes: []
+                    };
                 }
             }
 
-            if (activeCourseIds.size > 0) {
-                coursesToScan = Array.from(activeCourseIds).map(cId => {
-                    const existing = DEFAULT_COURSES.find(c => c.id === cId);
-                    const cleanName = cId.replace(/^course-v1:AITU\+/, '').replace(/\+.*$/, '').replace(/_.*$/, '');
+            if (dashRes.status >= 500) {
+                if (quizLastSuccessfulSnapshot.has(cacheKey)) {
+                    const snap = quizLastSuccessfulSnapshot.get(cacheKey);
                     return {
-                        id: cId,
-                        name: existing ? existing.name : cleanName
+                        ...JSON.parse(JSON.stringify(snap.data)),
+                        isStale: true,
+                        staleTimestamp: snap.timestamp
                     };
-                });
+                }
             }
-        }
-    } catch (err) {
-        console.warn('Dashboard fetch error, using default courses:', err.message);
-    }
 
-    const allQuizzes = [];
-    const now = new Date();
+            if (dashRes.ok) {
+                const dashHtml = await dashRes.text();
+                const courseMatches = [...dashHtml.matchAll(/href="[^"]*\/courses\/([^"\/]+)\/course\/"/g)];
+                const activeCourseIds = new Set();
+                for (const m of courseMatches) {
+                    const cId = m[1];
+                    // Фильтруем курсы: берем только текущий учебный год 26-27 (чтобы не парсить архивные прошлые курсы)
+                    if (cId && cId.includes('26-27')) {
+                        activeCourseIds.add(cId);
+                    }
+                }
 
-    // 2. Сканируем курсы параллельно
-    const fetchPromises = coursesToScan.map(async (course) => {
-        try {
-            const courseUrl = `https://learn.astanait.edu.kz/courses/${course.id}/course/`;
-            const res = await fetch(courseUrl, {
-                headers,
-                redirect: 'manual',
-                signal: AbortSignal.timeout(7000)
-            });
-
-            if (!res.ok) return;
-
-            const html = await res.text();
-            const blockRegex = /<a[^>]*outline-button[^>]*id="([^"]+)"[\s\S]*?<h4[^>]*class="subsection-title">([\s\S]*?)<\/h4>([\s\S]*?)<\/a>/gi;
-            let match;
-
-            while ((match = blockRegex.exec(html)) !== null) {
-                const blockId = match[1];
-                const rawTitle = match[2].replace(/\s+/g, ' ').trim();
-                const detailsHtml = match[3];
-
-                const dateMatch = detailsHtml.match(/data-datetime="([^"]+)"/);
-                const descMatch = detailsHtml.match(/data-string="([^"]+)"/);
-
-                const isQuiz = /quiz|квиз|тест|test|assignment|final|midterm/i.test(rawTitle) ||
-                               (descMatch && /quiz|квиз|до/i.test(descMatch[1]));
-
-                const isAutoCompleted = /complete-checkmark|fa-check|icon-check|\bcomplete\b/i.test(match[0]) ||
-                                        /completed|завершено|выполнено|сдано/i.test(detailsHtml);
-
-                if (dateMatch) {
-                    const dueUtc = new Date(dateMatch[1]);
-                    const diffMs = dueUtc.getTime() - now.getTime();
-                    const diffMinutes = Math.round(diffMs / (1000 * 60));
-                    const diffHours = Number((diffMs / (1000 * 60 * 60)).toFixed(1));
-                    const diffDays = getCalendarDayDiff(dueUtc, now);
-                    const isPast = diffMs < 0;
-                    const isCriticalHour = !isPast && diffMinutes > 0 && diffMinutes <= 75;
-
-                    const shortBlockId = blockId.includes('@') ? blockId.split('@').pop() : blockId;
-                    allQuizzes.push({
-                        id: shortBlockId,
-                        shortId: shortBlockId,
-                        courseId: course.id,
-                        courseName: course.name,
-                        title: rawTitle,
-                        blockId,
-                        link: `https://learn.astanait.edu.kz/courses/${course.id}/jump_to/${blockId}`,
-                        dueDate: dueUtc.toISOString(),
-                        dueString: descMatch ? descMatch[1] : null,
-                        diffMinutes,
-                        diffHours,
-                        diffDays,
-                        isPast,
-                        isCriticalHour,
-                        isQuiz,
-                        isCompleted: Boolean(isAutoCompleted)
+                if (activeCourseIds.size > 0) {
+                    coursesToScan = Array.from(activeCourseIds).map(cId => {
+                        const existing = DEFAULT_COURSES.find(c => c.id === cId);
+                        const cleanName = cId.replace(/^course-v1:AITU\+/, '').replace(/\+.*$/, '').replace(/_.*$/, '');
+                        return {
+                            id: cId,
+                            name: existing ? existing.name : cleanName
+                        };
                     });
                 }
             }
         } catch (err) {
-            console.error(`Ошибка проверки курса ${course.id}:`, err.message);
+            console.warn('Dashboard fetch error, using default courses:', err.message);
         }
-    });
 
-    await Promise.all(fetchPromises);
+        const allQuizzes = [];
+        const now = new Date();
 
-    // Сортируем: сначала ближайшие предстоящие, затем прошедшие
-    allQuizzes.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+        // 2. Сканируем курсы параллельно
+        const fetchPromises = coursesToScan.map(async (course) => {
+            try {
+                const courseUrl = `https://learn.astanait.edu.kz/courses/${course.id}/course/`;
+                const res = await fetch(courseUrl, {
+                    headers,
+                    redirect: 'manual',
+                    signal: AbortSignal.timeout(7000)
+                });
 
-    return {
-        ok: true,
-        sessionExpired: false,
-        quizzes: allQuizzes
-    };
+                if (!res.ok) return;
+
+                const html = await res.text();
+                const blockRegex = /<a[^>]*outline-button[^>]*id="([^"]+)"[\s\S]*?<h4[^>]*class="subsection-title">([\s\S]*?)<\/h4>([\s\S]*?)<\/a>/gi;
+                let match;
+
+                while ((match = blockRegex.exec(html)) !== null) {
+                    const blockId = match[1];
+                    const rawTitle = match[2].replace(/\s+/g, ' ').trim();
+                    const detailsHtml = match[3];
+
+                    const dateMatch = detailsHtml.match(/data-datetime="([^"]+)"/);
+                    const descMatch = detailsHtml.match(/data-string="([^"]+)"/);
+
+                    const isQuiz = /quiz|квиз|тест|test|assignment|final|midterm/i.test(rawTitle) ||
+                                   (descMatch && /quiz|квиз|до/i.test(descMatch[1]));
+
+                    const isAutoCompleted = /complete-checkmark|fa-check|icon-check|\bcomplete\b/i.test(match[0]) ||
+                                            /completed|завершено|выполнено|сдано/i.test(detailsHtml);
+
+                    if (dateMatch) {
+                        const dueUtc = new Date(dateMatch[1]);
+                        const diffMs = dueUtc.getTime() - now.getTime();
+                        const diffMinutes = Math.round(diffMs / (1000 * 60));
+                        const diffHours = Number((diffMs / (1000 * 60 * 60)).toFixed(1));
+                        const diffDays = getCalendarDayDiff(dueUtc, now);
+                        const isPast = diffMs < 0;
+                        const isCriticalHour = !isPast && diffMinutes > 0 && diffMinutes <= 75;
+
+                        const shortBlockId = blockId.includes('@') ? blockId.split('@').pop() : blockId;
+                        allQuizzes.push({
+                            id: shortBlockId,
+                            shortId: shortBlockId,
+                            courseId: course.id,
+                            courseName: course.name,
+                            title: rawTitle,
+                            blockId,
+                            link: `https://learn.astanait.edu.kz/courses/${course.id}/jump_to/${blockId}`,
+                            dueDate: dueUtc.toISOString(),
+                            dueString: descMatch ? descMatch[1] : null,
+                            diffMinutes,
+                            diffHours,
+                            diffDays,
+                            isPast,
+                            isCriticalHour,
+                            isQuiz,
+                            isCompleted: Boolean(isAutoCompleted)
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error(`Ошибка проверки курса ${course.id}:`, err.message);
+            }
+        });
+
+        await Promise.all(fetchPromises);
+
+        // Сортируем: сначала ближайшие предстоящие, затем прошедшие
+        allQuizzes.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+
+        const data = {
+            ok: true,
+            sessionExpired: false,
+            quizzes: allQuizzes
+        };
+
+        quizCacheMemory.set(cacheKey, { timestamp: Date.now(), data });
+        quizLastSuccessfulSnapshot.set(cacheKey, { timestamp: Date.now(), data });
+
+        return JSON.parse(JSON.stringify(data));
+    } catch (err) {
+        if (quizLastSuccessfulSnapshot.has(cacheKey)) {
+            const snap = quizLastSuccessfulSnapshot.get(cacheKey);
+            return {
+                ...JSON.parse(JSON.stringify(snap.data)),
+                isStale: true,
+                staleTimestamp: snap.timestamp
+            };
+        }
+        return {
+            ok: false,
+            error: `Ошибка при проверке квизов: ${err.message}`,
+            sessionExpired: false,
+            quizzes: []
+        };
+    }
 }
 
 /**
  * Красиво отформатировать список квизов для Telegram (HTML)
+ * @param {Object} result
+ * @param {boolean} [isGauharUser=false]
+ * @param {boolean} [showCompletedOnly=false]
+ * @param {'week'|'all'} [viewMode='week'] - Режим отображения: 'week' (текущая неделя) или 'all' (весь семестр)
+ * @param {string|null} [targetCourse=null] - Фильтр по названию/ID предмета
  */
-function formatQuizzesMessage(result, isGauharUser = false, showCompletedOnly = false) {
-    if (!result.ok) {
-        if (result.sessionExpired) {
+function formatQuizzesMessage(result, isGauharUser = false, showCompletedOnly = false, viewMode = 'week', targetCourse = null) {
+    if (!result || !result.ok) {
+        if (result?.sessionExpired) {
             if (isGauharUser) {
                 return `⚠️ <b>Гаухар, твоя сессия learn.astanait.edu.kz истекла!</b> 😱\n\n` +
                        `Спокойно, без паники: войди в <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> через Microsoft SSO, скопируй cookie <code>sessionid</code> и отправь боту:\n<code>/set_cookie ТВОЙ_SESSION_ID</code>\n\n` +
@@ -709,17 +761,25 @@ function formatQuizzesMessage(result, isGauharUser = false, showCompletedOnly = 
                    `Пожалуйста, войдите в <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> через Microsoft SSO, скопируйте cookie <code>sessionid</code> и отправьте боту команду:\n<code>/set_cookie ВАШ_SESSION_ID</code>\n\n` +
                    `💡 <i>Сессия будет автоматически сохранена в Telegram storage, и утренние напоминания продолжат работать без сбоев.</i>`;
         }
-        return `❌ <b>Ошибка при проверке квизов:</b>\n${result.error || 'Неизвестная ошибка'}`;
+        return `❌ <b>Ошибка при проверке квизов:</b>\n${result?.error || 'Неизвестная ошибка'}`;
+    }
+
+    let staleBanner = '';
+    if (result.isStale) {
+        const timeStr = result.staleTimestamp
+            ? new Intl.DateTimeFormat('ru-RU', { timeZone: 'Asia/Almaty', hour: '2-digit', minute: '2-digit' }).format(new Date(result.staleTimestamp))
+            : 'недавно';
+        staleBanner = `⚠️ <i>Сервер Learn сейчас перегружен. Показана сохранённая копия квизов от ${timeStr} 📦</i>\n\n`;
     }
 
     if (showCompletedOnly) {
         const completed = result.completedQuizzes || (result.quizzes || []).filter(q => q.isCompleted);
         if (completed.length === 0) {
-            return `📋 <b>Сданные квизы AITU Learn:</b>\n\n` +
+            return staleBanner + `📋 <b>Сданные квизы AITU Learn:</b>\n\n` +
                    `У вас пока нет отмеченных сданных квизов.\n` +
                    `Если вы прошли тест, но он ещё отображается, нажмите кнопку «✅ Отметить сданное».`;
         }
-        let compText = `📋 <b>Ваши сданные квизы Learn (${completed.length}):</b>\n\n`;
+        let compText = staleBanner + `📋 <b>Ваши сданные квизы Learn (${completed.length}):</b>\n\n`;
         for (const item of completed) {
             compText += `✅ <b>${item.courseName}</b>\n` +
                         `• <a href="${item.link}">${item.title}</a>\n\n`;
@@ -728,26 +788,114 @@ function formatQuizzesMessage(result, isGauharUser = false, showCompletedOnly = 
         return compText;
     }
 
-    const upcoming = (result.activeQuizzes !== undefined)
+    let upcoming = (result.activeQuizzes !== undefined)
         ? result.activeQuizzes
         : (result.quizzes || []).filter(q => !q.isPast && !q.isCompleted);
     const past = (result.quizzes || []).filter(q => q.isPast);
 
-    if (upcoming.length === 0 && past.length === 0) {
-        if (result.completedCount && result.completedCount > 0) {
-            return isGauharUser
-                ? `🎉 <b>Гаухар, все квизы сданы!</b> 🥳\nТы закрыла все квизы (сдано: <b>${result.completedCount}</b>)! Бот больше не потревожит тебя по ним. Можешь спокойно отдыхать! ☕✨`
-                : `🎉 <b>Все квизы в AITU Learn сданы!</b>\nВы отметили сданными все квизы (всего: <b>${result.completedCount}</b>). Бот исключил их из напоминаний. 👏`;
-        }
-        if (isGauharUser) {
-            return `ℹ️ <b>Гаухар, квизов и дедлайнов не найдено!</b> 🥳\n\nЛибо ты сдала абсолютно всё, либо преподаватели ещё не открыли тесты. Можешь спокойно выдохнуть!`;
-        }
-        return `ℹ️ <b>Квизы и дедлайны не найдены</b>\n\nВозможно, преподаватели еще не опубликовали даты тестов в курсах текущего семестра.`;
+    if (targetCourse) {
+        const cleanTarget = String(targetCourse).trim().toLowerCase();
+        upcoming = upcoming.filter(q =>
+            (q.courseName && q.courseName.toLowerCase().includes(cleanTarget)) ||
+            (q.courseId && q.courseId.toLowerCase().includes(cleanTarget))
+        );
     }
 
-    let msg = isGauharUser
-        ? `📋 <b>Квизы и дедлайны для Гаухар (learn.astanait.edu.kz)</b> 🧠\n\n`
-        : `📋 <b>Квизы и дедлайны learn.astanait.edu.kz</b>\n\n`;
+    if (upcoming.length === 0 && (!past.length || targetCourse)) {
+        if (targetCourse) {
+            return staleBanner + `ℹ️ <b>По предмету «${targetCourse}» активных квизов не найдено!</b> 🥳`;
+        }
+        if (result.completedCount && result.completedCount > 0) {
+            return isGauharUser
+                ? staleBanner + `🎉 <b>Гаухар, все квизы сданы!</b> 🥳\nТы закрыла все квизы (сдано: <b>${result.completedCount}</b>)! Бот больше не потревожит тебя по ним. Можешь спокойно отдыхать! ☕✨`
+                : staleBanner + `🎉 <b>Все квизы в AITU Learn сданы!</b>\nВы отметили сданными все квизы (всего: <b>${result.completedCount}</b>). Бот исключил их из напоминаний. 👏`;
+        }
+        if (isGauharUser) {
+            return staleBanner + `ℹ️ <b>Гаухар, квизов и дедлайнов не найдено!</b> 🥳\n\nЛибо ты сдала абсолютно всё, либо преподаватели ещё не открыли тесты. Можешь спокойно выдохнуть!`;
+        }
+        return staleBanner + `ℹ️ <b>Квизы и дедлайны не найдены</b>\n\nВозможно, преподаватели еще не опубликовали даты тестов в курсах текущего семестра.`;
+    }
+
+    // Режим текущей недели (по умолчанию)
+    if (viewMode === 'week' && !targetCourse) {
+        const endOfWeek = getEndOfWeek();
+        const weekQuizzes = upcoming.filter(q => new Date(q.dueDate) <= endOfWeek);
+
+        if (weekQuizzes.length === 0) {
+            let emptyWeekMsg = isGauharUser
+                ? `🎉 <b>Гаухар, на этой неделе горящих квизов нет!</b> ☕️✨\n\n` +
+                  `Все ближайшие тесты запланированы уже на следующей неделе (всего в семестре: <b>${upcoming.length}</b>).\n` +
+                  `Нажми кнопку ниже, чтобы заглянуть в расписание на весь семестр!`
+                : `🎉 <b>На этой неделе (до конца воскресенья) горящих квизов нет!</b> ☕️\n\n` +
+                  `Ближайшие квизы запланированы на следующей неделе (всего в семестре: <b>${upcoming.length}</b>).\n` +
+                  `Нажмите кнопку <b>«🗓 Показать весь семестр»</b> ниже, чтобы посмотреть их.`;
+            if (result.completedCount && result.completedCount > 0) {
+                emptyWeekMsg += `\n\n✅ <i>Сдано вами: <b>${result.completedCount}</b> квизов (скрыты из напоминаний)</i>`;
+            }
+            return staleBanner + emptyWeekMsg;
+        }
+
+        let msg = isGauharUser
+            ? `📅 <b>Квизы и дедлайны для Гаухар (на эту неделю)</b> 🧠\n<i>(Смотри внимательно и ничего не откладывай!)</i>\n\n`
+            : `📅 <b>Квизы learn.astanait.edu.kz на эту неделю:</b>\n\n`;
+
+        const dayGroups = new Map();
+        for (const item of weekQuizzes) {
+            const dateObj = new Date(item.dueDate);
+            const dayName = new Intl.DateTimeFormat('ru-RU', {
+                timeZone: 'Asia/Almaty',
+                weekday: 'short',
+                day: 'numeric',
+                month: 'short'
+            }).format(dateObj);
+            const capDay = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+            if (!dayGroups.has(capDay)) dayGroups.set(capDay, []);
+            dayGroups.get(capDay).push(item);
+        }
+
+        for (const [day, items] of dayGroups.entries()) {
+            msg += `🗓 <b>${day}:</b>\n`;
+            for (const item of items) {
+                const dateObj = new Date(item.dueDate);
+                const astanaTime = new Intl.DateTimeFormat('ru-RU', {
+                    timeZone: 'Asia/Almaty',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }).format(dateObj);
+
+                let badge = '';
+                if (item.diffMinutes !== undefined && item.diffMinutes <= 60 && item.diffMinutes > 0) {
+                    badge = `🚨 <b>ОСТАЛОСЬ ${item.diffMinutes} МИН.!</b>`;
+                } else if (item.diffDays <= 0) {
+                    badge = '🚨 <b>СЕГОДНЯ!</b>';
+                } else if (item.diffDays === 1) {
+                    badge = '🔥 <b>ЗАВТРА!</b>';
+                } else {
+                    badge = `⏳ через ${item.diffDays} дн.`;
+                }
+
+                msg += `📝 <b>${item.courseName}</b> — <a href="${item.link}">${item.title}</a>\n` +
+                       `⏰ До <b>${astanaTime}</b> (${badge})\n\n`;
+            }
+        }
+
+        if (result.completedCount && result.completedCount > 0) {
+            msg += `✅ <i>Сдано вами: <b>${result.completedCount}</b> квизов (скрыты из напоминаний)</i>\n\n`;
+        }
+
+        msg += `💡 <i>Показаны квизы на эту неделю: <b>${weekQuizzes.length}</b>. Всего в семестре: <b>${upcoming.length}</b>.</i>`;
+        if (isGauharUser) {
+            msg += `\n💡 <i>Совет дня для Гаухар: поставь ещё три будильника ⏰ Бот на всякий случай напомнит за 1 час!</i>`;
+        }
+        return staleBanner + msg;
+    }
+
+    // Режим всего семестра ('all') или фильтр по курсу
+    let msg = targetCourse
+        ? `🔍 <b>Квизы по предмету: ${targetCourse}</b>\n\n`
+        : (isGauharUser
+            ? `📋 <b>Все квизы learn.astanait.edu.kz на семестр для Гаухар:</b> 🧠\n\n`
+            : `📋 <b>Все квизы learn.astanait.edu.kz на семестр:</b>\n\n`);
 
     if (upcoming.length > 0) {
         msg += `🟢 <b>Предстоящие дедлайны:</b>\n`;
@@ -786,7 +934,7 @@ function formatQuizzesMessage(result, isGauharUser = false, showCompletedOnly = 
         msg += `\n✅ <i>Сдано вами: <b>${result.completedCount}</b> квизов (скрыты из напоминаний)</i>\n`;
     }
 
-    if (past.length > 0) {
+    if (past.length > 0 && !targetCourse) {
         msg += `\n──────────────\n` +
                `⚪️ <b>Прошедшие дедлайны:</b>\n`;
         for (const item of past.slice(-3)) {
@@ -810,7 +958,7 @@ function formatQuizzesMessage(result, isGauharUser = false, showCompletedOnly = 
     } else {
         msg += `\n💡 <i>Бот автоматически проверяет дедлайны каждое утро и за 1 час до окончания.</i>`;
     }
-    return msg;
+    return staleBanner + msg;
 }
 
 /**
@@ -890,5 +1038,7 @@ module.exports = {
     clearUserCompletedQuizzes,
     _userSessionsMemory: userSessionsMemory,
     _quizSubscribersMemory: quizSubscribersMemory,
-    _quizCompletedMemory: quizCompletedMemory
+    _quizCompletedMemory: quizCompletedMemory,
+    _quizCacheMemory: quizCacheMemory,
+    _quizLastSuccessfulSnapshot: quizLastSuccessfulSnapshot
 };

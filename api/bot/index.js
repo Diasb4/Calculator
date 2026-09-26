@@ -46,6 +46,38 @@ for (const id of ADMIN_CHAT_IDS) {
     activeUsers.add(id);
 }
 
+// Хранилище таймаута на сообщения пользователей (1 сообщение в 5 минут для NLP и фидбека)
+const userRateLimits = new Map(); // chatId -> timestamp
+const userCourseListMemory = new Map(); // chatId + '_lms' / '_learn' -> Array<courseName>
+const RATE_LIMIT_COOLDOWN_MS = 5 * 60 * 1000; // 5 минут
+
+function checkRateLimit(chatId) {
+    if (isAdmin(chatId)) {
+        return { allowed: true };
+    }
+    const strId = String(chatId);
+    const last = userRateLimits.get(strId);
+    const now = Date.now();
+    if (last && now - last < RATE_LIMIT_COOLDOWN_MS) {
+        const remainingSec = Math.ceil((RATE_LIMIT_COOLDOWN_MS - (now - last)) / 1000);
+        const remainingMin = Math.ceil(remainingSec / 60);
+        return {
+            allowed: false,
+            remainingSec,
+            remainingMin,
+            message: `⏳ <b>Пожалуйста, подождите:</b> отправка свободных запросов и сообщений ограничена 1 раз в 5 минут.\n` +
+                     `Следующее сообщение можно отправить через <b>${remainingMin} мин.</b>\n\n` +
+                     `<i>💡 Кнопки меню и стандартные калькуляторы работают без ограничений!</i>`
+        };
+    }
+    return { allowed: true };
+}
+
+function recordRateLimit(chatId) {
+    if (isAdmin(chatId)) return;
+    userRateLimits.set(String(chatId), Date.now());
+}
+
 function getSession(chatId) {
     const id = String(chatId);
     if (!userSessions.has(id)) {
@@ -578,6 +610,196 @@ function convertGradeReport(scoreInput) {
         `${info.emoji} <b>Статус:</b> ${info.status === 'success' ? 'Отличная оценка' : info.status === 'warning' ? 'Зачет / Проходной балл' : 'Неудовлетворительно'}`;
 }
 
+// 6. Парсер естественного языка для академических вопросов (Top-6)
+function parseNaturalLanguageAcademicQuery(rawText, isGauharUser = false) {
+    if (!rawText || typeof rawText !== 'string') return null;
+    const text = rawText.toLowerCase().replace(/,/g, ' ').replace(/\s+/g, ' ');
+
+    // Проверяем, похож ли запрос на академический вопрос
+    const hasAcademicKeywords = /(?:файнал|экзамен|экз\b|final|exam|регмид|регенд|рм\b|рэ\b|rk1|rk2|midterm|endterm|стипенди|стипух|балл|оценк)/i.test(text);
+    const hasQuestionIntent = /(?:сколько|хватит|нужно|надо|можно|выйдет|получится|допуск|сдам|сдать)/i.test(text);
+
+    if (!hasAcademicKeywords || !hasQuestionIntent) {
+        return null;
+    }
+
+    // 1. Извлекаем РегМид и РегЭнд
+    let rm = null;
+    let re = null;
+
+    // Регмид
+    const rmPattern1 = /(?:регмид|рег\s*мид|рм|midterm|mid|rk1|рк1)\s*[:=-]?\s*(\d{1,3}(?:\.\d+)?)/i;
+    const rmPattern2 = /(\d{1,3}(?:\.\d+)?)\s*(?:за\s*)?(?:регмид|рег\s*мид|рм|midterm|mid|rk1|рк1)/i;
+    let m = text.match(rmPattern1) || text.match(rmPattern2);
+    if (m) rm = parseFloat(m[1]);
+
+    // Регэнд
+    const rePattern1 = /(?:регенд|рег\s*энд|рэ|endterm|end|rk2|рк2)\s*[:=-]?\s*(\d{1,3}(?:\.\d+)?)/i;
+    const rePattern2 = /(\d{1,3}(?:\.\d+)?)\s*(?:за\s*)?(?:регенд|рег\s*энд|рэ|endterm|end|rk2|рк2)/i;
+    m = text.match(rePattern1) || text.match(rePattern2);
+    if (m) re = parseFloat(m[1]);
+
+    // Если rm и re не найдены по отдельным меткам, пробуем паттерны типа "если 80 и 70" или "при 80 70"
+    if (rm === null || re === null) {
+        const pairMatch = text.match(/(?:если|при|у меня)\s+(?:балл[ыа]?\s+)?(\d{1,3})\s+(?:и|\s+)\s*(\d{1,3})/i);
+        if (pairMatch) {
+            rm = parseFloat(pairMatch[1]);
+            re = parseFloat(pairMatch[2]);
+        }
+    }
+
+    if (rm === null || re === null || isNaN(rm) || isNaN(re) || rm < 0 || rm > 100 || re < 0 || re > 100) {
+        return null;
+    }
+
+    // 2. Проверяем допуск к экзамену в AITU
+    if (rm < 25) {
+        return `❌ <b>Недопуск к экзамену!</b> 💀\n\n` +
+            `По правилам AITU балл за РегМид должен быть не менее <b>25</b> (у вас: <b>${rm}</b>).\n` +
+            `К сожалению, вы не допущены к файналу и отправляетесь на повторный курс (Retake).`;
+    }
+    if (re < 25) {
+        return `❌ <b>Недопуск к экзамену!</b> 💀\n\n` +
+            `По правилам AITU балл за РегЭнд должен быть не менее <b>25</b> (у вас: <b>${re}</b>).\n` +
+            `К сожалению, вы не допущены к файналу и отправляетесь на повторный курс (Retake).`;
+    }
+
+    const regterm = (rm + re) / 2;
+    if (regterm < 50) {
+        return `❌ <b>Недопуск к экзамену!</b> 🚫\n\n` +
+            `Ваш РегТерм: <b>${regterm.toFixed(2)}</b> (РегМид: ${rm}, РегЭнд: ${re}).\n` +
+            `Для допуска к экзамену средний балл РегТерм должен быть не менее <b>50.00</b>.`;
+    }
+
+    // 3. Проверяем наличие вопроса вида "хватит ли X на экзамене..."
+    let givenFinal = null;
+    const finalMatch = text.match(/(?:хватит\s+ли|если\s+(?:наберу|получу|сдам\s+на))\s+(\d{1,3}(?:\.\d+)?)/i) ||
+                       text.match(/(?:на\s+файнал[еа]?|на\s+экзамен[еа]?)\s+(\d{1,3}(?:\.\d+)?)/i);
+    if (finalMatch) {
+        const cand = parseFloat(finalMatch[1]);
+        if (!isNaN(cand) && cand >= 0 && cand <= 100 && cand !== rm && cand !== re) {
+            givenFinal = cand;
+        }
+    }
+
+    // 4. Проверяем целевую оценку/статус
+    let target = null;
+    let targetName = null;
+
+    if (/повышенн\w*\s+стипенди\w*/i.test(text)) {
+        target = 90;
+        targetName = 'повышенную стипендию (A-)';
+    } else if (/стипенди\w*|стипух\w*|стип\b/i.test(text)) {
+        target = 70;
+        targetName = 'обычную стипендию (C+)';
+    } else if (/\b[aа]\+(?!\w)/i.test(text)) {
+        target = 95;
+        targetName = 'A+';
+    } else if (/\b[aа]-(?!\w)/i.test(text)) {
+        target = 90;
+        targetName = 'A-';
+    } else if (/\b[aа]\b/i.test(text) && !/на\s+файнал|на\s+экзамен/i.test(text)) {
+        target = 95;
+        targetName = 'A';
+    } else if (/\b[bб]\+(?!\w)/i.test(text)) {
+        target = 85;
+        targetName = 'B+';
+    } else if (/\b[bб]-(?!\w)/i.test(text)) {
+        target = 75;
+        targetName = 'B-';
+    } else if (/\b[bб]\b/i.test(text)) {
+        target = 80;
+        targetName = 'B';
+    } else if (/\b[cс]\+(?!\w)/i.test(text)) {
+        target = 70;
+        targetName = 'C+';
+    } else if (/\b[cс]-(?!\w)/i.test(text)) {
+        target = 60;
+        targetName = 'C-';
+    } else if (/\b[cс]\b/i.test(text)) {
+        target = 65;
+        targetName = 'C';
+    } else if (/сдать|сдач\w*|зачет|проходн\w*/i.test(text)) {
+        target = 50;
+        targetName = 'сдачу предмета';
+    }
+
+    // Если был задан конкретный балл за файнал: "Хватит ли 75..."
+    if (givenFinal !== null) {
+        const total = (regterm * 0.6) + (givenFinal * 0.4);
+        const gradeInfo = percentageToGradeInfo(total);
+
+        // Порог сдачи файнала в AITU: минимум 50 баллов
+        if (givenFinal < 50) {
+            return `⚠️ <b>Хватит ли ${givenFinal} на экзамене?</b>\n\n` +
+                `❌ <b>НЕТ, НЕ ХВАТИТ!</b>\n` +
+                `По регламенту AITU на самом файнале необходимо набрать <b>минимум 50 баллов</b>.\n` +
+                `При оценке ${givenFinal} студент направляется на пересдачу (FX / Retake), даже если суммарный балл выше 50!`;
+        }
+
+        const effectiveTarget = target !== null ? target : 70;
+        const effTargetName = targetName || 'стипендию (70+)';
+        const isEnough = total >= effectiveTarget;
+
+        let verdict = isEnough
+            ? `✅ <b>ДА, ХВАТИТ С ЗАПАСОМ!</b> 🎉`
+            : `❌ <b>НЕТ, НЕ ХВАТИТ!</b> ⚠️`;
+
+        let gauharTroll = '';
+        if (isGauharUser) {
+            gauharTroll = isEnough
+                ? `\n\n🌟 <i>Гаухар, отличный расклад! Главное теперь — дойти до аудитории вовремя и не перепутать дату экзамена 🧠</i>`
+                : `\n\n😅 <i>Гаухар, нужно поднажать! Отложи соцсети и учи конспекты прямо сейчас! ☕</i>`;
+        }
+
+        return `💡 <b>АНАЛИЗ ВАШЕГО ЗАПРОСА:</b>\n\n` +
+            `${verdict}\n\n` +
+            `• РегТерм (60%): <b>${regterm.toFixed(2)}</b> (РМ: ${rm}, РЭ: ${re})\n` +
+            `• Проверяемый Файнал: <b>${givenFinal}</b>\n` +
+            `• Итоговый балл: <code>${total.toFixed(2)}</code> (${gradeInfo ? gradeInfo.letter + ', GPA ' + gradeInfo.gpa.toFixed(2) : ''})\n` +
+            `• Цель (${effTargetName}): <b>${effectiveTarget}</b> баллов\n\n` +
+            `<i>Формула: (${regterm.toFixed(2)} × 0.6) + (${givenFinal} × 0.4) = ${total.toFixed(2)}</i>` +
+            gauharTroll;
+    }
+
+    // Иначе вопрос вида "Сколько надо на файнале..."
+    if (target !== null) {
+        const needed = Math.ceil((target - (regterm * 0.6)) / 0.4);
+        const finalNeeded = Math.max(50, needed); // минимум 50 в AITU
+
+        let gauharTroll = '';
+        if (isGauharUser) {
+            gauharTroll = finalNeeded <= 65
+                ? `\n\n🌟 <i>Гаухар, задача абсолютно реальная! Главное — поставь три будильника на утро экзамена ⏰</i>`
+                : `\n\n☕️ <i>Гаухар, готовь термос с кофе — учить придётся усердно! 🧠</i>`;
+        }
+
+        if (needed > 100) {
+            return `🎯 <b>Сколько нужно на экзамене для ${targetName}:</b>\n\n` +
+                `❌ <b>Математически невозможно!</b> 😔\n` +
+                `При РегТерме ${regterm.toFixed(2)} для цели ${target} требуется <b>${needed}</b> баллов (максимум за экзамен — 100).` +
+                gauharTroll;
+        }
+
+        if (needed <= 50) {
+            return `🎯 <b>Сколько нужно на экзамене для ${targetName}:</b>\n\n` +
+                `🟢 <b>Вам достаточно сдать экзамен на 50 баллов!</b> 🥳\n` +
+                `Благодаря высокому РегТерму (<b>${regterm.toFixed(2)}</b>) вы набираете цель сразу при преодолении минимального порога сдачи (50 баллов).` +
+                gauharTroll;
+        }
+
+        return `🎯 <b>Сколько нужно на экзамене для ${targetName}:</b>\n\n` +
+            `👉 Вам нужно набрать минимум <b>${finalNeeded} баллов</b> на файнале.\n\n` +
+            `• РегТерм (60%): <b>${regterm.toFixed(2)}</b> (РМ: ${rm}, РЭ: ${re})\n` +
+            `• Порог для ${targetName}: <b>${target}</b> баллов\n` +
+            `<i>Расчёт: (${target} - ${regterm.toFixed(2)} × 0.6) / 0.4 = ${needed}</i>` +
+            gauharTroll;
+    }
+
+    // Если целевая оценка не указана, выводим полный прогноз
+    return `💡 <i>Распознан запрос: РегМид = ${rm}, РегЭнд = ${re}</i>\n\n` + calculateGradeReport(rm, re, null, isGauharUser);
+}
+
 // ==========================================
 // ПОШАГОВЫЙ ИНСТРУКЦИОННЫЙ ГИД ("КАК ДЛЯ ДЕБИЛОВ")
 // ==========================================
@@ -753,10 +975,14 @@ async function handleAdminPanel(chatId, messageId = null) {
     return sendMessage(chatId, adminMsg, { reply_markup: inlineKeyboard });
 }
 
-function getLmsSessionKeyboard(result, mode = 'active') {
+function getLmsSessionKeyboard(result, mode = 'week') {
     const inline_keyboard = [];
-    if (mode === 'active') {
+    if (mode === 'week' || mode === 'active') {
         const activeItems = (result && result.academicEvents) ? result.academicEvents : (result?.quizzes || []);
+        inline_keyboard.push([
+            { text: '🗓 Весь семестр', callback_data: 'lms_view_all' },
+            { text: '🔍 По предметам', callback_data: 'lms_courses_menu' }
+        ]);
         if (activeItems.length > 0) {
             inline_keyboard.push([
                 { text: '✅ Отметить сданное', callback_data: 'lms_mark_menu' }
@@ -771,6 +997,34 @@ function getLmsSessionKeyboard(result, mode = 'active') {
             { text: '🔄 Обновить дедлайны', callback_data: 'user_lms_refresh' },
             { text: '🚪 Отключить LMS', callback_data: 'user_lms_logout' }
         ]);
+    } else if (mode === 'all') {
+        const activeItems = (result && result.academicEvents) ? result.academicEvents : (result?.quizzes || []);
+        inline_keyboard.push([
+            { text: '◀️ Только эта неделя', callback_data: 'lms_view_week' },
+            { text: '🔍 По предметам', callback_data: 'lms_courses_menu' }
+        ]);
+        if (activeItems.length > 0) {
+            inline_keyboard.push([
+                { text: '✅ Отметить сданное', callback_data: 'lms_mark_menu' }
+            ]);
+        }
+        if (result && result.completedCount > 0) {
+            inline_keyboard.push([
+                { text: `📦 Показать сданные (${result.completedCount})`, callback_data: 'lms_show_completed' }
+            ]);
+        }
+        inline_keyboard.push([
+            { text: '🔄 Обновить дедлайны', callback_data: 'user_lms_refresh' },
+            { text: '🚪 Отключить LMS', callback_data: 'user_lms_logout' }
+        ]);
+    } else if (mode === 'course') {
+        inline_keyboard.push([
+            { text: '◀️ Назад к неделе', callback_data: 'lms_view_week' },
+            { text: '🗓 Весь семестр', callback_data: 'lms_view_all' }
+        ]);
+        inline_keyboard.push([
+            { text: '🔍 Другой предмет', callback_data: 'lms_courses_menu' }
+        ]);
     } else if (mode === 'completed') {
         inline_keyboard.push([
             { text: '◀️ Вернуться к активным', callback_data: 'user_lms_refresh' }
@@ -782,10 +1036,14 @@ function getLmsSessionKeyboard(result, mode = 'active') {
     return { inline_keyboard };
 }
 
-function getLearnSessionKeyboard(result, mode = 'active') {
+function getLearnSessionKeyboard(result, mode = 'week') {
     const inline_keyboard = [];
-    if (mode === 'active') {
+    if (mode === 'week' || mode === 'active') {
         const activeItems = (result && result.activeQuizzes) ? result.activeQuizzes : (result?.quizzes || []).filter(q => !q.isPast && !q.isCompleted);
+        inline_keyboard.push([
+            { text: '🗓 Весь семестр', callback_data: 'learn_view_all' },
+            { text: '🔍 По предметам', callback_data: 'learn_courses_menu' }
+        ]);
         if (activeItems.length > 0) {
             inline_keyboard.push([
                 { text: '✅ Отметить сданное', callback_data: 'learn_mark_menu' }
@@ -799,6 +1057,34 @@ function getLearnSessionKeyboard(result, mode = 'active') {
         inline_keyboard.push([
             { text: '🔄 Обновить', callback_data: 'user_quizzes_refresh' },
             { text: '🚪 Отключить сессию', callback_data: 'user_logout' }
+        ]);
+    } else if (mode === 'all') {
+        const activeItems = (result && result.activeQuizzes) ? result.activeQuizzes : (result?.quizzes || []).filter(q => !q.isPast && !q.isCompleted);
+        inline_keyboard.push([
+            { text: '◀️ Только эта неделя', callback_data: 'learn_view_week' },
+            { text: '🔍 По предметам', callback_data: 'learn_courses_menu' }
+        ]);
+        if (activeItems.length > 0) {
+            inline_keyboard.push([
+                { text: '✅ Отметить сданное', callback_data: 'learn_mark_menu' }
+            ]);
+        }
+        if (result && result.completedCount > 0) {
+            inline_keyboard.push([
+                { text: `📦 Показать сданные (${result.completedCount})`, callback_data: 'learn_show_completed' }
+            ]);
+        }
+        inline_keyboard.push([
+            { text: '🔄 Обновить', callback_data: 'user_quizzes_refresh' },
+            { text: '🚪 Отключить сессию', callback_data: 'user_logout' }
+        ]);
+    } else if (mode === 'course') {
+        inline_keyboard.push([
+            { text: '◀️ Назад к неделе', callback_data: 'learn_view_week' },
+            { text: '🗓 Весь семестр', callback_data: 'learn_view_all' }
+        ]);
+        inline_keyboard.push([
+            { text: '🔍 Другой предмет', callback_data: 'learn_courses_menu' }
         ]);
     } else if (mode === 'completed') {
         inline_keyboard.push([
@@ -1006,10 +1292,10 @@ async function handleCallbackQuery(cq) {
         if (!userSid) {
             return sendMessage(chatId, '⚠️ Сессия не найдена. Отправьте команду /set_cookie ВАШ_SESSION_ID.');
         }
-        const result = await aitu.getUpcomingQuizzesForUser(chatId);
-        const msgText = aitu.formatQuizzesMessage(result, isGauharUser);
+        const result = await aitu.getUpcomingQuizzesForUser(chatId, true);
+        const msgText = aitu.formatQuizzesMessage(result, isGauharUser, false, 'week');
         return sendMessage(chatId, msgText, {
-            reply_markup: getLearnSessionKeyboard(result, 'active'),
+            reply_markup: getLearnSessionKeyboard(result, 'week'),
             disable_web_page_preview: true
         });
     }
@@ -1035,10 +1321,10 @@ async function handleCallbackQuery(cq) {
         if (!userLms) {
             return sendMessage(chatId, '⚠️ Сессия LMS не найдена. Отправьте команду /set_lms ВАШ_MOODLESESSION.');
         }
-        const result = await lms.getUpcomingDeadlinesForUser(chatId);
-        const msgText = lms.formatLmsDeadlinesMessage(result, isGauharUser);
+        const result = await lms.getUpcomingDeadlinesForUser(chatId, true);
+        const msgText = lms.formatLmsDeadlinesMessage(result, isGauharUser, false, 'week');
         return sendMessage(chatId, msgText, {
-            reply_markup: getLmsSessionKeyboard(result, 'active'),
+            reply_markup: getLmsSessionKeyboard(result, 'week'),
             disable_web_page_preview: true
         });
     }
@@ -1052,6 +1338,132 @@ async function handleCallbackQuery(cq) {
         return sendMessage(chatId, logoutNote, {
             reply_markup: getMainKeyboard(chatId)
         });
+    }
+
+    // Режим всего семестра для LMS
+    if (data === 'lms_view_all') {
+        const result = await lms.getUpcomingDeadlinesForUser(chatId);
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const msgText = lms.formatLmsDeadlinesMessage(result, isGauharUser, false, 'all');
+        const sessionKeyboard = getLmsSessionKeyboard(result, 'all');
+        if (messageId) {
+            return editMessageText(chatId, messageId, msgText, { reply_markup: sessionKeyboard, disable_web_page_preview: true });
+        }
+        return sendMessage(chatId, msgText, { reply_markup: sessionKeyboard, disable_web_page_preview: true });
+    }
+
+    // Режим текущей недели для LMS
+    if (data === 'lms_view_week') {
+        const result = await lms.getUpcomingDeadlinesForUser(chatId);
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const msgText = lms.formatLmsDeadlinesMessage(result, isGauharUser, false, 'week');
+        const sessionKeyboard = getLmsSessionKeyboard(result, 'week');
+        if (messageId) {
+            return editMessageText(chatId, messageId, msgText, { reply_markup: sessionKeyboard, disable_web_page_preview: true });
+        }
+        return sendMessage(chatId, msgText, { reply_markup: sessionKeyboard, disable_web_page_preview: true });
+    }
+
+    // Меню фильтрации по курсам для LMS
+    if (data === 'lms_courses_menu') {
+        const result = await lms.getUpcomingDeadlinesForUser(chatId);
+        const allEvts = (result && (result.allEvents || result.academicEvents)) ? (result.allEvents || result.academicEvents) : [];
+        const courses = [...new Set(allEvts.map(e => e.courseName).filter(Boolean))];
+        if (courses.length === 0) {
+            await answerCallbackQuery(cq.id, 'Курсы с дедлайнами не найдены', true);
+            return;
+        }
+        userCourseListMemory.set(String(chatId) + '_lms', courses);
+        const buttons = [];
+        for (let i = 0; i < courses.length; i++) {
+            const cName = courses[i];
+            const shortName = cName.length > 28 ? cName.slice(0, 25) + '...' : cName;
+            buttons.push([{ text: `📚 ${shortName}`, callback_data: `lms_c_${i}` }]);
+        }
+        buttons.push([{ text: '◀️ Назад к дедлайнам', callback_data: 'lms_view_week' }]);
+        const promptMsg = `🔍 <b>Выберите предмет для фильтрации дедлайнов LMS:</b>`;
+        if (messageId) {
+            return editMessageText(chatId, messageId, promptMsg, { reply_markup: { inline_keyboard: buttons } });
+        }
+        return sendMessage(chatId, promptMsg, { reply_markup: { inline_keyboard: buttons } });
+    }
+
+    // Фильтр по конкретному курсу для LMS
+    if (data.startsWith('lms_c_')) {
+        const idx = parseInt(data.replace('lms_c_', ''), 10);
+        const courses = userCourseListMemory.get(String(chatId) + '_lms') || [];
+        const targetCourse = courses[idx] || null;
+        const result = await lms.getUpcomingDeadlinesForUser(chatId);
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const msgText = lms.formatLmsDeadlinesMessage(result, isGauharUser, false, 'course', targetCourse);
+        const sessionKeyboard = getLmsSessionKeyboard(result, 'course');
+        if (messageId) {
+            return editMessageText(chatId, messageId, msgText, { reply_markup: sessionKeyboard, disable_web_page_preview: true });
+        }
+        return sendMessage(chatId, msgText, { reply_markup: sessionKeyboard, disable_web_page_preview: true });
+    }
+
+    // Режим всего семестра для Learn
+    if (data === 'learn_view_all') {
+        const result = await aitu.getUpcomingQuizzesForUser(chatId);
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const msgText = aitu.formatQuizzesMessage(result, isGauharUser, false, 'all');
+        const sessionKeyboard = getLearnSessionKeyboard(result, 'all');
+        if (messageId) {
+            return editMessageText(chatId, messageId, msgText, { reply_markup: sessionKeyboard, disable_web_page_preview: true });
+        }
+        return sendMessage(chatId, msgText, { reply_markup: sessionKeyboard, disable_web_page_preview: true });
+    }
+
+    // Режим текущей недели для Learn
+    if (data === 'learn_view_week') {
+        const result = await aitu.getUpcomingQuizzesForUser(chatId);
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const msgText = aitu.formatQuizzesMessage(result, isGauharUser, false, 'week');
+        const sessionKeyboard = getLearnSessionKeyboard(result, 'week');
+        if (messageId) {
+            return editMessageText(chatId, messageId, msgText, { reply_markup: sessionKeyboard, disable_web_page_preview: true });
+        }
+        return sendMessage(chatId, msgText, { reply_markup: sessionKeyboard, disable_web_page_preview: true });
+    }
+
+    // Меню фильтрации по курсам для Learn
+    if (data === 'learn_courses_menu') {
+        const result = await aitu.getUpcomingQuizzesForUser(chatId);
+        const allQ = (result && result.quizzes) ? result.quizzes : [];
+        const courses = [...new Set(allQ.map(q => q.courseName).filter(Boolean))];
+        if (courses.length === 0) {
+            await answerCallbackQuery(cq.id, 'Курсы с квизами не найдены', true);
+            return;
+        }
+        userCourseListMemory.set(String(chatId) + '_learn', courses);
+        const buttons = [];
+        for (let i = 0; i < courses.length; i++) {
+            const cName = courses[i];
+            const shortName = cName.length > 28 ? cName.slice(0, 25) + '...' : cName;
+            buttons.push([{ text: `📝 ${shortName}`, callback_data: `learn_c_${i}` }]);
+        }
+        buttons.push([{ text: '◀️ Назад к квизам', callback_data: 'learn_view_week' }]);
+        const promptMsg = `🔍 <b>Выберите предмет для фильтрации квизов Learn:</b>`;
+        if (messageId) {
+            return editMessageText(chatId, messageId, promptMsg, { reply_markup: { inline_keyboard: buttons } });
+        }
+        return sendMessage(chatId, promptMsg, { reply_markup: { inline_keyboard: buttons } });
+    }
+
+    // Фильтр по конкретному курсу для Learn
+    if (data.startsWith('learn_c_')) {
+        const idx = parseInt(data.replace('learn_c_', ''), 10);
+        const courses = userCourseListMemory.get(String(chatId) + '_learn') || [];
+        const targetCourse = courses[idx] || null;
+        const result = await aitu.getUpcomingQuizzesForUser(chatId);
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const msgText = aitu.formatQuizzesMessage(result, isGauharUser, false, 'course', targetCourse);
+        const sessionKeyboard = getLearnSessionKeyboard(result, 'course');
+        if (messageId) {
+            return editMessageText(chatId, messageId, msgText, { reply_markup: sessionKeyboard, disable_web_page_preview: true });
+        }
+        return sendMessage(chatId, msgText, { reply_markup: sessionKeyboard, disable_web_page_preview: true });
     }
 
     // Меню отметки сданных заданий LMS
@@ -1371,8 +1783,24 @@ async function handleMessage(msg) {
             : '⏳ <i>Проверяю ваши квизы и дедлайны на learn.astanait.edu.kz...</i>';
         await sendMessage(chatId, checkingText);
         const result = await aitu.getUpcomingQuizzesForUser(chatId);
-        const msgText = aitu.formatQuizzesMessage(result, isGauharUser);
-        const sessionKeyboard = getLearnSessionKeyboard(result, 'active');
+        const msgText = aitu.formatQuizzesMessage(result, isGauharUser, false, 'week');
+        const sessionKeyboard = getLearnSessionKeyboard(result, 'week');
+        return sendMessage(chatId, msgText, {
+            reply_markup: sessionKeyboard,
+            disable_web_page_preview: true
+        });
+    }
+
+    // 1.5.1. /all_quizzes, /all_learn (Квизы Learn на весь семестр)
+    if (text === '/all_quizzes' || text === '/all_learn') {
+        const userSid = await aitu.getUserSession(chatId);
+        if (!userSid) {
+            return sendMessage(chatId, '⚠️ Сессия не найдена. Отправьте команду /set_cookie ВАШ_SESSION_ID.');
+        }
+        await sendMessage(chatId, '⏳ <i>Загружаю квизы Learn на весь семестр...</i>');
+        const result = await aitu.getUpcomingQuizzesForUser(chatId);
+        const msgText = aitu.formatQuizzesMessage(result, isGauharUser, false, 'all');
+        const sessionKeyboard = getLearnSessionKeyboard(result, 'all');
         return sendMessage(chatId, msgText, {
             reply_markup: sessionKeyboard,
             disable_web_page_preview: true
@@ -1432,7 +1860,7 @@ async function handleMessage(msg) {
                 : `🎉 <b>Успешно подключено к AITU!</b>\nНайдено дедлайнов: <b>${testRes.quizzes.length}</b>\n\n` +
                   `✅ Теперь бот каждое утро в 08:00 и экстренно за 1 час до дедлайна будет присылать персональные напоминания лично тебе!\n\n`;
 
-            return sendMessage(chatId, successNote + aitu.formatQuizzesMessage(testRes, isGauharUser), {
+            return sendMessage(chatId, successNote + aitu.formatQuizzesMessage(testRes, isGauharUser, false, 'week'), {
                 reply_markup: getMainKeyboard(chatId),
                 disable_web_page_preview: true
             });
@@ -1470,11 +1898,52 @@ async function handleMessage(msg) {
             : '⏳ <i>Загружаю актуальные дедлайны из Moodle LMS (lms.astanait.edu.kz)...</i>';
         await sendMessage(chatId, checkingText);
         const result = await lms.getUpcomingDeadlinesForUser(chatId);
-        const msgText = lms.formatLmsDeadlinesMessage(result, isGauharUser);
-        const sessionKeyboard = getLmsSessionKeyboard(result, 'active');
+        const msgText = lms.formatLmsDeadlinesMessage(result, isGauharUser, false, 'week');
+        const sessionKeyboard = getLmsSessionKeyboard(result, 'week');
         return sendMessage(chatId, msgText, {
             reply_markup: sessionKeyboard,
             disable_web_page_preview: true
+        });
+    }
+
+    // 1.7.1. /all_deadlines, /all_lms, /весь_семестр (Дедлайны LMS на весь семестр)
+    if (text === '/all_deadlines' || text === '/all_lms' || text === '/весь_семестр') {
+        const userLms = await lms.getUserLmsSession(chatId);
+        if (!userLms) {
+            const setupMsg = lms.formatLmsDeadlinesMessage({ ok: false, notConfigured: true }, isGauharUser);
+            return sendMessage(chatId, setupMsg, {
+                reply_markup: getMainKeyboard(chatId),
+                disable_web_page_preview: true
+            });
+        }
+        await sendMessage(chatId, '⏳ <i>Загружаю дедлайны LMS на весь семестр...</i>');
+        const result = await lms.getUpcomingDeadlinesForUser(chatId);
+        const msgText = lms.formatLmsDeadlinesMessage(result, isGauharUser, false, 'all');
+        const sessionKeyboard = getLmsSessionKeyboard(result, 'all');
+        return sendMessage(chatId, msgText, {
+            reply_markup: sessionKeyboard,
+            disable_web_page_preview: true
+        });
+    }
+
+    // 1.7.2. /courses, /предметы, /курсы (Интерактивная фильтрация по предметам)
+    if (text === '/courses' || text === '/предметы' || text === '/курсы') {
+        const hasLms = Boolean(await lms.getUserLmsSession(chatId));
+        const hasAitu = Boolean(await aitu.getUserSession(chatId));
+        if (!hasLms && !hasAitu) {
+            return sendMessage(chatId, 'ℹ️ У вас пока не подключены ни LMS, ни AITU Learn.\nПодключите их через команду <code>/cookie</code>, чтобы фильтровать дедлайны по предметам!', {
+                reply_markup: getMainKeyboard(chatId)
+            });
+        }
+        const buttons = [];
+        if (hasLms) {
+            buttons.push([{ text: '📚 Предметы Moodle LMS', callback_data: 'lms_courses_menu' }]);
+        }
+        if (hasAitu) {
+            buttons.push([{ text: '📝 Предметы AITU Learn', callback_data: 'learn_courses_menu' }]);
+        }
+        return sendMessage(chatId, '🔍 <b>Выберите платформу для просмотра предметов:</b>', {
+            reply_markup: { inline_keyboard: buttons }
         });
     }
 
@@ -1876,6 +2345,12 @@ async function handleMessage(msg) {
     }
 
     if (session.step === 'feed_input') {
+        const rl = checkRateLimit(chatId);
+        if (!rl.allowed) {
+            clearSession(chatId);
+            return sendMessage(chatId, rl.message, { reply_markup: getMainKeyboard(chatId) });
+        }
+        recordRateLimit(chatId);
         clearSession(chatId);
         const targetAdmin = getPrimaryAdminId();
         if (targetAdmin && String(chatId) !== String(targetAdmin)) {
@@ -1890,6 +2365,18 @@ async function handleMessage(msg) {
             }
         }
         return sendMessage(chatId, `✅ <b>Спасибо! Ваше обращение передано администратору.</b>\nМы ответим вам в этом диалоге.`, { reply_markup: getMainKeyboard(chatId) });
+    }
+
+    // 9.5. Парсинг естественного языка для академических вопросов (Top-6)
+    const nlpReport = parseNaturalLanguageAcademicQuery(text, isGauharUser);
+    if (nlpReport) {
+        const rl = checkRateLimit(chatId);
+        if (!rl.allowed) {
+            return sendMessage(chatId, rl.message, { reply_markup: getMainKeyboard(chatId) });
+        }
+        recordRateLimit(chatId);
+        await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
+        return sendMessage(chatId, nlpReport, { reply_markup: getMainKeyboard(chatId) });
     }
 
     // 10. Попытка автоматического распознавания чисел (если пользователь просто отправил числа)
@@ -1909,6 +2396,11 @@ async function handleMessage(msg) {
     // 11. Нераспознанное сообщение — пересылка админу как вопрос/отзыв
     const targetAdmin = getPrimaryAdminId();
     if (targetAdmin && String(chatId) !== String(targetAdmin)) {
+        const rl = checkRateLimit(chatId);
+        if (!rl.allowed) {
+            return sendMessage(chatId, rl.message, { reply_markup: getMainKeyboard(chatId) });
+        }
+        recordRateLimit(chatId);
         try {
             const notify = `📨 <b>Сообщение от студента:</b>\n\n` +
                 `👤 <b>От:</b> ${esc(userName)} (ID: <code>${chatId}</code>)\n` +
@@ -2023,6 +2515,11 @@ module.exports.anonymizeUserId = statsEngine.anonymizeUserId;
 module.exports.getCookieGuideText = getCookieGuideText;
 module.exports.getLmsSessionKeyboard = getLmsSessionKeyboard;
 module.exports.getLearnSessionKeyboard = getLearnSessionKeyboard;
+module.exports.parseNaturalLanguageAcademicQuery = parseNaturalLanguageAcademicQuery;
+module.exports.checkRateLimit = checkRateLimit;
+module.exports.recordRateLimit = recordRateLimit;
+module.exports._userRateLimits = userRateLimits;
+module.exports._userCourseListMemory = userCourseListMemory;
 
 // ==========================================
 // ЛОКАЛЬНЫЙ LONG-POLLING (ДЛЯ РАЗРАБОТКИ)
