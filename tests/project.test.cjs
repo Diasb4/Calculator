@@ -1485,6 +1485,309 @@ test('Telegram Bot: Cookie guide text and commands (/cookie, /cookies, /гайд
     }
 });
 
+test('LMS & Learn: marking assignments and quizzes completed isolates them from deadlines, alarms and digests', async () => {
+    const lms = require('../api/bot/lms.js');
+    const aitu = require('../api/bot/aitu.js');
+    const cron = require('../api/cron.js');
+
+    const originalFetch = global.fetch;
+    const sentMessages = [];
+
+    try {
+        const studentId = 'student_done_999';
+
+        // 1. LMS manual completion
+        await lms.clearUserCompletedLmsEvents(studentId);
+        assert.strictEqual((await lms.getUserCompletedLmsEvents(studentId)).size, 0);
+
+        await lms.markLmsEventCompleted(studentId, 'evt_101');
+        const lmsCompleted = await lms.getUserCompletedLmsEvents(studentId);
+        assert.ok(lmsCompleted.has('evt_101'));
+
+        // Mock LMS result with 2 academic events
+        const mockLmsCalendar = [
+            'BEGIN:VCALENDAR',
+            'VERSION:2.0',
+            'BEGIN:VEVENT',
+            'UID:evt_101@lms.astanait.edu.kz',
+            'SUMMARY:Assignment 1. Lab1 is due',
+            'CATEGORIES:Computer Networks',
+            `DTSTART:${new Date(Date.now() + 3600000 * 2).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+            `DTEND:${new Date(Date.now() + 3600000 * 2).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+            'DESCRIPTION:https://lms.astanait.edu.kz/mod/assign/view.php?id=79995',
+            'END:VEVENT',
+            'BEGIN:VEVENT',
+            'UID:evt_102@lms.astanait.edu.kz',
+            'SUMMARY:Assignment 2. Lab2 is due',
+            'CATEGORIES:Computer Networks',
+            `DTSTART:${new Date(Date.now() + 3600000 * 24).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+            `DTEND:${new Date(Date.now() + 3600000 * 24).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+            'DESCRIPTION:https://lms.astanait.edu.kz/mod/assign/view.php?id=79996',
+            'END:VEVENT',
+            'END:VCALENDAR'
+        ].join('\r\n');
+
+        // Override fetch for calendar
+        global.fetch = async (url, opts = {}) => {
+            if (url && url.includes('export_execute.php')) {
+                return {
+                    ok: true,
+                    status: 200,
+                    text: async () => mockLmsCalendar
+                };
+            }
+            if (url && url.includes('/sendMessage')) {
+                sentMessages.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: {} }) };
+            }
+            return { ok: true, json: async () => ({}) };
+        };
+
+        await lms.saveUserLmsSession(studentId, 'https://lms.astanait.edu.kz/calendar/export_execute.php?userid=123&authtoken=abc');
+
+        const lmsResult = await lms.getUpcomingDeadlinesForUser(studentId);
+        assert.strictEqual(lmsResult.quizzesCount, 1, 'Only uncompleted event counted in active quizzesCount');
+        assert.strictEqual(lmsResult.completedCount, 1);
+        assert.strictEqual(lmsResult.pendingCount, 1);
+        assert.strictEqual(lmsResult.activeAcademicEvents[0].id, 'evt_102');
+        assert.strictEqual(lmsResult.completedAcademicEvents[0].id, 'evt_101');
+
+        // Format active view
+        const activeText = lms.formatLmsDeadlinesMessage(lmsResult);
+        assert.match(activeText, /Assignment 2\. Lab2/);
+        assert.doesNotMatch(activeText, /Assignment 1\. Lab1/);
+        assert.match(activeText, /Сдано вами: <b>1<\/b> заданий/);
+
+        // Format completed view
+        const completedText = lms.formatLmsDeadlinesMessage(lmsResult, false, true);
+        assert.match(completedText, /Assignment 1\. Lab1/);
+        assert.doesNotMatch(completedText, /Assignment 2\. Lab2/);
+
+        // Unmark LMS event
+        await lms.unmarkLmsEventCompleted(studentId, 'evt_101');
+        assert.strictEqual((await lms.getUserCompletedLmsEvents(studentId)).size, 0);
+
+        // 2. AITU Learn manual completion
+        await aitu.clearUserCompletedQuizzes(studentId);
+        assert.strictEqual((await aitu.getUserCompletedQuizzes(studentId)).size, 0);
+
+        await aitu.markQuizCompleted(studentId, 'block_quiz_philosophy');
+        const learnCompleted = await aitu.getUserCompletedQuizzes(studentId);
+        assert.ok(learnCompleted.has('block_quiz_philosophy'));
+
+        // Mock upcoming quizzes
+        const originalGetUpcomingQuizzes = aitu.getUpcomingQuizzes;
+        aitu.getUpcomingQuizzes = async () => ({
+            ok: true,
+            quizzes: [
+                {
+                    id: 'block_quiz_philosophy',
+                    blockId: 'block_quiz_philosophy',
+                    shortId: 'block_quiz_philosophy',
+                    courseName: 'Philosophy',
+                    title: 'Quiz 2. Epistemology',
+                    link: 'https://learn.astanait.edu.kz/quiz2',
+                    dueDate: new Date(Date.now() + 3600000 * 5).toISOString(),
+                    diffMinutes: 300,
+                    diffHours: 5,
+                    diffDays: 1,
+                    isPast: false,
+                    isCompleted: false
+                },
+                {
+                    id: 'block_quiz_math',
+                    blockId: 'block_quiz_math',
+                    shortId: 'block_quiz_math',
+                    courseName: 'Calculus',
+                    title: 'Quiz 1. Limits',
+                    link: 'https://learn.astanait.edu.kz/quiz1',
+                    dueDate: new Date(Date.now() + 3600000 * 20).toISOString(),
+                    diffMinutes: 1200,
+                    diffHours: 20,
+                    diffDays: 1,
+                    isPast: false,
+                    isCompleted: false
+                }
+            ]
+        });
+
+        await aitu.saveUserSession(studentId, 'test_session_xyz');
+        const learnResult = await aitu.getUpcomingQuizzesForUser(studentId);
+        assert.strictEqual(learnResult.completedCount, 1);
+        assert.strictEqual(learnResult.pendingCount, 1);
+        assert.strictEqual(learnResult.activeQuizzes[0].id, 'block_quiz_math');
+        assert.strictEqual(learnResult.completedQuizzes[0].id, 'block_quiz_philosophy');
+
+        // Verify active view excludes completed quiz
+        const learnActiveText = aitu.formatQuizzesMessage(learnResult);
+        assert.match(learnActiveText, /Calculus/);
+        assert.doesNotMatch(learnActiveText, /Philosophy/);
+        assert.match(learnActiveText, /Сдано вами: <b>1<\/b> квизов/);
+
+        // Verify completed view
+        const learnCompText = aitu.formatQuizzesMessage(learnResult, false, true);
+        assert.match(learnCompText, /Philosophy/);
+        assert.doesNotMatch(learnCompText, /Calculus/);
+
+        // 3. Cron exclusion: completed items do NOT trigger 1h critical sirens
+        sentMessages.length = 0;
+        cron.clearSentAlertsMemory();
+
+        // If Philosophy quiz is in critical hour (e.g. 45 min left) but completed
+        aitu.getUpcomingQuizzes = async () => ({
+            ok: true,
+            quizzes: [
+                {
+                    id: 'block_quiz_philosophy',
+                    blockId: 'block_quiz_philosophy',
+                    shortId: 'block_quiz_philosophy',
+                    courseName: 'Philosophy',
+                    title: 'Quiz 2. Epistemology',
+                    link: 'https://learn.astanait.edu.kz/quiz2',
+                    dueDate: new Date(Date.now() + 45 * 60000).toISOString(),
+                    diffMinutes: 45,
+                    diffHours: 0.75,
+                    diffDays: 0,
+                    isPast: false,
+                    isCriticalHour: true,
+                    isCompleted: false
+                }
+            ]
+        });
+
+        await cron.processUserQuizzes(studentId, {
+            isMorningWindow: false,
+            forceSend: false,
+            todayStr: '2026-09-26',
+            adminChatIds: []
+        });
+        assert.strictEqual(sentMessages.length, 0, 'Completed quiz must NOT trigger critical 1-hour alarm!');
+
+        // Restore
+        aitu.getUpcomingQuizzes = originalGetUpcomingQuizzes;
+        await lms.deleteUserLmsSession(studentId);
+        await aitu.deleteUserSession(studentId);
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
+test('Telegram Bot: /done command, keyboards, and callback query flows for completed tasks', async () => {
+    const bot = require('../api/bot/index.js');
+    const lms = require('../api/bot/lms.js');
+    const aitu = require('../api/bot/aitu.js');
+
+    const originalFetch = global.fetch;
+    const sentMessages = [];
+    const editedMessages = [];
+    const answeredQueries = [];
+
+    try {
+        global.fetch = async (url, opts = {}) => {
+            if (url && url.includes('/sendMessage')) {
+                sentMessages.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: { message_id: 101 } }) };
+            }
+            if (url && url.includes('/editMessageText')) {
+                editedMessages.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: { message_id: 101 } }) };
+            }
+            if (url && url.includes('/answerCallbackQuery')) {
+                answeredQueries.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: true }) };
+            }
+            return { ok: true, json: async () => ({}) };
+        };
+
+        process.env.TELEGRAM_BOT_TOKEN = 'test_token_flow';
+        const studentId = 'student_flow_123';
+
+        // 1. Keyboard generation tests
+        const kbWithActive = bot.getLmsSessionKeyboard({
+            academicEvents: [{ id: '1', title: 'Lab 1' }],
+            completedCount: 2
+        }, 'active');
+        assert.ok(kbWithActive.inline_keyboard.some(row => row.some(btn => btn.callback_data === 'lms_mark_menu')));
+        assert.ok(kbWithActive.inline_keyboard.some(row => row.some(btn => btn.callback_data === 'lms_show_completed')));
+
+        const kbCompletedMode = bot.getLmsSessionKeyboard({}, 'completed');
+        assert.ok(kbCompletedMode.inline_keyboard.some(row => row.some(btn => btn.callback_data === 'user_lms_refresh')));
+
+        const learnKb = bot.getLearnSessionKeyboard({
+            activeQuizzes: [{ id: 'q1', title: 'Quiz 1' }],
+            completedCount: 1
+        }, 'active');
+        assert.ok(learnKb.inline_keyboard.some(row => row.some(btn => btn.callback_data === 'learn_mark_menu')));
+        assert.ok(learnKb.inline_keyboard.some(row => row.some(btn => btn.callback_data === 'learn_show_completed')));
+
+        // 2. /done command test without active sessions
+        const mockRes = { setHeader: () => {}, status: () => mockRes, json: () => {} };
+        const msgReq = (text) => ({
+            method: 'POST',
+            headers: {},
+            body: {
+                message: {
+                    message_id: 1,
+                    chat: { id: studentId },
+                    from: { id: studentId, username: 'flow_user' },
+                    text
+                }
+            }
+        });
+
+        await bot(msgReq('/done'), mockRes);
+        assert.match(sentMessages[sentMessages.length - 1].text, /У вас пока не подключены ни LMS, ни AITU Learn/);
+
+        // Connect LMS session
+        await lms.saveUserLmsSession(studentId, 'https://lms.astanait.edu.kz/calendar/export_execute.php?userid=5&authtoken=zzz');
+
+        // /done with LMS connected
+        await bot(msgReq('/сдал'), mockRes);
+        const lastMsg = sentMessages[sentMessages.length - 1];
+        assert.match(lastMsg.text, /Управление сданными заданиями/);
+        assert.ok(lastMsg.reply_markup.inline_keyboard.some(row => row.some(btn => btn.callback_data === 'lms_mark_menu')));
+
+        // 3. Callback queries: mark LMS event completed and unmark
+        const cbReq = (data) => ({
+            method: 'POST',
+            headers: {},
+            body: {
+                callback_query: {
+                    id: 'cq_test_1',
+                    message: { chat: { id: studentId }, message_id: 88 },
+                    data
+                }
+            }
+        });
+
+        // Mark event 777 done
+        await bot(cbReq('mark_lms_777'), mockRes);
+        const completedEvents = await lms.getUserCompletedLmsEvents(studentId);
+        assert.ok(completedEvents.has('777'));
+
+        // Unmark event 777
+        await bot(cbReq('unmark_lms_777'), mockRes);
+        const completedAfterUnmark = await lms.getUserCompletedLmsEvents(studentId);
+        assert.strictEqual(completedAfterUnmark.has('777'), false);
+
+        // Mark learn quiz done
+        await bot(cbReq('mark_lrn_quiz99'), mockRes);
+        const completedQuizzes = await aitu.getUserCompletedQuizzes(studentId);
+        assert.ok(completedQuizzes.has('quiz99'));
+
+        // Unmark learn quiz
+        await bot(cbReq('unmark_lrn_quiz99'), mockRes);
+        const quizzesAfterUnmark = await aitu.getUserCompletedQuizzes(studentId);
+        assert.strictEqual(quizzesAfterUnmark.has('quiz99'), false);
+
+        // Cleanup
+        await lms.deleteUserLmsSession(studentId);
+        await aitu.deleteUserSession(studentId);
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
 
 
 

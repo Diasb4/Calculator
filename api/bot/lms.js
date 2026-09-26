@@ -19,6 +19,7 @@ function isGauhar(chatId) {
 // In-memory fallback хранилище для serverless / тестов
 const lmsUserSessionsMemory = new Map();
 const lmsSubscribersMemory = new Set();
+const lmsCompletedEventsMemory = new Map();
 
 function getLmsCacheFilePath() {
     try {
@@ -145,6 +146,89 @@ async function deleteUserLmsSession(chatId) {
         console.warn(`deleteUserLmsSession Redis error for ${strId}:`, err.message);
     }
 
+    return true;
+}
+
+/**
+ * Получить список ID сданных студентом заданий LMS
+ */
+async function getUserCompletedLmsEvents(chatId) {
+    if (!chatId) return new Set();
+    const strId = String(chatId).trim();
+    const result = new Set(lmsCompletedEventsMemory.get(strId) || []);
+
+    try {
+        if (typeof statsEngine.kvCommand === 'function') {
+            const redisMembers = await statsEngine.kvCommand(['SMEMBERS', `gm:user:${strId}:lms_completed`]);
+            if (Array.isArray(redisMembers)) {
+                for (const m of redisMembers) {
+                    if (m) result.add(String(m).trim());
+                }
+            }
+        }
+    } catch (err) {
+        console.warn(`getUserCompletedLmsEvents Redis error for ${strId}:`, err.message);
+    }
+    return result;
+}
+
+/**
+ * Отметить задание LMS как сданное
+ */
+async function markLmsEventCompleted(chatId, eventId) {
+    if (!chatId || !eventId) return false;
+    const strId = String(chatId).trim();
+    const cleanId = String(eventId).trim();
+
+    if (!lmsCompletedEventsMemory.has(strId)) {
+        lmsCompletedEventsMemory.set(strId, new Set());
+    }
+    lmsCompletedEventsMemory.get(strId).add(cleanId);
+
+    try {
+        if (typeof statsEngine.kvCommand === 'function') {
+            await statsEngine.kvCommand(['SADD', `gm:user:${strId}:lms_completed`, cleanId]);
+        }
+    } catch (err) {
+        console.warn(`markLmsEventCompleted Redis error for ${strId}:`, err.message);
+    }
+    return true;
+}
+
+/**
+ * Снять отметку сданного с задания LMS (вернуть в активные)
+ */
+async function unmarkLmsEventCompleted(chatId, eventId) {
+    if (!chatId || !eventId) return false;
+    const strId = String(chatId).trim();
+    const cleanId = String(eventId).trim();
+
+    if (lmsCompletedEventsMemory.has(strId)) {
+        lmsCompletedEventsMemory.get(strId).delete(cleanId);
+    }
+
+    try {
+        if (typeof statsEngine.kvCommand === 'function') {
+            await statsEngine.kvCommand(['SREM', `gm:user:${strId}:lms_completed`, cleanId]);
+        }
+    } catch (err) {
+        console.warn(`unmarkLmsEventCompleted Redis error for ${strId}:`, err.message);
+    }
+    return true;
+}
+
+/**
+ * Очистить все отметки сданных заданий пользователя (сброс)
+ */
+async function clearUserCompletedLmsEvents(chatId) {
+    if (!chatId) return false;
+    const strId = String(chatId).trim();
+    lmsCompletedEventsMemory.delete(strId);
+    try {
+        if (typeof statsEngine.kvCommand === 'function') {
+            await statsEngine.kvCommand(['DEL', `gm:user:${strId}:lms_completed`]);
+        }
+    } catch {}
     return true;
 }
 
@@ -410,13 +494,27 @@ async function getUpcomingDeadlinesForUser(chatId) {
     if (!sessionOrUrl) {
         return { ok: false, sessionExpired: true, notConfigured: true, error: 'Сессия LMS не привязана' };
     }
-    return getUpcomingDeadlines(sessionOrUrl);
+    const res = await getUpcomingDeadlines(sessionOrUrl);
+    if (!res.ok) return res;
+
+    const completedSet = await getUserCompletedLmsEvents(chatId);
+    if (res.academicEvents) {
+        for (const ev of res.academicEvents) {
+            ev.isCompleted = completedSet.has(String(ev.id)) || completedSet.has(String(ev.uid));
+        }
+        res.activeAcademicEvents = res.academicEvents.filter(e => !e.isCompleted);
+        res.completedAcademicEvents = res.academicEvents.filter(e => e.isCompleted);
+        res.completedCount = res.completedAcademicEvents.length;
+        res.pendingCount = res.activeAcademicEvents.length;
+        res.quizzesCount = res.activeAcademicEvents.length;
+    }
+    return res;
 }
 
 /**
  * Форматирование списка дедлайнов LMS в красивое HTML-сообщение
  */
-function formatLmsDeadlinesMessage(result, isGauharUser = false) {
+function formatLmsDeadlinesMessage(result, isGauharUser = false, showCompletedOnly = false) {
     if (!result || !result.ok) {
         if (result?.notConfigured || result?.sessionExpired) {
             const gauharPrefix = isGauharUser ? `Гаухар, мы знаем, что ты забыла подключить LMS! 😅\n\n` : '';
@@ -433,9 +531,35 @@ function formatLmsDeadlinesMessage(result, isGauharUser = false) {
         return `❌ <b>Ошибка загрузки дедлайнов LMS:</b>\n${result?.error || 'Неизвестная ошибка'}`;
     }
 
-    const assignments = result.academicEvents || [];
+    if (showCompletedOnly) {
+        const completed = result.completedAcademicEvents || [];
+        if (completed.length === 0) {
+            return `📋 <b>Сданные задания Moodle LMS:</b>\n\n` +
+                `У вас пока нет отмеченных сданных заданий.\n` +
+                `Чтобы скрыть сданное задание из списка активных дедлайнов, нажмите кнопку «✅ Отметить сданное».`;
+        }
+        let compText = `📋 <b>Ваши сданные задания Moodle LMS (${completed.length}):</b>\n\n`;
+        for (const item of completed) {
+            compText += `✅ <b>${item.courseName}</b>\n` +
+                        `• <a href="${item.link}">${item.title}</a>\n\n`;
+        }
+        compText += `<i>💡 Эти задания скрыты из списка дедлайнов и утренних напоминаний. Чтобы вернуть задание в активные, выберите его в меню ниже.</i>`;
+        return compText;
+    }
+
+    const assignments = (result.activeAcademicEvents !== undefined)
+        ? result.activeAcademicEvents
+        : (result.academicEvents || []);
 
     if (assignments.length === 0) {
+        if (result.completedCount && result.completedCount > 0) {
+            if (isGauharUser) {
+                return `🎉 <b>Гаухар, все задания в LMS сданы!</b> 🧠✨\n` +
+                    `Ты закрыла все задания (сдано: <b>${result.completedCount}</b>)! Бот больше не потревожит тебя тревожными сигналами. Отличная работа! ☕🥳`;
+            }
+            return `🎉 <b>Все задания в Moodle LMS сданы!</b>\n` +
+                `Вы отметили сданными все задания (всего: <b>${result.completedCount}</b>). Бот исключил их из напоминаний. Отличная работа! 👏`;
+        }
         if (isGauharUser) {
             return `🎉 <b>Гаухар, активных заданий в LMS нет!</b>\n` +
                 `Ты всё сдала (или преподаватели ещё не создали дедлайны). Можно спокойно пить чай! ☕✨`;
@@ -474,6 +598,10 @@ function formatLmsDeadlinesMessage(result, isGauharUser = false) {
         text += `${icon} <b>${item.courseName}</b>\n` +
                 `👉 <a href="${item.link}">${item.title}</a>\n` +
                 `⏰ Дедлайн: <b>${astanaTime}</b> (${badge})\n\n`;
+    }
+
+    if (result.completedCount && result.completedCount > 0) {
+        text += `✅ <i>Сдано вами: <b>${result.completedCount}</b> заданий (скрыты из напоминаний)</i>\n\n`;
     }
 
     text += `<i>💡 Нажмите на название задания, чтобы сразу открыть страницу сдачи.</i>`;
@@ -533,6 +661,11 @@ module.exports = {
     getUpcomingDeadlinesForUser,
     formatLmsDeadlinesMessage,
     formatCriticalHourLmsAlert,
+    getUserCompletedLmsEvents,
+    markLmsEventCompleted,
+    unmarkLmsEventCompleted,
+    clearUserCompletedLmsEvents,
     _lmsUserSessionsMemory: lmsUserSessionsMemory,
-    _lmsSubscribersMemory: lmsSubscribersMemory
+    _lmsSubscribersMemory: lmsSubscribersMemory,
+    _lmsCompletedEventsMemory: lmsCompletedEventsMemory
 };

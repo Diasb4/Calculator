@@ -21,6 +21,7 @@ function isGauhar(chatId) {
 let memorySessionCache = null;
 const userSessionsMemory = new Map();
 const quizSubscribersMemory = new Set();
+const quizCompletedMemory = new Map();
 
 function getCacheFilePath() {
     try {
@@ -373,6 +374,89 @@ async function deleteUserSession(chatId) {
 }
 
 /**
+ * Получить список ID сданных студентом квизов Learn
+ */
+async function getUserCompletedQuizzes(chatId) {
+    if (!chatId) return new Set();
+    const strId = String(chatId).trim();
+    const result = new Set(quizCompletedMemory.get(strId) || []);
+
+    try {
+        if (typeof statsEngine.kvCommand === 'function') {
+            const redisMembers = await statsEngine.kvCommand(['SMEMBERS', `gm:user:${strId}:quiz_completed`]);
+            if (Array.isArray(redisMembers)) {
+                for (const m of redisMembers) {
+                    if (m) result.add(String(m).trim());
+                }
+            }
+        }
+    } catch (err) {
+        console.warn(`getUserCompletedQuizzes Redis error for ${strId}:`, err.message);
+    }
+    return result;
+}
+
+/**
+ * Отметить квиз Learn как сданный
+ */
+async function markQuizCompleted(chatId, blockId) {
+    if (!chatId || !blockId) return false;
+    const strId = String(chatId).trim();
+    const cleanId = String(blockId).trim();
+
+    if (!quizCompletedMemory.has(strId)) {
+        quizCompletedMemory.set(strId, new Set());
+    }
+    quizCompletedMemory.get(strId).add(cleanId);
+
+    try {
+        if (typeof statsEngine.kvCommand === 'function') {
+            await statsEngine.kvCommand(['SADD', `gm:user:${strId}:quiz_completed`, cleanId]);
+        }
+    } catch (err) {
+        console.warn(`markQuizCompleted Redis error for ${strId}:`, err.message);
+    }
+    return true;
+}
+
+/**
+ * Снять отметку сданного с квиза Learn (вернуть в активные)
+ */
+async function unmarkQuizCompleted(chatId, blockId) {
+    if (!chatId || !blockId) return false;
+    const strId = String(chatId).trim();
+    const cleanId = String(blockId).trim();
+
+    if (quizCompletedMemory.has(strId)) {
+        quizCompletedMemory.get(strId).delete(cleanId);
+    }
+
+    try {
+        if (typeof statsEngine.kvCommand === 'function') {
+            await statsEngine.kvCommand(['SREM', `gm:user:${strId}:quiz_completed`, cleanId]);
+        }
+    } catch (err) {
+        console.warn(`unmarkQuizCompleted Redis error for ${strId}:`, err.message);
+    }
+    return true;
+}
+
+/**
+ * Очистить все отметки сданных квизов
+ */
+async function clearUserCompletedQuizzes(chatId) {
+    if (!chatId) return false;
+    const strId = String(chatId).trim();
+    quizCompletedMemory.delete(strId);
+    try {
+        if (typeof statsEngine.kvCommand === 'function') {
+            await statsEngine.kvCommand(['DEL', `gm:user:${strId}:quiz_completed`]);
+        }
+    } catch {}
+    return true;
+}
+
+/**
  * Получить список всех пользователей, подписанных на напоминания по квизам
  */
 async function getAllQuizUsers() {
@@ -405,24 +489,38 @@ async function getAllQuizUsers() {
  */
 async function getUpcomingQuizzesForUser(chatId) {
     const sid = await getUserSession(chatId);
+    let res;
     if (sid) {
-        return module.exports.getUpcomingQuizzes(sid);
-    }
-    const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
-    const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
-    if (!chatId || adminIds.includes(String(chatId).trim())) {
-        const globalSid = await getStoredSession();
-        if (globalSid) {
-            return module.exports.getUpcomingQuizzes(globalSid);
+        res = await module.exports.getUpcomingQuizzes(sid);
+    } else {
+        const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+        const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+        if (!chatId || adminIds.includes(String(chatId).trim())) {
+            const globalSid = await getStoredSession();
+            res = globalSid ? await module.exports.getUpcomingQuizzes(globalSid) : await module.exports.getUpcomingQuizzes();
+        } else {
+            return {
+                ok: false,
+                error: 'Сессия learn.astanait.edu.kz не подключена. Отправьте боту команду /set_cookie ВАШ_SESSION_ID.',
+                sessionExpired: true,
+                quizzes: []
+            };
         }
-        return module.exports.getUpcomingQuizzes();
     }
-    return {
-        ok: false,
-        error: 'Сессия learn.astanait.edu.kz не подключена. Отправьте боту команду /set_cookie ВАШ_SESSION_ID.',
-        sessionExpired: true,
-        quizzes: []
-    };
+
+    if (res && res.ok && res.quizzes) {
+        const completedSet = await getUserCompletedQuizzes(chatId);
+        for (const q of res.quizzes) {
+            if (completedSet.has(String(q.blockId)) || (q.id && completedSet.has(String(q.id))) || (q.shortId && completedSet.has(String(q.shortId)))) {
+                q.isCompleted = true;
+            }
+        }
+        res.activeQuizzes = res.quizzes.filter(q => !q.isPast && !q.isCompleted);
+        res.completedQuizzes = res.quizzes.filter(q => q.isCompleted);
+        res.completedCount = res.completedQuizzes.length;
+        res.pendingCount = res.activeQuizzes.length;
+    }
+    return res;
 }
 
 function getCalendarDayDiff(targetDate, nowDate = new Date()) {
@@ -546,6 +644,9 @@ async function getUpcomingQuizzes(sessionId) {
                 const isQuiz = /quiz|квиз|тест|test|assignment|final|midterm/i.test(rawTitle) ||
                                (descMatch && /quiz|квиз|до/i.test(descMatch[1]));
 
+                const isAutoCompleted = /complete-checkmark|fa-check|icon-check|\bcomplete\b/i.test(match[0]) ||
+                                        /completed|завершено|выполнено|сдано/i.test(detailsHtml);
+
                 if (dateMatch) {
                     const dueUtc = new Date(dateMatch[1]);
                     const diffMs = dueUtc.getTime() - now.getTime();
@@ -555,7 +656,10 @@ async function getUpcomingQuizzes(sessionId) {
                     const isPast = diffMs < 0;
                     const isCriticalHour = !isPast && diffMinutes > 0 && diffMinutes <= 75;
 
+                    const shortBlockId = blockId.includes('@') ? blockId.split('@').pop() : blockId;
                     allQuizzes.push({
+                        id: shortBlockId,
+                        shortId: shortBlockId,
                         courseId: course.id,
                         courseName: course.name,
                         title: rawTitle,
@@ -568,7 +672,8 @@ async function getUpcomingQuizzes(sessionId) {
                         diffDays,
                         isPast,
                         isCriticalHour,
-                        isQuiz
+                        isQuiz,
+                        isCompleted: Boolean(isAutoCompleted)
                     });
                 }
             }
@@ -592,7 +697,7 @@ async function getUpcomingQuizzes(sessionId) {
 /**
  * Красиво отформатировать список квизов для Telegram (HTML)
  */
-function formatQuizzesMessage(result, isGauharUser = false) {
+function formatQuizzesMessage(result, isGauharUser = false, showCompletedOnly = false) {
     if (!result.ok) {
         if (result.sessionExpired) {
             if (isGauharUser) {
@@ -607,10 +712,33 @@ function formatQuizzesMessage(result, isGauharUser = false) {
         return `❌ <b>Ошибка при проверке квизов:</b>\n${result.error || 'Неизвестная ошибка'}`;
     }
 
-    const upcoming = result.quizzes.filter(q => !q.isPast);
-    const past = result.quizzes.filter(q => q.isPast);
+    if (showCompletedOnly) {
+        const completed = result.completedQuizzes || (result.quizzes || []).filter(q => q.isCompleted);
+        if (completed.length === 0) {
+            return `📋 <b>Сданные квизы AITU Learn:</b>\n\n` +
+                   `У вас пока нет отмеченных сданных квизов.\n` +
+                   `Если вы прошли тест, но он ещё отображается, нажмите кнопку «✅ Отметить сданное».`;
+        }
+        let compText = `📋 <b>Ваши сданные квизы Learn (${completed.length}):</b>\n\n`;
+        for (const item of completed) {
+            compText += `✅ <b>${item.courseName}</b>\n` +
+                        `• <a href="${item.link}">${item.title}</a>\n\n`;
+        }
+        compText += `<i>💡 Эти квизы скрыты из напоминаний и утренней сводки. Чтобы вернуть квиз в активные, выберите его в меню ниже.</i>`;
+        return compText;
+    }
+
+    const upcoming = (result.activeQuizzes !== undefined)
+        ? result.activeQuizzes
+        : (result.quizzes || []).filter(q => !q.isPast && !q.isCompleted);
+    const past = (result.quizzes || []).filter(q => q.isPast);
 
     if (upcoming.length === 0 && past.length === 0) {
+        if (result.completedCount && result.completedCount > 0) {
+            return isGauharUser
+                ? `🎉 <b>Гаухар, все квизы сданы!</b> 🥳\nТы закрыла все квизы (сдано: <b>${result.completedCount}</b>)! Бот больше не потревожит тебя по ним. Можешь спокойно отдыхать! ☕✨`
+                : `🎉 <b>Все квизы в AITU Learn сданы!</b>\nВы отметили сданными все квизы (всего: <b>${result.completedCount}</b>). Бот исключил их из напоминаний. 👏`;
+        }
         if (isGauharUser) {
             return `ℹ️ <b>Гаухар, квизов и дедлайнов не найдено!</b> 🥳\n\nЛибо ты сдала абсолютно всё, либо преподаватели ещё не открыли тесты. Можешь спокойно выдохнуть!`;
         }
@@ -654,11 +782,26 @@ function formatQuizzesMessage(result, isGauharUser = false) {
             : `🎉 <i>Активных предстоящих квизов нет! Все сдано или еще не началось.</i>\n`;
     }
 
+    if (result.completedCount && result.completedCount > 0) {
+        msg += `\n✅ <i>Сдано вами: <b>${result.completedCount}</b> квизов (скрыты из напоминаний)</i>\n`;
+    }
+
     if (past.length > 0) {
         msg += `\n──────────────\n` +
                `⚪️ <b>Прошедшие дедлайны:</b>\n`;
         for (const item of past.slice(-3)) {
-            msg += `▫️ ${item.courseName} — ${item.title}\n`;
+            const dateObj = new Date(item.dueDate);
+            const astanaTime = new Intl.DateTimeFormat('ru-RU', {
+                timeZone: 'Asia/Almaty',
+                day: 'numeric',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit'
+            }).format(dateObj);
+
+            msg += `\n📚 ${item.courseName}\n` +
+                   `📝 <a href="${item.link}">${item.title}</a>\n` +
+                   `⏰ Был дедлайн: ${astanaTime} (завершён)\n`;
         }
     }
 
@@ -741,6 +884,11 @@ module.exports = {
     MAX_SUBSCRIBERS_LIMIT,
     STORAGE_PREFIX,
     DEFAULT_COURSES,
+    getUserCompletedQuizzes,
+    markQuizCompleted,
+    unmarkQuizCompleted,
+    clearUserCompletedQuizzes,
     _userSessionsMemory: userSessionsMemory,
-    _quizSubscribersMemory: quizSubscribersMemory
+    _quizSubscribersMemory: quizSubscribersMemory,
+    _quizCompletedMemory: quizCompletedMemory
 };

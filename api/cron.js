@@ -156,7 +156,8 @@ async function processUserQuizzes(chatId, context) {
     // =========================================================================
     // 1. ЭКСТРЕННЫЕ ОПОВЕЩЕНИЯ ЗА 1 ЧАС ДО ДЕДЛАЙНА (🔥 САМАЯ ГОРЯЧАЯ НАПОМИНАЛКА)
     // =========================================================================
-    const criticalQuizzes = (result.quizzes || []).filter(q => !q.isPast && q.isCriticalHour);
+    const uncompletedQuizzes = result.activeQuizzes || (result.quizzes || []).filter(q => !q.isCompleted);
+    const criticalQuizzes = uncompletedQuizzes.filter(q => !q.isPast && q.isCriticalHour);
     for (const item of criticalQuizzes) {
         const quizKey = `1h:${strChatId}:${item.courseId}:${item.blockId}`;
         const alreadySent = await hasAlertBeenSent(quizKey);
@@ -179,7 +180,7 @@ async function processUserQuizzes(chatId, context) {
     const alreadySentDaily = await hasAlertBeenSent(dailyKey);
 
     if (!alreadySentDaily && (isMorningWindow || forceSend)) {
-        const urgentQuizzes = (result.quizzes || []).filter(q => !q.isPast && q.diffDays <= 3);
+        const urgentQuizzes = uncompletedQuizzes.filter(q => !q.isPast && q.diffDays <= 3);
 
         if (urgentQuizzes.length > 0) {
             let alertMsg = isGauharUser
@@ -285,7 +286,7 @@ async function processUserLms(chatId, context) {
         return { chatId: strChatId, ok: false, type: 'lms', error: result.error, criticalSent, dailySent };
     }
 
-    const assignments = result.academicEvents || [];
+    const assignments = (result.activeAcademicEvents || result.academicEvents || []).filter(e => !e.isCompleted);
 
     // 1. Экстренное 1-часовое оповещение по заданиям LMS
     const criticalEvents = assignments.filter(e => !e.isPast && e.isCriticalHour);
