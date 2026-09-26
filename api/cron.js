@@ -413,11 +413,22 @@ module.exports = async function handler(req, res) {
         adminChatIds
     };
 
-    // Параллельная проверка всех студентов (квизы Learn + задания LMS)
-    const quizPromises = targetUsers.map(chatId => processUserQuizzes(chatId, context));
-    const lmsPromises = targetLmsUsers.map(chatId => processUserLms(chatId, context));
+    // Пакетная параллельная проверка (пачками по 6 пользователей) для предотвращения 429/502 и перегрузки серверов AITU
+    const allTasks = [
+        ...targetUsers.map(chatId => () => processUserQuizzes(chatId, context)),
+        ...targetLmsUsers.map(chatId => () => processUserLms(chatId, context))
+    ];
 
-    const userResults = await Promise.allSettled([...quizPromises, ...lmsPromises]);
+    const userResults = [];
+    const chunkSize = 6;
+    for (let i = 0; i < allTasks.length; i += chunkSize) {
+        const batch = allTasks.slice(i, i + chunkSize);
+        const batchRes = await Promise.allSettled(batch.map(fn => fn()));
+        userResults.push(...batchRes);
+        if (i + chunkSize < allTasks.length) {
+            await new Promise(r => setTimeout(r, 50));
+        }
+    }
 
     let totalCriticalSent = 0;
     let totalDailySent = 0;

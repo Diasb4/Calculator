@@ -1,4 +1,12 @@
 {
+    "functions": {
+        "api/cron.js": {
+            "maxDuration": 60
+        },
+        "api/bot/index.js": {
+            "maxDuration": 30
+        }
+    },
     "headers": [
         {
             "source": "/api/(.*)",
