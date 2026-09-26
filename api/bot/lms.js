@@ -303,9 +303,18 @@ function parseIcalEvents(icalText) {
             const diffHours = Math.round(diffMs / (60 * 60 * 1000) * 10) / 10;
             const diffDays = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
 
-            const isAttendance = cleanTitle.toLowerCase().includes('attendance') || courseName.toLowerCase().includes('attendance');
-            const isAssignment = cleanTitle.toLowerCase().includes('assignment') || cleanTitle.toLowerCase().includes('lab') || cleanTitle.toLowerCase().includes('submission') || cleanTitle.toLowerCase().includes('задание') || cleanTitle.toLowerCase().includes('отчет');
-            const isQuiz = cleanTitle.toLowerCase().includes('quiz') || cleanTitle.toLowerCase().includes('test') || cleanTitle.toLowerCase().includes('тест') || cleanTitle.toLowerCase().includes('чек');
+            const lowerTitle = cleanTitle.toLowerCase();
+            const lowerCourse = courseName.toLowerCase();
+            const isAttendance = lowerTitle.includes('attendance') ||
+                lowerCourse.includes('attendance') ||
+                lowerTitle.includes('посещаемость') ||
+                lowerCourse.includes('посещаемость') ||
+                lowerTitle.includes('қатысу') ||
+                lowerCourse.includes('қатысу') ||
+                activityLink.includes('/mod/attendance/');
+
+            const isAssignment = lowerTitle.includes('assignment') || lowerTitle.includes('lab') || lowerTitle.includes('submission') || lowerTitle.includes('задание') || lowerTitle.includes('отчет') || activityLink.includes('/mod/assign/');
+            const isQuiz = lowerTitle.includes('quiz') || lowerTitle.includes('test') || lowerTitle.includes('тест') || lowerTitle.includes('чек') || activityLink.includes('/mod/quiz/');
 
             events.push({
                 id: eventId,
@@ -425,9 +434,8 @@ function formatLmsDeadlinesMessage(result, isGauharUser = false) {
     }
 
     const assignments = result.academicEvents || [];
-    const attendance = result.attendanceEvents || [];
 
-    if (assignments.length === 0 && attendance.length === 0) {
+    if (assignments.length === 0) {
         if (isGauharUser) {
             return `🎉 <b>Гаухар, активных заданий в LMS нет!</b>\n` +
                 `Ты всё сдала (или преподаватели ещё не создали дедлайны). Можно спокойно пить чай! ☕✨`;
@@ -439,52 +447,33 @@ function formatLmsDeadlinesMessage(result, isGauharUser = false) {
         ? `📚 <b>Дедлайны Moodle LMS для Гаухар:</b> 🧠\n<i>(Смотри внимательно и ничего не откладывай!)</i>\n\n`
         : `📚 <b>Актуальные дедлайны Moodle LMS (AITU):</b>\n\n`;
 
-    // Выводим учебные задания (лабы, отчеты, квизы)
-    if (assignments.length > 0) {
-        for (let i = 0; i < Math.min(assignments.length, 8); i++) {
-            const item = assignments[i];
-            const dateObj = new Date(item.dueDate);
-            const astanaTime = new Intl.DateTimeFormat('ru-RU', {
-                timeZone: 'Asia/Almaty',
-                day: 'numeric',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit'
-            }).format(dateObj);
+    // Выводим только реальные учебные задания (лабы, отчеты, квизы)
+    for (let i = 0; i < Math.min(assignments.length, 8); i++) {
+        const item = assignments[i];
+        const dateObj = new Date(item.dueDate);
+        const astanaTime = new Intl.DateTimeFormat('ru-RU', {
+            timeZone: 'Asia/Almaty',
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit'
+        }).format(dateObj);
 
-            let badge = '';
-            if (item.diffMinutes <= 60 && item.diffMinutes > 0) {
-                badge = `🚨 <b>ОСТАЛОСЬ ${item.diffMinutes} МИН.!</b>`;
-            } else if (item.diffDays <= 0) {
-                badge = '🚨 <b>СЕГОДНЯ!</b>';
-            } else if (item.diffDays === 1) {
-                badge = '🔥 <b>ЗАВТРА!</b>';
-            } else {
-                badge = `⏳ через ${item.diffDays} дн.`;
-            }
-
-            const icon = item.isQuiz ? '📝' : '📌';
-            text += `${icon} <b>${item.courseName}</b>\n` +
-                    `👉 <a href="${item.link}">${item.title}</a>\n` +
-                    `⏰ Дедлайн: <b>${astanaTime}</b> (${badge})\n\n`;
+        let badge = '';
+        if (item.diffMinutes <= 60 && item.diffMinutes > 0) {
+            badge = `🚨 <b>ОСТАЛОСЬ ${item.diffMinutes} МИН.!</b>`;
+        } else if (item.diffDays <= 0) {
+            badge = '🚨 <b>СЕГОДНЯ!</b>';
+        } else if (item.diffDays === 1) {
+            badge = '🔥 <b>ЗАВТРА!</b>';
+        } else {
+            badge = `⏳ через ${item.diffDays} дн.`;
         }
-    }
 
-    // Если есть только отметки посещаемости
-    if (assignments.length === 0 && attendance.length > 0) {
-        text += `<i>Заданий нет, но есть отметки посещаемости на ближайших парах:</i>\n`;
-        for (let i = 0; i < Math.min(attendance.length, 3); i++) {
-            const att = attendance[i];
-            const dateObj = new Date(att.dueDate);
-            const astanaTime = new Intl.DateTimeFormat('ru-RU', {
-                timeZone: 'Asia/Almaty',
-                day: 'numeric',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit'
-            }).format(dateObj);
-            text += `👥 ${att.courseName} (${astanaTime})\n`;
-        }
+        const icon = item.isQuiz ? '📝' : '📌';
+        text += `${icon} <b>${item.courseName}</b>\n` +
+                `👉 <a href="${item.link}">${item.title}</a>\n` +
+                `⏰ Дедлайн: <b>${astanaTime}</b> (${badge})\n\n`;
     }
 
     text += `<i>💡 Нажмите на название задания, чтобы сразу открыть страницу сдачи.</i>`;
