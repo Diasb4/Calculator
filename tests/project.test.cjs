@@ -1119,6 +1119,286 @@ test('Telegram Bot: Trolling pack 2.0 for Gaukhar (attendance, grade, GPA, help,
     }
 });
 
+test('LMS: iCal parser correctly extracts academic deadlines, attendance, and urgency', () => {
+    const lms = require('../api/bot/lms.js');
+    const mockIcal = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Moodle//NONSGML v1.0//EN
+BEGIN:VEVENT
+UID:assign12345@lms.astanait.edu.kz
+SUMMARY:Laboratory Work 2 is due
+DESCRIPTION:Please submit before deadline: https://lms.astanait.edu.kz/mod/assign/view.php?id=8888
+CATEGORIES:Object-Oriented Programming (Java)
+DTSTART:20261001T180000Z
+DTEND:20261001T180000Z
+END:VEVENT
+BEGIN:VEVENT
+UID:quiz54321@lms.astanait.edu.kz
+SUMMARY:Quiz 3: Polymorphism
+DESCRIPTION:Online quiz
+CATEGORIES:Object-Oriented Programming (Java)
+DTSTART:20261005T120000Z
+DTEND:20261005T120000Z
+END:VEVENT
+BEGIN:VEVENT
+UID:att99999@lms.astanait.edu.kz
+SUMMARY:Attendance: Lecture 4
+DESCRIPTION:Lecture attendance mark
+CATEGORIES:Philosophy
+DTSTART:20260930T040000Z
+DTEND:20260930T053000Z
+END:VEVENT
+END:VCALENDAR`;
+
+    const events = lms.parseIcalEvents(mockIcal);
+    assert.equal(events.length, 3);
+
+    const lab = events.find(e => e.id === 'assign12345');
+    assert.ok(lab);
+    assert.equal(lab.title, 'Laboratory Work 2');
+    assert.equal(lab.courseName, 'Object-Oriented Programming (Java)');
+    assert.equal(lab.isAssignment, true);
+    assert.equal(lab.isAttendance, false);
+    assert.equal(lab.link, 'https://lms.astanait.edu.kz/mod/assign/view.php?id=8888');
+
+    const quiz = events.find(e => e.id === 'quiz54321');
+    assert.ok(quiz);
+    assert.equal(quiz.isQuiz, true);
+
+    const att = events.find(e => e.id === 'att99999');
+    assert.ok(att);
+    assert.equal(att.isAttendance, true);
+});
+
+test('LMS & AITU: 55-user hard subscriber limit enforcement', async () => {
+    const lms = require('../api/bot/lms.js');
+    const aitu = require('../api/bot/aitu.js');
+
+    try {
+        // Clean up memory
+        lms._lmsSubscribersMemory.clear();
+        lms._lmsUserSessionsMemory.clear();
+
+        const initialLimit = lms.MAX_SUBSCRIBERS_LIMIT;
+        assert.equal(initialLimit, 55);
+
+        // Simulate 55 subscribers
+        for (let i = 1; i <= 55; i++) {
+            await lms.saveUserLmsSession(`student_${i}`, `https://lms.astanait.edu.kz/calendar/export_execute.php?userid=${i}&authtoken=token${i}`);
+        }
+
+        assert.equal(lms._lmsSubscribersMemory.size, 55);
+
+        // 56th new student should be blocked
+        const blockedCheck = await lms.canUserSubscribe('student_56');
+        assert.equal(blockedCheck.allowed, false);
+        assert.match(blockedCheck.message, /Достигнут лимит активных пользователей \(55\/55\)/);
+
+        // Existing student updating session should be allowed
+        const existingCheck = await lms.canUserSubscribe('student_10');
+        assert.equal(existingCheck.allowed, true);
+        assert.equal(existingCheck.isExisting, true);
+
+        // Admin should always bypass limit even when full
+        process.env.ADMIN_CHAT_ID = '999888777';
+        const adminCheck = await lms.canUserSubscribe('999888777');
+        assert.equal(adminCheck.allowed, true);
+
+        // Same test for AITU Learn module
+        aitu._quizSubscribersMemory.clear();
+        for (let i = 1; i <= 55; i++) {
+            await aitu.saveUserSession(`student_aitu_${i}`, `session_${i}`);
+        }
+        const blockedAitu = await aitu.canUserSubscribe('student_aitu_56');
+        assert.equal(blockedAitu.allowed, false);
+        assert.match(blockedAitu.message, /Достигнут лимит активных пользователей \(55\/55\)/);
+    } finally {
+        // Cleanup
+        lms._lmsSubscribersMemory.clear();
+        lms._lmsUserSessionsMemory.clear();
+        aitu._quizSubscribersMemory.clear();
+        aitu._userSessionsMemory.clear();
+    }
+});
+
+test('LMS & Cron: critical 1-hour alert and morning digest with authtoken support', async () => {
+    const lms = require('../api/bot/lms.js');
+    const cron = require('../api/cron.js');
+
+    const originalFetch = global.fetch;
+    const sentMessages = [];
+
+    try {
+        global.fetch = async (url, opts = {}) => {
+            if (url && url.includes('/sendMessage')) {
+                sentMessages.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: {} }) };
+            }
+            return { ok: true, json: async () => ({}) };
+        };
+
+        process.env.TELEGRAM_BOT_TOKEN = 'test_token';
+        cron.clearSentAlertsMemory();
+
+        const testChatId = '888123';
+        const urgentDue = new Date(Date.now() + 45 * 60 * 1000).toISOString(); // 45 mins left
+
+        // Mock getUpcomingDeadlinesForUser
+        const originalGetDeadlines = lms.getUpcomingDeadlinesForUser;
+        lms.getUpcomingDeadlinesForUser = async () => ({
+            ok: true,
+            academicEvents: [
+                {
+                    id: 'lab_final_1',
+                    uid: 'lab_final_1@lms',
+                    title: 'Final Project Submission',
+                    courseName: 'Web Technologies',
+                    dueDate: urgentDue,
+                    diffMinutes: 45,
+                    diffHours: 0.7,
+                    diffDays: 0,
+                    isCriticalHour: true,
+                    isAssignment: true,
+                    link: 'https://lms.astanait.edu.kz/mod/assign/view.php?id=9999'
+                }
+            ],
+            attendanceEvents: []
+        });
+
+        // Process user LMS in cron
+        const context = {
+            isMorningWindow: true,
+            forceSend: true,
+            todayStr: '2026-09-26',
+            adminChatIds: []
+        };
+
+        const res = await cron.processUserLms(testChatId, context);
+        assert.equal(res.ok, true);
+        assert.equal(res.criticalSent, 1);
+        assert.equal(res.dailySent, 1);
+
+        assert.equal(sentMessages.length, 2);
+        const criticalMsg = sentMessages[0];
+        assert.match(criticalMsg.text, /ГОРЯЩИЙ ДЕДЛАЙН В LMS: 1 ЧАС!/);
+        assert.match(criticalMsg.text, /Final Project Submission/);
+        assert.match(criticalMsg.text, /Web Technologies/);
+        assert.ok(criticalMsg.reply_markup);
+        assert.equal(criticalMsg.reply_markup.inline_keyboard[0][0].text, '🚀 Сдать задание в LMS');
+
+        // Repeated run should deduplicate and send 0
+        const res2 = await cron.processUserLms(testChatId, context);
+        assert.equal(res2.criticalSent, 0);
+        assert.equal(res2.dailySent, 0);
+
+        lms.getUpcomingDeadlinesForUser = originalGetDeadlines;
+    } finally {
+        global.fetch = originalFetch;
+        cron.clearSentAlertsMemory();
+    }
+});
+
+test('Telegram Bot: LMS commands (/lms, /set_lms, /del_lms) and keyboard updates', async () => {
+    const bot = require('../api/bot/index.js');
+    const lms = require('../api/bot/lms.js');
+
+    const originalFetch = global.fetch;
+    const sentMessages = [];
+
+    try {
+        lms._lmsSubscribersMemory.clear();
+        lms._lmsUserSessionsMemory.clear();
+
+        global.fetch = async (url, opts = {}) => {
+            if (url && url.includes('/sendMessage')) {
+                sentMessages.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: {} }) };
+            }
+            return { ok: true, json: async () => ({}) };
+        };
+
+        process.env.TELEGRAM_BOT_TOKEN = 'test_token';
+        const studentId = '777666555';
+
+        const createReq = (text) => ({
+            method: 'POST',
+            headers: {},
+            body: {
+                message: {
+                    message_id: 10,
+                    chat: { id: studentId },
+                    from: { id: studentId, username: 'student_test' },
+                    text
+                }
+            }
+        });
+        const mockRes = {
+            setHeader: () => {},
+            status: () => mockRes,
+            json: () => {}
+        };
+
+        // 1. Unsubscribed student calls /lms -> gets setup instructions
+        await bot(createReq('/lms'), mockRes);
+        const unsubscribedMsg = sentMessages[sentMessages.length - 1];
+        assert.match(unsubscribedMsg.text, /Дедлайны Moodle LMS/);
+        assert.match(unsubscribedMsg.text, /Как подключить за 1 минуту/);
+
+        // 2. Keyboard for unsubscribed student has NO LMS button
+        const kbBefore = bot.getMainKeyboard(studentId);
+        const hasLmsBefore = kbBefore.keyboard.some(row => row.some(btn => btn.text.includes('LMS')));
+        assert.equal(hasLmsBefore, false);
+
+        // 3. Connect LMS via /set_lms
+        const originalGetDeadlines = lms.getUpcomingDeadlines;
+        lms.getUpcomingDeadlines = async () => ({
+            ok: true,
+            calendarUrl: 'https://lms.astanait.edu.kz/calendar/export_execute.php?userid=123&authtoken=abc',
+            academicEvents: [
+                {
+                    id: '1',
+                    title: 'Lab 1',
+                    courseName: 'Java',
+                    dueDate: new Date(Date.now() + 86400000).toISOString(),
+                    diffMinutes: 1440,
+                    diffDays: 1,
+                    isPast: false,
+                    link: 'https://lms.astanait.edu.kz/'
+                }
+            ],
+            attendanceEvents: [],
+            quizzesCount: 1
+        });
+
+        await bot(createReq('/set_lms valid_session_token'), mockRes);
+        const connectMsg = sentMessages[sentMessages.length - 1];
+        assert.match(connectMsg.text, /Moodle LMS успешно подключен!/);
+        assert.match(connectMsg.text, /вечный токен календаря/);
+
+        // 4. Keyboard for subscribed student now HAS LMS button
+        const kbAfter = bot.getMainKeyboard(studentId);
+        const hasLmsAfter = kbAfter.keyboard.some(row => row.some(btn => btn.text.includes('LMS')));
+        assert.equal(hasLmsAfter, true);
+
+        // 5. Disconnect via /del_lms
+        await bot(createReq('/del_lms'), mockRes);
+        const disconnectMsg = sentMessages[sentMessages.length - 1];
+        assert.match(disconnectMsg.text, /Сессия Moodle LMS отключена/);
+
+        // 6. Keyboard returns to clean state
+        const kbFinal = bot.getMainKeyboard(studentId);
+        const hasLmsFinal = kbFinal.keyboard.some(row => row.some(btn => btn.text.includes('LMS')));
+        assert.equal(hasLmsFinal, false);
+
+        lms.getUpcomingDeadlines = originalGetDeadlines;
+    } finally {
+        lms._lmsSubscribersMemory.clear();
+        lms._lmsUserSessionsMemory.clear();
+        global.fetch = originalFetch;
+        await lms.deleteUserLmsSession('777666555');
+    }
+});
+
 
 
 

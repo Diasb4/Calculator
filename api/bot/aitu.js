@@ -14,6 +14,7 @@ const DEFAULT_COURSES = [
 
 const STORAGE_PREFIX = 'GM_AITU_SESSION:';
 const GAUHAR_CHAT_ID = '1365231049';
+const MAX_SUBSCRIBERS_LIMIT = parseInt(process.env.MAX_SUBSCRIBERS_LIMIT || '55', 10);
 function isGauhar(chatId) {
     return String(chatId).trim() === GAUHAR_CHAT_ID;
 }
@@ -279,6 +280,39 @@ async function getUserSession(chatId) {
     }
 
     return null;
+}
+
+/**
+ * Проверить, не превышен ли лимит подписчиков (55 человек)
+ */
+async function canUserSubscribe(chatId) {
+    const strId = String(chatId).trim();
+    const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
+    const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+    if (adminIds.includes(strId)) {
+        return { allowed: true, currentCount: 0, limit: MAX_SUBSCRIBERS_LIMIT, isExisting: true };
+    }
+
+    const existing = await getUserSession(strId);
+    if (existing) {
+        return { allowed: true, currentCount: quizSubscribersMemory.size, limit: MAX_SUBSCRIBERS_LIMIT, isExisting: true };
+    }
+
+    const subscribers = (await getAllQuizUsers()).filter(id => !adminIds.includes(id));
+    const currentCount = subscribers.length;
+
+    if (currentCount >= MAX_SUBSCRIBERS_LIMIT) {
+        return {
+            allowed: false,
+            currentCount,
+            limit: MAX_SUBSCRIBERS_LIMIT,
+            isExisting: false,
+            message: `⚠️ <b>Достигнут лимит активных пользователей (${currentCount}/${MAX_SUBSCRIBERS_LIMIT}).</b>\n` +
+                `Для обеспечения высокой скорости и стабильности приём новых подписчиков временно приостановлен.`
+        };
+    }
+
+    return { allowed: true, currentCount, limit: MAX_SUBSCRIBERS_LIMIT, isExisting: false };
 }
 
 /**
@@ -687,6 +721,8 @@ module.exports = {
     readLocalCache,
     writeLocalCache,
     clearLocalCache,
+    canUserSubscribe,
+    MAX_SUBSCRIBERS_LIMIT,
     STORAGE_PREFIX,
     DEFAULT_COURSES,
     _userSessionsMemory: userSessionsMemory,

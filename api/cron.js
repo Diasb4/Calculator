@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs');
 const aitu = require('./bot/aitu.js');
+const lms = require('./bot/lms.js');
 const statsEngine = require('./stats/engine.js');
 
 function getBotToken() {
@@ -251,6 +252,117 @@ async function processUserQuizzes(chatId, context) {
     };
 }
 
+/**
+ * Проверка и отправка уведомлений по дедлайнам Moodle LMS для конкретного студента
+ */
+async function processUserLms(chatId, context) {
+    const { isMorningWindow, forceSend, todayStr, adminChatIds } = context;
+    const strChatId = String(chatId).trim();
+    let criticalSent = 0;
+    let dailySent = 0;
+
+    const isGauharUser = typeof lms.isGauhar === 'function' && lms.isGauhar(strChatId);
+    const result = await lms.getUpcomingDeadlinesForUser(strChatId);
+
+    if (!result.ok) {
+        if (result.sessionExpired) {
+            const expKey = `expired:lms:${strChatId}:${todayStr}`;
+            const alreadyNotified = await hasAlertBeenSent(expKey);
+            if (!alreadyNotified) {
+                const expiredMsg = isGauharUser
+                    ? `⚠️ <b>Гаухар, сессия Moodle LMS истекла!</b> 😱\n\n` +
+                      `Бот не может проверить дедлайны по лабораторным и заданиям.\n` +
+                      `Войди в <a href="https://lms.astanait.edu.kz/">lms.astanait.edu.kz</a>, скопируй <code>MoodleSession</code> и отправь:\n\n` +
+                      `<code>/set_lms ТВОЙ_MOODLESESSION</code>`
+                    : `⚠️ <b>Сессия Moodle LMS истекла!</b>\n\n` +
+                      `Бот не может проверить актуальные дедлайны по заданиям.\n` +
+                      `Пожалуйста, войдите в <a href="https://lms.astanait.edu.kz/">lms.astanait.edu.kz</a>, скопируйте <code>MoodleSession</code> и отправьте боту:\n\n` +
+                      `<code>/set_lms ВАШ_MOODLESESSION</code>`;
+                await sendTelegram(strChatId, expiredMsg);
+                await markAlertAsSent(expKey);
+            }
+        }
+        return { chatId: strChatId, ok: false, type: 'lms', error: result.error, criticalSent, dailySent };
+    }
+
+    const assignments = result.academicEvents || [];
+
+    // 1. Экстренное 1-часовое оповещение по заданиям LMS
+    const criticalEvents = assignments.filter(e => !e.isPast && e.isCriticalHour);
+    for (const item of criticalEvents) {
+        const itemKey = `1h:lms:${strChatId}:${item.id || item.uid}`;
+        const alreadySent = await hasAlertBeenSent(itemKey);
+
+        if (!alreadySent) {
+            const { text: alertText, replyMarkup } = lms.formatCriticalHourLmsAlert(item, isGauharUser);
+            await sendTelegram(strChatId, alertText, {
+                reply_markup: replyMarkup,
+                disable_notification: false
+            });
+            await markAlertAsSent(itemKey);
+            criticalSent++;
+        }
+    }
+
+    // 2. Регулярная утренняя сводка по дедлайнам LMS (на 3 дня)
+    const dailyKey = `daily:lms:${strChatId}:${todayStr}`;
+    const alreadySentDaily = await hasAlertBeenSent(dailyKey);
+
+    if (!alreadySentDaily && (isMorningWindow || forceSend)) {
+        const urgentAssignments = assignments.filter(e => !e.isPast && e.diffDays <= 3);
+
+        if (urgentAssignments.length > 0) {
+            let alertMsg = isGauharUser
+                ? `📚 <b>Утреннее напоминание по LMS для Гаухар!</b> 🧠\n<i>(Срочные задания на ближайшие 3 дня):</i>\n\n`
+                : `📚 <b>Утренние дедлайны Moodle LMS (AITU):</b>\n<i>(Задания со сроком сдачи до 3 дней):</i>\n\n`;
+
+            for (const item of urgentAssignments) {
+                const dateObj = new Date(item.dueDate);
+                const astanaTime = new Intl.DateTimeFormat('ru-RU', {
+                    timeZone: 'Asia/Almaty',
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }).format(dateObj);
+
+                let badge = '';
+                if (item.diffMinutes !== undefined && item.diffMinutes <= 60 && item.diffMinutes > 0) {
+                    badge = `🚨 <b>ОСТАЛОСЬ ${item.diffMinutes} МИН.!</b>`;
+                } else if (item.diffDays <= 0) {
+                    badge = '🚨 <b>СЕГОДНЯ!</b>';
+                } else if (item.diffDays === 1) {
+                    badge = '🔥 <b>ЗАВТРА!</b>';
+                } else {
+                    badge = `⏳ через ${item.diffDays} дн.`;
+                }
+
+                alertMsg += `📌 <b>${item.courseName}</b>\n` +
+                            `👉 <a href="${item.link}">${item.title}</a>\n` +
+                            `⏰ Дедлайн: <b>${astanaTime}</b> (${badge})\n\n`;
+            }
+
+            alertMsg += isGauharUser
+                ? `Гаухар, не откладывай лабы на вечер! ☕️⚡️`
+                : `Сдавайте работы заранее, чтобы избежать перегрузки портала! 🚀`;
+
+            await sendTelegram(strChatId, alertMsg);
+            await markAlertAsSent(dailyKey);
+            dailySent++;
+        }
+    }
+
+    return {
+        chatId: strChatId,
+        ok: true,
+        type: 'lms',
+        deadlinesCount: assignments.length,
+        criticalDeadlinesCount: criticalEvents.length,
+        criticalSent,
+        dailySent
+    };
+}
+
 module.exports = async function handler(req, res) {
     // Проверка CRON_SECRET от Vercel (если настроен)
     const authHeader = req ? req.headers?.['authorization'] : null;
@@ -260,15 +372,26 @@ module.exports = async function handler(req, res) {
 
     const adminChatIds = getAdminChatIds();
     let allRegisteredUsers = [];
+    let allLmsUsers = [];
     try {
         allRegisteredUsers = await aitu.getAllQuizUsers();
     } catch (err) {
         console.warn('getAllQuizUsers warning in cron:', err.message);
     }
+    try {
+        allLmsUsers = await lms.getAllLmsUsers();
+    } catch (err) {
+        console.warn('getAllLmsUsers warning in cron:', err.message);
+    }
 
     const targetUsers = Array.from(new Set([...allRegisteredUsers, ...adminChatIds])).filter(Boolean);
+    const targetLmsUsers = Array.from(new Set([...allLmsUsers, ...adminChatIds])).filter(chatId => {
+        return allLmsUsers.includes(chatId) || process.env.AITU_LMS_SESSION_ID;
+    });
 
-    if (targetUsers.length === 0) {
+    const allTargetUsers = Array.from(new Set([...targetUsers, ...targetLmsUsers]));
+
+    if (allTargetUsers.length === 0) {
         return res.status(500).json({ error: 'No quiz users or TELEGRAM_CHAT_ID configured' });
     }
 
@@ -289,10 +412,11 @@ module.exports = async function handler(req, res) {
         adminChatIds
     };
 
-    // Параллельная проверка всех студентов (до 6+ человек)
-    const userResults = await Promise.allSettled(
-        targetUsers.map(chatId => processUserQuizzes(chatId, context))
-    );
+    // Параллельная проверка всех студентов (квизы Learn + задания LMS)
+    const quizPromises = targetUsers.map(chatId => processUserQuizzes(chatId, context));
+    const lmsPromises = targetLmsUsers.map(chatId => processUserLms(chatId, context));
+
+    const userResults = await Promise.allSettled([...quizPromises, ...lmsPromises]);
 
     let totalCriticalSent = 0;
     let totalDailySent = 0;
@@ -303,7 +427,7 @@ module.exports = async function handler(req, res) {
         if (r.status === 'fulfilled') {
             totalCriticalSent += r.value.criticalSent || 0;
             totalDailySent += r.value.dailySent || 0;
-            totalCriticalQuizzes += r.value.criticalQuizzesCount || 0;
+            totalCriticalQuizzes += (r.value.criticalQuizzesCount || r.value.criticalDeadlinesCount || 0);
             summary.push(r.value);
         } else {
             console.error('Error processing user in cron:', r.reason);
@@ -317,7 +441,7 @@ module.exports = async function handler(req, res) {
             type: 'critical_1h',
             criticalSent: totalCriticalSent,
             criticalQuizzes: totalCriticalQuizzes,
-            usersChecked: targetUsers.length,
+            usersChecked: allTargetUsers.length,
             details: summary
         });
     }
@@ -325,7 +449,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
         ok: true,
         message: 'All users checked successfully',
-        usersChecked: targetUsers.length,
+        usersChecked: allTargetUsers.length,
         criticalSent: totalCriticalSent,
         criticalQuizzes: totalCriticalQuizzes,
         dailySent: totalDailySent,
@@ -338,3 +462,4 @@ module.exports.markAlertAsSent = markAlertAsSent;
 module.exports.clearSentAlertsMemory = clearSentAlertsMemory;
 module.exports.sendTelegram = sendTelegram;
 module.exports.processUserQuizzes = processUserQuizzes;
+module.exports.processUserLms = processUserLms;

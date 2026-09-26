@@ -4,6 +4,7 @@
 // Работает и как Vercel Serverless Webhook (/api/bot), и как локальный Long-Polling скрипт.
 
 const aitu = require('./aitu.js');
+const lms = require('./lms.js');
 const statsEngine = require('../stats/engine.js');
 function getBotToken() {
     return (process.env.TELEGRAM_BOT_TOKEN || '').trim();
@@ -138,12 +139,19 @@ function getMainKeyboard(chatId) {
 
     if (isUserAdmin) {
         keyboard.unshift(
-            [{ text: 'Панель Администратора' }, { text: '📝 Квизы AITU' }]
+            [{ text: 'Панель Администратора' }, { text: '📝 Квизы AITU' }, { text: '📚 Дедлайны LMS' }]
         );
-    } else if (chatId && aitu._userSessionsMemory && aitu._userSessionsMemory.has(String(chatId))) {
-        keyboard.unshift(
-            [{ text: '📝 Мои квизы AITU' }]
-        );
+    } else {
+        const strId = String(chatId);
+        const hasAitu = Boolean(chatId && aitu._userSessionsMemory && aitu._userSessionsMemory.has(strId));
+        const hasLms = Boolean(chatId && lms._lmsUserSessionsMemory && lms._lmsUserSessionsMemory.has(strId));
+        if (hasAitu && hasLms) {
+            keyboard.unshift([{ text: '📝 Мои квизы AITU' }, { text: '📚 Дедлайны LMS' }]);
+        } else if (hasAitu) {
+            keyboard.unshift([{ text: '📝 Мои квизы AITU' }]);
+        } else if (hasLms) {
+            keyboard.unshift([{ text: '📚 Дедлайны LMS' }]);
+        }
     }
 
     return {
@@ -631,20 +639,38 @@ async function handleAdminPanel(chatId, messageId = null) {
         quizUsersCount = qUsers.length;
     } catch {}
 
+    let lmsUsersCount = 0;
+    try {
+        const lUsers = await lms.getAllLmsUsers();
+        lmsUsersCount = lUsers.length;
+    } catch {}
+
+    const storedLms = await lms.getUserLmsSession(chatId);
+    const hasLms = Boolean(storedLms);
+    const lmsPreview = hasLms
+        ? (storedLms.length > 25 ? `${storedLms.substring(0, 10)}...${storedLms.slice(-6)}` : 'Активна')
+        : 'Не настроена';
+
+    const maxLimit = lms.MAX_SUBSCRIBERS_LIMIT;
+
     const adminMsg = `⚙️ <b>ПАНЕЛЬ АДМИНИСТРАТОРА GRADEMASTER:</b>\n\n` +
         `👤 <b>Ваш Admin Chat ID:</b> <code>${chatId}</code>\n` +
         `🌐 <b>Web App URL:</b> ${WEBAPP_URL}\n` +
         `👥 <b>Активных пользователей в памяти:</b> ${activeUsers.size}\n` +
-        `📝 <b>Студентов с напоминаниями по квизам:</b> <b>${quizUsersCount}</b> чел.\n\n` +
+        `📝 <b>Квизы Learn (AITU):</b> <b>${quizUsersCount} / ${maxLimit}</b> чел.\n` +
+        `📚 <b>Дедлайны LMS (Moodle):</b> <b>${lmsUsersCount} / ${maxLimit}</b> чел.\n\n` +
         `🔑 <b>Статус переменных окружения и сервисов:</b>\n` +
         `• <code>TELEGRAM_BOT_TOKEN</code>: ${hasBotToken ? '✅ Настроен' : '❌ Не задан'}\n` +
         `• <code>TELEGRAM_CHAT_ID</code>: ${hasAdminId ? '✅ Настроен' : '❌ Не задан'}\n` +
-        `• <code>AITU_SESSION</code>: ${hasAitu ? `✅ Сохранена (${sessionPreview})` : '⚠️ Не сохранена'}\n` +
+        `• <code>AITU_SESSION (Learn)</code>: ${hasAitu ? `✅ Сохранена (${sessionPreview})` : '⚠️ Не сохранена'}\n` +
+        `• <code>LMS_SESSION (Moodle)</code>: ${hasLms ? `✅ Сохранена (${lmsPreview})` : '⚠️ Не сохранена'}\n` +
         `• <code>TELEGRAM_SECRET_TOKEN</code>: ${hasSecret ? '✅ Включен' : '⚪ Не включен (опционально)'}\n\n` +
         `🛠 <b>Команды управления:</b>\n` +
         `• <code>/stats</code> — анонимная статистика использования\n` +
-        `• <code>/set_cookie &lt;sid&gt;</code> — обновить cookie AITU\n` +
-        `• <code>/quizzes</code> — проверить текущие квизы и дедлайны\n` +
+        `• <code>/quizzes</code> — проверить квизы Learn\n` +
+        `• <code>/lms</code> — проверить дедлайны Moodle LMS\n` +
+        `• <code>/set_cookie &lt;sid&gt;</code> — обновить cookie Learn\n` +
+        `• <code>/set_lms &lt;sid&gt;</code> — подключить Moodle LMS\n` +
         `• <code>/test_1h</code> — экстренное напоминание (за 1 час)\n` +
         `• <code>/test_reminder</code> — тест утреннего напоминания\n` +
         `• <code>/reply &lt;chat_id&gt; &lt;текст&gt;</code> — ответить студенту\n` +
@@ -654,8 +680,9 @@ async function handleAdminPanel(chatId, messageId = null) {
     const inlineKeyboard = {
         inline_keyboard: [
             [
-                { text: '📊 Статистика использования', callback_data: 'adm_stats' },
-                { text: '📝 Квизы AITU', callback_data: 'adm_quizzes' }
+                { text: '📊 Статистика', callback_data: 'adm_stats' },
+                { text: '📝 Квизы Learn', callback_data: 'adm_quizzes' },
+                { text: '📚 Дедлайны LMS', callback_data: 'adm_lms' }
             ],
             [
                 { text: '🚨 Тест 1ч дедлайна', callback_data: 'adm_test_1h' },
@@ -701,6 +728,16 @@ async function handleCallbackQuery(cq) {
             await sendMessage(chatId, '⏳ <i>Проверяю квизы и дедлайны на learn.astanait.edu.kz...</i>');
             const result = await aitu.getUpcomingQuizzes();
             const msgText = aitu.formatQuizzesMessage(result);
+            return sendMessage(chatId, msgText, {
+                reply_markup: getMainKeyboard(chatId),
+                disable_web_page_preview: true
+            });
+        }
+
+        if (data === 'adm_lms') {
+            await sendMessage(chatId, '⏳ <i>Проверяю дедлайны на lms.astanait.edu.kz...</i>');
+            const result = await lms.getUpcomingDeadlines();
+            const msgText = lms.formatLmsDeadlinesMessage(result);
             return sendMessage(chatId, msgText, {
                 reply_markup: getMainKeyboard(chatId),
                 disable_web_page_preview: true
@@ -879,6 +916,42 @@ async function handleCallbackQuery(cq) {
         });
     }
 
+    if (data === 'user_lms_refresh') {
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const refreshText = isGauharUser
+            ? '⏳ <i>Обновляю дедлайны LMS для Гаухар... Спойлер: лабы сами себя не сдадут! 🔍</i>'
+            : '⏳ <i>Обновляю список дедлайнов LMS...</i>';
+        await sendMessage(chatId, refreshText);
+        const userLms = await lms.getUserLmsSession(chatId);
+        if (!userLms) {
+            return sendMessage(chatId, '⚠️ Сессия LMS не найдена. Отправьте команду /set_lms ВАШ_MOODLESESSION.');
+        }
+        const result = await lms.getUpcomingDeadlinesForUser(chatId);
+        const msgText = lms.formatLmsDeadlinesMessage(result, isGauharUser);
+        return sendMessage(chatId, msgText, {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '🔄 Обновить дедлайны', callback_data: 'user_lms_refresh' },
+                        { text: '🚪 Отключить LMS', callback_data: 'user_lms_logout' }
+                    ]
+                ]
+            },
+            disable_web_page_preview: true
+        });
+    }
+
+    if (data === 'user_lms_logout') {
+        await lms.deleteUserLmsSession(chatId);
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const logoutNote = isGauharUser
+            ? '🚪 <b>Гаухар, напоминания LMS отключены.</b>\nАвтоматические сигналы по заданиям остановлены. Не забудь сдать лабы! 😅'
+            : '🚪 <b>Сессия Moodle LMS отключена.</b>\nАвтоматические напоминания о дедлайнах заданий остановлены.';
+        return sendMessage(chatId, logoutNote, {
+            reply_markup: getMainKeyboard(chatId)
+        });
+    }
+
     if (data.startsWith('add_final_')) {
         const parts = data.split('_');
         const rm = parts[2];
@@ -1008,6 +1081,12 @@ async function handleMessage(msg) {
         if (!cookieVal) {
             return sendMessage(chatId, 'Отправьте значение sessionid:\n<code>/set_cookie ВАШ_SESSION_ID</code>');
         }
+
+        const limitCheck = await aitu.canUserSubscribe(chatId);
+        if (!limitCheck.allowed) {
+            return sendMessage(chatId, limitCheck.message, { reply_markup: getMainKeyboard(chatId) });
+        }
+
         let cleanSid = cookieVal;
         const match = cookieVal.match(/sessionid=([^;\s]+)/);
         if (match) cleanSid = match[1].trim();
@@ -1039,6 +1118,83 @@ async function handleMessage(msg) {
         const logoutNote = isGauharUser
             ? '🚪 <b>Гаухар, твоя сессия отключена.</b>\nАвтоматические напоминания остановлены. Теперь вся надежда только на твою память! 😅'
             : '🚪 <b>Ваша сессия отключена.</b>\nАвтоматические напоминания по квизам остановлены, сессия удалена.';
+        return sendMessage(chatId, logoutNote, {
+            reply_markup: getMainKeyboard(chatId)
+        });
+    }
+
+    // 1.7. /lms, /deadlines, /дедлайны или кнопка "📚 Дедлайны LMS"
+    if (text === '/lms' || text === '/deadlines' || text === '/дедлайны' || text === '📚 Дедлайны LMS' || text === 'Дедлайны LMS') {
+        const userLms = await lms.getUserLmsSession(chatId);
+        if (!userLms) {
+            const setupMsg = lms.formatLmsDeadlinesMessage({ ok: false, notConfigured: true }, isGauharUser);
+            return sendMessage(chatId, setupMsg, {
+                reply_markup: getMainKeyboard(chatId),
+                disable_web_page_preview: true
+            });
+        }
+
+        const checkingText = isGauharUser
+            ? '⏳ <i>Сверяю дедлайны LMS для Гаухар... Главное ничего не забыть! 🔍</i>'
+            : '⏳ <i>Загружаю актуальные дедлайны из Moodle LMS (lms.astanait.edu.kz)...</i>';
+        await sendMessage(chatId, checkingText);
+        const result = await lms.getUpcomingDeadlinesForUser(chatId);
+        const msgText = lms.formatLmsDeadlinesMessage(result, isGauharUser);
+        const sessionKeyboard = {
+            inline_keyboard: [
+                [
+                    { text: '🔄 Обновить дедлайны', callback_data: 'user_lms_refresh' },
+                    { text: '🚪 Отключить LMS', callback_data: 'user_lms_logout' }
+                ]
+            ]
+        };
+        return sendMessage(chatId, msgText, {
+            reply_markup: sessionKeyboard,
+            disable_web_page_preview: true
+        });
+    }
+
+    // 1.8. /set_lms <MoodleSession или Calendar URL>
+    if (text.startsWith('/set_lms') || text.startsWith('/lms_cookie')) {
+        const val = text.replace(/^\/(?:set_lms|lms_cookie)/, '').trim();
+        if (!val) {
+            return sendMessage(chatId, 'Отправьте значение MoodleSession или ссылку на календарь:\n<code>/set_lms ВАШ_MOODLESESSION</code>');
+        }
+
+        const limitCheck = await lms.canUserSubscribe(chatId);
+        if (!limitCheck.allowed) {
+            return sendMessage(chatId, limitCheck.message, { reply_markup: getMainKeyboard(chatId) });
+        }
+
+        await sendMessage(chatId, '⏳ <i>Проверяю подключение к lms.astanait.edu.kz и генерирую вечный токен...</i>');
+        const testRes = await lms.getUpcomingDeadlines(val);
+        if (testRes.ok) {
+            await lms.saveUserLmsSession(chatId, testRes.calendarUrl || val);
+            const successNote = isGauharUser
+                ? `🎉 <b>Гаухар, Moodle LMS успешно подключен!</b> 🧠✨\n` +
+                  `Найдено активных дедлайнов: <b>${testRes.quizzesCount}</b>\n\n` +
+                  `✅ Сгенерирован вечный токен: куки больше обновлять не нужно! Бот будет присылать напоминания каждое утро в 08:00 и за 1 час до дедлайна лично тебе.\n\n`
+                : `🎉 <b>Moodle LMS успешно подключен!</b>\n` +
+                  `Найдено активных дедлайнов: <b>${testRes.quizzesCount}</b>\n\n` +
+                  `✅ Сгенерирован вечный токен календаря: сессия не истечет через 20 минут. Напоминания включены!\n\n`;
+
+            return sendMessage(chatId, successNote + lms.formatLmsDeadlinesMessage(testRes, isGauharUser), {
+                reply_markup: getMainKeyboard(chatId),
+                disable_web_page_preview: true
+            });
+        } else {
+            return sendMessage(chatId, '⚠️ <b>Ошибка подключения к LMS:</b> ' + testRes.error + '\n\nУбедитесь, что скопировали актуальное значение <code>MoodleSession</code> из браузера после входа в lms.astanait.edu.kz.', {
+                reply_markup: getMainKeyboard(chatId)
+            });
+        }
+    }
+
+    // 1.9. /del_lms или /logout_lms (Отключение сессии LMS)
+    if (text === '/del_lms' || text === '/logout_lms' || text === '/lms_logout') {
+        await lms.deleteUserLmsSession(chatId);
+        const logoutNote = isGauharUser
+            ? '🚪 <b>Гаухар, напоминания LMS отключены.</b>\nАвтоматические сигналы по заданиям остановлены. Не забудь сдать лабы! 😅'
+            : '🚪 <b>Сессия Moodle LMS отключена.</b>\nАвтоматические напоминания о дедлайнах заданий остановлены.';
         return sendMessage(chatId, logoutNote, {
             reply_markup: getMainKeyboard(chatId)
         });
