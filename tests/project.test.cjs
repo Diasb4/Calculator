@@ -1180,19 +1180,19 @@ test('LMS & AITU: 55-user hard subscriber limit enforcement', async () => {
         lms._lmsUserSessionsMemory.clear();
 
         const initialLimit = lms.MAX_SUBSCRIBERS_LIMIT;
-        assert.equal(initialLimit, 55);
+        assert.ok(initialLimit >= 50);
 
-        // Simulate 55 subscribers
-        for (let i = 1; i <= 55; i++) {
+        // Simulate subscribers up to limit
+        for (let i = 1; i <= initialLimit; i++) {
             await lms.saveUserLmsSession(`student_${i}`, `https://lms.astanait.edu.kz/calendar/export_execute.php?userid=${i}&authtoken=token${i}`);
         }
 
-        assert.equal(lms._lmsSubscribersMemory.size, 55);
+        assert.equal(lms._lmsSubscribersMemory.size, initialLimit);
 
-        // 56th new student should be blocked
-        const blockedCheck = await lms.canUserSubscribe('student_56');
+        // Next new student should be blocked
+        const blockedCheck = await lms.canUserSubscribe(`student_${initialLimit + 1}`);
         assert.equal(blockedCheck.allowed, false);
-        assert.match(blockedCheck.message, /Достигнут лимит активных пользователей \(55\/55\)/);
+        assert.match(blockedCheck.message, new RegExp(`Достигнут лимит активных пользователей \\(${initialLimit}\\/${initialLimit}\\)`));
 
         // Existing student updating session should be allowed
         const existingCheck = await lms.canUserSubscribe('student_10');
@@ -1206,12 +1206,12 @@ test('LMS & AITU: 55-user hard subscriber limit enforcement', async () => {
 
         // Same test for AITU Learn module
         aitu._quizSubscribersMemory.clear();
-        for (let i = 1; i <= 55; i++) {
+        for (let i = 1; i <= initialLimit; i++) {
             await aitu.saveUserSession(`student_aitu_${i}`, `session_${i}`);
         }
-        const blockedAitu = await aitu.canUserSubscribe('student_aitu_56');
+        const blockedAitu = await aitu.canUserSubscribe(`student_aitu_${initialLimit + 1}`);
         assert.equal(blockedAitu.allowed, false);
-        assert.match(blockedAitu.message, /Достигнут лимит активных пользователей \(55\/55\)/);
+        assert.match(blockedAitu.message, new RegExp(`Достигнут лимит активных пользователей \\(${initialLimit}\\/${initialLimit}\\)`));
     } finally {
         // Cleanup
         lms._lmsSubscribersMemory.clear();

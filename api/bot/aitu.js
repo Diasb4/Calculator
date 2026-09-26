@@ -14,7 +14,7 @@ const DEFAULT_COURSES = [
 
 const STORAGE_PREFIX = 'GM_AITU_SESSION:';
 const GAUHAR_CHAT_ID = '1365231049';
-const MAX_SUBSCRIBERS_LIMIT = parseInt(process.env.MAX_SUBSCRIBERS_LIMIT || '55', 10);
+const MAX_SUBSCRIBERS_LIMIT = parseInt(process.env.MAX_SUBSCRIBERS_LIMIT || '60', 10);
 function isGauhar(chatId) {
     return String(chatId).trim() === GAUHAR_CHAT_ID;
 }
@@ -425,6 +425,22 @@ async function getUpcomingQuizzesForUser(chatId) {
     };
 }
 
+function getCalendarDayDiff(targetDate, nowDate = new Date()) {
+    try {
+        const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Almaty', year: 'numeric', month: '2-digit', day: '2-digit' });
+        const [nowY, nowM, nowD] = fmt.format(nowDate).split('-').map(Number);
+        const [targetY, targetM, targetD] = fmt.format(targetDate).split('-').map(Number);
+
+        const nowUtc = Date.UTC(nowY, nowM - 1, nowD);
+        const targetUtc = Date.UTC(targetY, targetM - 1, targetD);
+
+        return Math.round((targetUtc - nowUtc) / (24 * 60 * 60 * 1000));
+    } catch {
+        const diffMs = targetDate.getTime() - nowDate.getTime();
+        return Math.floor(diffMs / (24 * 60 * 60 * 1000));
+    }
+}
+
 /**
  * Получить список предстоящих квизов из курсов learn.astanait.edu.kz
  * @param {string} [sessionId] - Cookie sessionid пользователя (если не указан, извлекается из персистентного хранилища)
@@ -535,7 +551,7 @@ async function getUpcomingQuizzes(sessionId) {
                     const diffMs = dueUtc.getTime() - now.getTime();
                     const diffMinutes = Math.round(diffMs / (1000 * 60));
                     const diffHours = Number((diffMs / (1000 * 60 * 60)).toFixed(1));
-                    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                    const diffDays = getCalendarDayDiff(dueUtc, now);
                     const isPast = diffMs < 0;
                     const isCriticalHour = !isPast && diffMinutes > 0 && diffMinutes <= 75;
 
