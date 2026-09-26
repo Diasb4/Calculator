@@ -1458,7 +1458,14 @@ test('Telegram Bot: Cookie guide text and commands (/cookie, /cookies, /гайд
         await bot(createReq('/set_lms'), mockRes);
         assert.match(sentMessages[sentMessages.length - 1].text, /КАК ПОДКЛЮЧИТЬ КУКИ И НАПОМИНАНИЯ/);
 
-        // 4. Callback query wiz_cookie_guide
+        // 4. /телефон and /mobile
+        await bot(createReq('/телефон'), mockRes);
+        assert.match(sentMessages[sentMessages.length - 1].text, /ИНСТРУКЦИЯ С ТЕЛЕФОНА/);
+
+        await bot(createReq('гайд как с телефона'), mockRes);
+        assert.match(sentMessages[sentMessages.length - 1].text, /ИНСТРУКЦИЯ С ТЕЛЕФОНА/);
+
+        // 5. Callback query wiz_cookie_guide
         const callbackReq = {
             method: 'POST',
             headers: {},

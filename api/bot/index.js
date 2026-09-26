@@ -624,43 +624,35 @@ function getCookieGuideText(isGauharUser = false) {
     const gauharHeader = isGauharUser
         ? `🍪 <b>Пошаговый гайд по кукам специально для Гаухар:</b> 🧠✨\n` +
           `<i>(Гаухар, сохрани этот пост в «Избранное», чтобы не спрашивать разработчика через 5 минут!)</i> 😉\n\n`
-        : `🍪 <b>КАК ПОДКЛЮЧИТЬ КУКИ И НАПОМИНАНИЯ (ЗА 1 МИНУТУ):</b>\n\n`;
+        : `🍪 <b>КАК ПОДКЛЮЧИТЬ КУКИ И НАПОМИНАНИЯ (С ТЕЛЕФОНА И ПК):</b>\n\n`;
 
     return gauharHeader +
-        `Бот GradeMaster умеет присылать дедлайны из двух платформ AITU:\n` +
-        `1️⃣ <b>AITU Learn</b> (еженедельные квизы и тесты курсов)\n` +
-        `2️⃣ <b>Moodle LMS</b> (лабораторные работы, отчеты и задания)\n\n` +
+        `Бот GradeMaster собирает дедлайны из двух платформ AITU:\n` +
+        `1️⃣ <b>Moodle LMS</b> (все лабы, домашки, проекты — 90% всех заданий!)\n` +
+        `2️⃣ <b>AITU Learn</b> (еженедельные онлайн-квизы и тесты курсов)\n\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
-        `📝 <b>1. КАК ПОДКЛЮЧИТЬ AITU LEARN:</b>\n` +
-        `<i>(Платформа: learn.astanait.edu.kz — нужен <code>sessionid</code>)</i>\n\n` +
-        `<b>Инструкция с компьютера (Chrome / Edge / Yandex / Opera / Firefox):</b>\n` +
-        `1. Откройте в браузере <a href="https://learn.astanait.edu.kz/">learn.astanait.edu.kz</a> и войдите через Microsoft.\n` +
-        `2. Нажмите <b>F12</b> на клавиатуре (или правой кнопкой мыши в любом месте страницы → <b>«Посмотреть код» / Inspect</b>).\n` +
-        `3. Вверху открывшейся панели выберите вкладку <b>Application</b> (в Firefox: <b>«Память» / «Storage»</b>).\n` +
-        `   <i>(Если вкладку не видно, нажмите на двойную стрелочку <b>»</b> в верхнем меню панели)</i>.\n` +
-        `4. В левой колонке откройте <b>Cookies</b> → нажмите на <code>https://learn.astanait.edu.kz</code>.\n` +
-        `5. Найдите строку с именем <code>sessionid</code>, дважды кликните по её значению (в столбце <b>Value</b>) и скопируйте.\n` +
-        `6. Отправьте скопированный текст боту:\n` +
-        `👉 <code>/set_cookie ВАШ_SESSIONID</code>\n\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `📚 <b>2. КАК ПОДКЛЮЧИТЬ MOODLE LMS:</b>\n` +
-        `<i>(Платформа: lms.astanait.edu.kz — дедлайны лаб и заданий)</i>\n\n` +
-        `<b>Вариант А (с компьютера через F12):</b>\n` +
-        `1. Откройте <a href="https://lms.astanait.edu.kz/">lms.astanait.edu.kz</a> и войдите.\n` +
-        `2. Нажмите <b>F12</b> → вкладка <b>Application</b> (или <b>Storage</b>) → <b>Cookies</b> → <code>https://lms.astanait.edu.kz</code>.\n` +
-        `3. Скопируйте значение строки <code>MoodleSession</code>.\n` +
-        `4. Отправьте боту:\n` +
-        `👉 <code>/set_lms ВАШ_MOODLESESSION</code>\n` +
-        `<i>💡 Бот мгновенно выпустит постоянный токен календаря, поэтому повторно обновлять сессию каждые 20 минут НЕ нужно!</i>\n\n` +
-        `<b>Вариант Б (быстро с телефона без F12 и без ПК! 📱):</b>\n` +
-        `1. Перейдите по ссылке: <a href="https://lms.astanait.edu.kz/calendar/export.php">Экспорт календаря Moodle</a>\n` +
+        `📱 <b>ИНСТРУКЦИЯ С ТЕЛЕФОНА (БЕЗ ПК И БЕЗ F12):</b>\n\n` +
+        `🟢 <b>1. Moodle LMS (лабы и задания — делается за 15 секунд):</b>\n` +
+        `<i>(Работает на iPhone и Android в обычном браузере Safari/Chrome/Яндекс)</i>\n` +
+        `1. Перейдите по прямой ссылке: <a href="https://lms.astanait.edu.kz/calendar/export.php">Экспорт календаря Moodle</a> (войдите, если потребуется).\n` +
         `2. В параметрах выберите:\n` +
         `   • Какие события: <b>«Все события»</b>\n` +
         `   • За какой период: <b>«Недавние и предстоящие»</b>\n` +
-        `3. Нажмите кнопку <b>«Получить URL календаря» (Get calendar URL)</b>.\n` +
-        `4. Скопируйте появившуюся ссылку (она выглядит как <code>https://lms.astanait.edu.kz/calendar/export_execute.php?...</code>).\n` +
+        `3. Нажмите синюю кнопку <b>«Получить URL календаря» (Get calendar URL)</b>.\n` +
+        `4. Зажмите пальцем появившуюся ссылку и выберите <b>«Скопировать»</b> (она выглядит как <code>https://lms.astanait.edu.kz/calendar/export_execute.php?...</code>).\n` +
         `5. Отправьте эту ссылку боту:\n` +
-        `👉 <code>/set_lms ВАША_ССЫЛКА_ИЗ_LMS</code>\n\n` +
+        `👉 <code>/set_lms ВАША_ССЫЛКА_ИЗ_LMS</code>\n` +
+        `<i>✨ Готово! Токен календаря постоянный — сессия никогда не истекает!</i>\n\n` +
+        `🔵 <b>2. AITU Learn (квизы курсов):</b>\n` +
+        `<i>(Для квизов нужен параметр <code>sessionid</code>)</i>\n` +
+        `• <b>На Android:</b> установите бесплатный браузер с поддержкой расширений (например, <b>Kiwi Browser</b> или <b>Яндекс Браузер</b>) → установите расширение <b>Cookie-Editor</b> из Chrome Web Store → войдите на <a href="https://learn.astanait.edu.kz/">learn.astanait.edu.kz</a> → откройте расширение в меню (три точки) → найдите строку <code>sessionid</code> и скопируйте.\n` +
+        `• <b>На iPhone (iOS):</b> проще всего 1 раз открыть сайт с любого ПК/ноутбука или использовать бесплатное приложение <b>Inspect Browser</b> / <b>Web Inspector</b> из App Store.\n` +
+        `• Отправьте скопированный ключ боту:\n` +
+        `👉 <code>/set_cookie ВАШ_SESSIONID</code>\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `💻 <b>ИНСТРУКЦИЯ С КОМПЬЮТЕРА (ЧЕРЕЗ F12):</b>\n` +
+        `1. <b>AITU Learn:</b> войдите на <a href="https://learn.astanait.edu.kz/">learn.astanait.edu.kz</a> → нажмите <b>F12</b> → вкладка <b>Application</b> (в Firefox: <b>«Память» / «Storage»</b>) → слева <b>Cookies</b> → <code>https://learn.astanait.edu.kz</code> → скопируйте значение строки <code>sessionid</code> → отправьте: <code>/set_cookie ВАШ_SESSIONID</code>\n` +
+        `2. <b>Moodle LMS:</b> войдите на <a href="https://lms.astanait.edu.kz/">lms.astanait.edu.kz</a> → <b>F12</b> → <b>Application</b> → <b>Cookies</b> → скопируйте <code>MoodleSession</code> → отправьте: <code>/set_lms ВАШ_MOODLESESSION</code> (или используйте экспорт календаря выше).\n\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
         `🔔 <b>Что вы получите:</b>\n` +
         `• Экстренный сигнал тревоги с кнопкой сдачи <b>за 1 час до дедлайна</b> ⏰\n` +
@@ -1155,16 +1147,21 @@ async function handleMessage(msg) {
         });
     }
 
-    // 1.6. /cookie, /cookies, /cookie_guide, /гайд, /куки (Руководство по подключению куки)
+    // 1.6. /cookie, /cookies, /cookie_guide, /гайд, /куки, /phone, /mobile (Руководство по подключению куки)
     if (
         text === '/cookie' || text === '/cookies' || text === '/cookie_guide' ||
         text === '/гайд' || text === '/куки' || text === '/инструкция_куки' ||
+        text === '/phone' || text === '/mobile' || text === '/телефон' || text === '/смартфон' ||
         text === '🍪 Инструкция по кукам' || text === 'Инструкция по кукам' ||
         text.toLowerCase().includes('как подключить куки') ||
         text.toLowerCase().includes('как добавить куки') ||
         text.toLowerCase().includes('где взять куки') ||
         text.toLowerCase().includes('где взять sessionid') ||
-        text.toLowerCase().includes('где взять moodlesession')
+        text.toLowerCase().includes('где взять moodlesession') ||
+        text.toLowerCase().includes('как с телефона') ||
+        text.toLowerCase().includes('как подключить с телефона') ||
+        text.toLowerCase().includes('гайд с телефона') ||
+        text.toLowerCase().includes('гайд как с телефона')
     ) {
         const guide = getCookieGuideText(isGauharUser);
         return sendMessage(chatId, guide, {
