@@ -10,7 +10,7 @@ const statsEngine = require('../stats/engine.js');
 
 const LMS_BASE_URL = 'https://lms.astanait.edu.kz';
 const GAUHAR_CHAT_ID = '1365231049';
-const MAX_SUBSCRIBERS_LIMIT = parseInt(process.env.MAX_SUBSCRIBERS_LIMIT || '55', 10);
+const MAX_SUBSCRIBERS_LIMIT = parseInt(process.env.MAX_SUBSCRIBERS_LIMIT || '60', 10);
 
 function isGauhar(chatId) {
     return String(chatId).trim() === GAUHAR_CHAT_ID;
