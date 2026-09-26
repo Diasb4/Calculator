@@ -195,7 +195,7 @@ function getMainKeyboard(chatId) {
 function getCancelKeyboard() {
     return {
         keyboard: [
-            [{ text: 'Отмена / Главное меню' }]
+            [{ text: '❌ Отмена / Главное меню' }]
         ],
         resize_keyboard: true
     };
@@ -1687,10 +1687,42 @@ async function handleMessage(msg) {
     const session = getSession(chatId);
     const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
 
-    // Обработка кнопки "Отмена / Главное меню"
-    if (text === '❌ Отмена / Главное меню' || text === '/cancel') {
+    // Обработка кнопки "Отмена / Главное меню" и любых вариантов отмены
+    const isCancelText =
+        text === 'Отмена / Главное меню' ||
+        text === '❌ Отмена / Главное меню' ||
+        text === 'Отмена' ||
+        text === 'отмена' ||
+        text === '/cancel' ||
+        text === '/menu' ||
+        text === '/stop' ||
+        text === 'Главное меню' ||
+        text === 'главное меню' ||
+        text === 'Назад' ||
+        text === 'назад' ||
+        /^(?:❌\s*)?отмена(?:\s*\/\s*главное\s*меню)?$/i.test(text) ||
+        /^(?:главное\s*меню|\/cancel|\/menu|\/stop|назад|меню)$/i.test(text);
+
+    if (isCancelText) {
         clearSession(chatId);
         return sendMessage(chatId, '🏠 Действие отменено. Вы вернулись в главное меню.', { reply_markup: getMainKeyboard(chatId) });
+    }
+
+    // Приветствия и стандартные обращения (не пересылать админу и не вешать кулдаун)
+    const isGreeting = /^(?:привет|приветик|салам|салам\s*алейкум|ассалаумағалейкум|здравствуй|здравствуйте|хай|hello|hi|добрый\s*(?:день|вечер|утро)|йоу|ку)(?![а-яёa-z0-9])/i.test(text);
+    if (isGreeting) {
+        const greetingText = isGauharUser
+            ? `👋 <b>Привет, Гаухар!</b> Рады тебя видеть 🧠⚡️\n\nТы точно помнишь, какой калькулятор тебе нужен, или подсказать? 😉\nВыбирай кнопки внизу или пиши <code>/help</code>!`
+            : `👋 <b>Привет!</b> Я академический бот-помощник <b>GradeMaster</b> для студентов AITU.\n\n` +
+              `Я умею рассчитывать допуски, итоговые оценки, GPA, посещаемость и отслеживать дедлайны LMS/Learn.\n\n` +
+              `👇 <i>Выберите нужный калькулятор на кнопках меню или напишите <code>/help</code>:</i>`;
+        return sendMessage(chatId, greetingText, { reply_markup: getMainKeyboard(chatId) });
+    }
+
+    // Благодарности
+    const isGratitude = /^(?:спасибо|благодарю|рахмет|спасиб|спасибочки|thx|thanks|thank\s*you)(?![а-яёa-z0-9])/i.test(text);
+    if (isGratitude) {
+        return sendMessage(chatId, '😊 <b>Пожалуйста!</b> Успешной учебы и высоких баллов на экзаменах! 🎓✨', { reply_markup: getMainKeyboard(chatId) });
     }
 
     // 1. /start
@@ -2211,7 +2243,7 @@ async function handleMessage(msg) {
     }
 
     // 8. Обработка быстрых команд одной строкой (/calc, /gpa, /cgpa, /att, /convert)
-    if (text.startsWith('/calc')) {
+    if (text === '/calc' || text.startsWith('/calc ')) {
         const parts = text.split(/\s+/).slice(1);
         if (parts.length < 2) {
             return sendMessage(chatId, '❌ <b>Недостаточно данных.</b>\n<i>Формат:</i> <code>/calc РегМид РегЭнд [Файнал]</code>\n<i>Пример:</i> <code>/calc 80 85</code> или <code>/calc 80 85 90</code>');
@@ -2221,21 +2253,21 @@ async function handleMessage(msg) {
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
-    if (text.startsWith('/gpa')) {
+    if (text === '/gpa' || text.startsWith('/gpa ')) {
         const raw = text.replace(/^\/gpa\s*/i, '');
         await statsEngine.recordCalculation({ calcType: 'gpa', platform: 'bot' }).catch(() => {});
         const res = calculateGPAReport(raw, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
-    if (text.startsWith('/cgpa') || text.startsWith('/cumulative') || text.startsWith('/totalgpa') || text.startsWith('/cum')) {
+    if (/^\/(?:cgpa|cumulative|totalgpa|cum)(?:\s|$)/i.test(text)) {
         const raw = text.replace(/^(\/cgpa|\/cumulative|\/totalgpa|\/cum)\s*/i, '');
         await statsEngine.recordCalculation({ calcType: 'cumulative', platform: 'bot' }).catch(() => {});
         const res = calculateCumulativeGPAReport(raw, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
-    if (text.startsWith('/att')) {
+    if (text === '/att' || text.startsWith('/att ')) {
         const parts = text.split(/\s+/).slice(1);
         if (parts.length === 0) {
             return sendMessage(chatId, '❌ <b>Укажите количество пар в неделю.</b>\n<i>Пример:</i> <code>/att 3</code> или <code>/att 3 2</code>');
@@ -2245,7 +2277,7 @@ async function handleMessage(msg) {
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
-    if (text.startsWith('/convert') || text.startsWith('/conv')) {
+    if (/^\/(?:convert|conv)(?:\s|$)/i.test(text)) {
         const parts = text.split(/\s+/).slice(1);
         if (parts.length === 0) {
             return sendMessage(chatId, '❌ <b>Укажите балл для конвертации.</b>\n<i>Пример:</i> <code>/convert 87</code>');
@@ -2393,7 +2425,18 @@ async function handleMessage(msg) {
         }
     }
 
-    // 11. Нераспознанное сообщение — пересылка админу как вопрос/отзыв
+    // 10.5. Неизвестная слэш-команда (опечатка студента)
+    if (text.startsWith('/')) {
+        const cmdName = text.split(/\s+/)[0];
+        return sendMessage(chatId, `❓ Неизвестная команда <code>${esc(cmdName)}</code>.\n\nНапишите <code>/help</code> для списка доступных команд или выберите калькулятор на клавиатуре внизу.`, { reply_markup: getMainKeyboard(chatId) });
+    }
+
+    // 10.6. Случайные знаки или короткий шум (не создавать тикет админу и не тратить лимит студента)
+    if (text.length < 3 || /^[!?. ,;:\-_+=@#$%^&*()]+$/.test(text)) {
+        return sendMessage(chatId, `❓ Не удалось распознать сообщение.\n\nНажмите <b>«Инструкция»</b> или напишите <code>/help</code>, чтобы посмотреть возможности бота.`, { reply_markup: getMainKeyboard(chatId) });
+    }
+
+    // 11. Нераспознанное содержательное сообщение — пересылка админу как вопрос/отзыв
     const targetAdmin = getPrimaryAdminId();
     if (targetAdmin && String(chatId) !== String(targetAdmin)) {
         const rl = checkRateLimit(chatId);

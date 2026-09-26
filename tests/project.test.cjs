@@ -2077,6 +2077,125 @@ test('Rate Limiter: 5-minute timeout on NLP queries and feedback, admins exempt,
     bot._userRateLimits.clear();
 });
 
+test('Message Routing: Cancel buttons, greetings, unknown commands, and feedback routing', async () => {
+    const bot = require('../api/bot/index.js');
+    const studentChatId = 'student_msg_routing_789';
+    const adminChatId = (process.env.ADMIN_CHAT_ID || '1365231049').split(/[,\s;]+/)[0];
+
+    const originalFetch = global.fetch;
+    const sentApiMessages = [];
+
+    global.fetch = async (url, options = {}) => {
+        if (url && url.includes('telegram.org')) {
+            const body = options.body ? JSON.parse(options.body) : {};
+            sentApiMessages.push({ url, body });
+            return {
+                ok: true,
+                status: 200,
+                json: async () => ({ ok: true, result: { message_id: 12345 } })
+            };
+        }
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    };
+
+    const mockRes = {
+        status: () => mockRes,
+        json: () => mockRes,
+        setHeader: () => mockRes
+    };
+
+    try {
+        bot._userRateLimits.clear();
+
+        // 1. Student taps "Отмена / Главное меню" (with or without ❌)
+        sentApiMessages.length = 0;
+        await bot({
+            method: 'POST',
+            body: { message: { chat: { id: studentChatId }, text: 'Отмена / Главное меню', from: { id: studentChatId, username: 'testuser' } } }
+        }, mockRes);
+
+        assert.strictEqual(sentApiMessages.length, 1);
+        assert.match(sentApiMessages[0].body.text, /Действие отменено/);
+        assert.strictEqual(sentApiMessages.some(m => String(m.body.chat_id) === String(adminChatId)), false, 'Cancel button must never forward to admin');
+        assert.strictEqual(bot.checkRateLimit(studentChatId).allowed, true, 'Cancel must not rate limit');
+
+        // 2. Student taps "❌ Отмена / Главное меню"
+        sentApiMessages.length = 0;
+        await bot({
+            method: 'POST',
+            body: { message: { chat: { id: studentChatId }, text: '❌ Отмена / Главное меню', from: { id: studentChatId, username: 'testuser' } } }
+        }, mockRes);
+        assert.match(sentApiMessages[0].body.text, /Действие отменено/);
+        assert.strictEqual(sentApiMessages.some(m => String(m.body.chat_id) === String(adminChatId)), false);
+
+        // 3. Greeting "Привет"
+        sentApiMessages.length = 0;
+        await bot({
+            method: 'POST',
+            body: { message: { chat: { id: studentChatId }, text: 'Привет', from: { id: studentChatId, username: 'testuser' } } }
+        }, mockRes);
+        assert.strictEqual(sentApiMessages.length, 1);
+        assert.match(sentApiMessages[0].body.text, /Привет!/);
+        assert.strictEqual(sentApiMessages.some(m => String(m.body.chat_id) === String(adminChatId)), false);
+        assert.strictEqual(bot.checkRateLimit(studentChatId).allowed, true, 'Greetings must not rate limit');
+
+        // 4. Typo slash command "/calck"
+        sentApiMessages.length = 0;
+        await bot({
+            method: 'POST',
+            body: { message: { chat: { id: studentChatId }, text: '/calck', from: { id: studentChatId, username: 'testuser' } } }
+        }, mockRes);
+        assert.strictEqual(sentApiMessages.length, 1);
+        assert.match(sentApiMessages[0].body.text, /Неизвестная команда/);
+        assert.strictEqual(sentApiMessages.some(m => String(m.body.chat_id) === String(adminChatId)), false);
+
+        // 5. Short noise "???"
+        sentApiMessages.length = 0;
+        await bot({
+            method: 'POST',
+            body: { message: { chat: { id: studentChatId }, text: '???', from: { id: studentChatId, username: 'testuser' } } }
+        }, mockRes);
+        assert.strictEqual(sentApiMessages.length, 1);
+        assert.match(sentApiMessages[0].body.text, /Не удалось распознать/);
+        assert.strictEqual(sentApiMessages.some(m => String(m.body.chat_id) === String(adminChatId)), false);
+
+        // 6. Gratitude "Спасибо"
+        sentApiMessages.length = 0;
+        await bot({
+            method: 'POST',
+            body: { message: { chat: { id: studentChatId }, text: 'спасибо большое', from: { id: studentChatId, username: 'testuser' } } }
+        }, mockRes);
+        assert.strictEqual(sentApiMessages.length, 1);
+        assert.match(sentApiMessages[0].body.text, /Пожалуйста/);
+        assert.strictEqual(sentApiMessages.some(m => String(m.body.chat_id) === String(adminChatId)), false);
+
+        // 7. Legitimate feedback in feed_input step is delivered to admin
+        bot._userRateLimits.clear();
+        sentApiMessages.length = 0;
+        // Enter feedback mode
+        await bot({
+            method: 'POST',
+            body: { message: { chat: { id: studentChatId }, text: 'Отзыв / Поддержка', from: { id: studentChatId, username: 'testuser' } } }
+        }, mockRes);
+
+        sentApiMessages.length = 0;
+        // Send real message
+        await bot({
+            method: 'POST',
+            body: { message: { chat: { id: studentChatId }, text: 'Хотелось бы добавить темную тему в бот', from: { id: studentChatId, username: 'testuser' } } }
+        }, mockRes);
+
+        const adminMsg = sentApiMessages.find(m => String(m.body.chat_id) === String(adminChatId));
+        assert.ok(adminMsg, 'Feedback must be forwarded to admin');
+        assert.match(adminMsg.body.text, /Хотелось бы добавить темную тему/);
+
+        // Cleanup
+        bot._userRateLimits.clear();
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
 
 
 
