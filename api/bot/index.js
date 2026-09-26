@@ -183,6 +183,9 @@ function getCalculatorsInlineKeyboard() {
             [
                 { text: 'Конвертер % в GPA', callback_data: 'wiz_conv' },
                 { text: 'Написать админу', callback_data: 'wiz_feed' }
+            ],
+            [
+                { text: '🍪 Инструкция: как подключить куки', callback_data: 'wiz_cookie_guide' }
             ]
         ]
     };
@@ -611,7 +614,59 @@ function getFoolproofHelpText(isGauharUser = false) {
         `Мгновенно переводит проценты (например 87) в букву B+ и балл 3.33.\n` +
         `👉 Отправьте: <code>/convert 87</code>\n\n` +
         `💬 <b>6. Поддержка и отзывы</b>\n` +
-        `Нажмите <b>«💬 Отзыв / Поддержка»</b> и напишите любое сообщение — администратор получит его и ответит вам!`;
+        `Нажмите <b>«💬 Отзыв / Поддержка»</b> и напишите любое сообщение — администратор получит его и ответит вам!\n\n` +
+        `🍪 <b>7. Напоминания о квизах и дедлайнах (Learn & LMS)</b>\n` +
+        `Бот может будить вас каждое утро в 08:00 и присылать сигнал тревоги за 1 час до сдачи работ.\n` +
+        `👉 Отправьте команду <code>/cookie</code> для пошаговой инструкции подключения!`;
+}
+
+function getCookieGuideText(isGauharUser = false) {
+    const gauharHeader = isGauharUser
+        ? `🍪 <b>Пошаговый гайд по кукам специально для Гаухар:</b> 🧠✨\n` +
+          `<i>(Гаухар, сохрани этот пост в «Избранное», чтобы не спрашивать разработчика через 5 минут!)</i> 😉\n\n`
+        : `🍪 <b>КАК ПОДКЛЮЧИТЬ КУКИ И НАПОМИНАНИЯ (ЗА 1 МИНУТУ):</b>\n\n`;
+
+    return gauharHeader +
+        `Бот GradeMaster умеет присылать дедлайны из двух платформ AITU:\n` +
+        `1️⃣ <b>AITU Learn</b> (еженедельные квизы и тесты курсов)\n` +
+        `2️⃣ <b>Moodle LMS</b> (лабораторные работы, отчеты и задания)\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `📝 <b>1. КАК ПОДКЛЮЧИТЬ AITU LEARN:</b>\n` +
+        `<i>(Платформа: learn.astanait.edu.kz — нужен <code>sessionid</code>)</i>\n\n` +
+        `<b>Инструкция с компьютера (Chrome / Edge / Yandex / Opera / Firefox):</b>\n` +
+        `1. Откройте в браузере <a href="https://learn.astanait.edu.kz/">learn.astanait.edu.kz</a> и войдите через Microsoft.\n` +
+        `2. Нажмите <b>F12</b> на клавиатуре (или правой кнопкой мыши в любом месте страницы → <b>«Посмотреть код» / Inspect</b>).\n` +
+        `3. Вверху открывшейся панели выберите вкладку <b>Application</b> (в Firefox: <b>«Память» / «Storage»</b>).\n` +
+        `   <i>(Если вкладку не видно, нажмите на двойную стрелочку <b>»</b> в верхнем меню панели)</i>.\n` +
+        `4. В левой колонке откройте <b>Cookies</b> → нажмите на <code>https://learn.astanait.edu.kz</code>.\n` +
+        `5. Найдите строку с именем <code>sessionid</code>, дважды кликните по её значению (в столбце <b>Value</b>) и скопируйте.\n` +
+        `6. Отправьте скопированный текст боту:\n` +
+        `👉 <code>/set_cookie ВАШ_SESSIONID</code>\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `📚 <b>2. КАК ПОДКЛЮЧИТЬ MOODLE LMS:</b>\n` +
+        `<i>(Платформа: lms.astanait.edu.kz — дедлайны лаб и заданий)</i>\n\n` +
+        `<b>Вариант А (с компьютера через F12):</b>\n` +
+        `1. Откройте <a href="https://lms.astanait.edu.kz/">lms.astanait.edu.kz</a> и войдите.\n` +
+        `2. Нажмите <b>F12</b> → вкладка <b>Application</b> (или <b>Storage</b>) → <b>Cookies</b> → <code>https://lms.astanait.edu.kz</code>.\n` +
+        `3. Скопируйте значение строки <code>MoodleSession</code>.\n` +
+        `4. Отправьте боту:\n` +
+        `👉 <code>/set_lms ВАШ_MOODLESESSION</code>\n` +
+        `<i>💡 Бот мгновенно выпустит постоянный токен календаря, поэтому повторно обновлять сессию каждые 20 минут НЕ нужно!</i>\n\n` +
+        `<b>Вариант Б (быстро с телефона без F12 и без ПК! 📱):</b>\n` +
+        `1. Перейдите по ссылке: <a href="https://lms.astanait.edu.kz/calendar/export.php">Экспорт календаря Moodle</a>\n` +
+        `2. В параметрах выберите:\n` +
+        `   • Какие события: <b>«Все события»</b>\n` +
+        `   • За какой период: <b>«Недавние и предстоящие»</b>\n` +
+        `3. Нажмите кнопку <b>«Получить URL календаря» (Get calendar URL)</b>.\n` +
+        `4. Скопируйте появившуюся ссылку (она выглядит как <code>https://lms.astanait.edu.kz/calendar/export_execute.php?...</code>).\n` +
+        `5. Отправьте эту ссылку боту:\n` +
+        `👉 <code>/set_lms ВАША_ССЫЛКА_ИЗ_LMS</code>\n\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `🔔 <b>Что вы получите:</b>\n` +
+        `• Экстренный сигнал тревоги с кнопкой сдачи <b>за 1 час до дедлайна</b> ⏰\n` +
+        `• Утреннюю сводку в 08:00 по всем горящим заданиям на 3 дня ☀️\n` +
+        `• Кнопки быстрого просмотра в главном меню бота 📱\n\n` +
+        `🔒 <i>Ваши данные изолированы и хранятся в защищённом виде. Отключить напоминания можно в любой момент командами <code>/logout</code> (для Learn) и <code>/del_lms</code> (для LMS).</i>`;
 }
 
 // ==========================================
@@ -880,6 +935,15 @@ async function handleCallbackQuery(cq) {
         return sendMessage(chatId, feedText, { reply_markup: getCancelKeyboard() });
     }
 
+    if (data === 'wiz_cookie_guide' || data === 'show_cookie_guide') {
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const guide = getCookieGuideText(isGauharUser);
+        return sendMessage(chatId, guide, {
+            reply_markup: getMainKeyboard(chatId),
+            disable_web_page_preview: true
+        });
+    }
+
     if (data === 'user_quizzes_refresh') {
         const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
         const refreshText = isGauharUser
@@ -1075,11 +1139,33 @@ async function handleMessage(msg) {
         });
     }
 
-    // 1.6. /set_cookie <sessionid> (Персональное подключение сессии AITU)
-    if (text.startsWith('/set_cookie') || text.startsWith('/cookie')) {
-        const cookieVal = text.replace(/^\/(?:set_cookie|cookie)/, '').trim();
+    // 1.6. /cookie, /cookies, /cookie_guide, /гайд, /куки (Руководство по подключению куки)
+    if (
+        text === '/cookie' || text === '/cookies' || text === '/cookie_guide' ||
+        text === '/гайд' || text === '/куки' || text === '/инструкция_куки' ||
+        text === '🍪 Инструкция по кукам' || text === 'Инструкция по кукам' ||
+        text.toLowerCase().includes('как подключить куки') ||
+        text.toLowerCase().includes('как добавить куки') ||
+        text.toLowerCase().includes('где взять куки') ||
+        text.toLowerCase().includes('где взять sessionid') ||
+        text.toLowerCase().includes('где взять moodlesession')
+    ) {
+        const guide = getCookieGuideText(isGauharUser);
+        return sendMessage(chatId, guide, {
+            reply_markup: getMainKeyboard(chatId),
+            disable_web_page_preview: true
+        });
+    }
+
+    // 1.6.1. /set_cookie <sessionid> (Персональное подключение сессии AITU)
+    if (text.startsWith('/set_cookie') || text.startsWith('/cookie ')) {
+        const cookieVal = text.replace(/^\/(?:set_cookie|cookie)\s*/, '').trim();
         if (!cookieVal) {
-            return sendMessage(chatId, 'Отправьте значение sessionid:\n<code>/set_cookie ВАШ_SESSION_ID</code>');
+            const guide = getCookieGuideText(isGauharUser);
+            return sendMessage(chatId, guide, {
+                reply_markup: getMainKeyboard(chatId),
+                disable_web_page_preview: true
+            });
         }
 
         const limitCheck = await aitu.canUserSubscribe(chatId);
@@ -1158,7 +1244,11 @@ async function handleMessage(msg) {
     if (text.startsWith('/set_lms') || text.startsWith('/lms_cookie')) {
         const val = text.replace(/^\/(?:set_lms|lms_cookie)/, '').trim();
         if (!val) {
-            return sendMessage(chatId, 'Отправьте значение MoodleSession или ссылку на календарь:\n<code>/set_lms ВАШ_MOODLESESSION</code>');
+            const guide = getCookieGuideText(isGauharUser);
+            return sendMessage(chatId, guide, {
+                reply_markup: getMainKeyboard(chatId),
+                disable_web_page_preview: true
+            });
         }
 
         const limitCheck = await lms.canUserSubscribe(chatId);
@@ -1664,6 +1754,7 @@ module.exports.getMainKeyboard = getMainKeyboard;
 module.exports.getFoolproofHelpText = getFoolproofHelpText;
 module.exports.statsEngine = statsEngine;
 module.exports.anonymizeUserId = statsEngine.anonymizeUserId;
+module.exports.getCookieGuideText = getCookieGuideText;
 
 // ==========================================
 // ЛОКАЛЬНЫЙ LONG-POLLING (ДЛЯ РАЗРАБОТКИ)

@@ -1399,6 +1399,85 @@ test('Telegram Bot: LMS commands (/lms, /set_lms, /del_lms) and keyboard updates
     }
 });
 
+test('Telegram Bot: Cookie guide text and commands (/cookie, /cookies, /гайд, wiz_cookie_guide)', async () => {
+    const bot = require('../api/bot/index.js');
+    const guideRegular = bot.getCookieGuideText(false);
+    assert.match(guideRegular, /КАК ПОДКЛЮЧИТЬ КУКИ И НАПОМИНАНИЯ/);
+    assert.match(guideRegular, /learn\.astanait\.edu\.kz/);
+    assert.match(guideRegular, /sessionid/);
+    assert.match(guideRegular, /MoodleSession/);
+    assert.match(guideRegular, /F12/);
+    assert.match(guideRegular, /Application/);
+    assert.match(guideRegular, /Экспорт календаря Moodle/);
+
+    const guideGauhar = bot.getCookieGuideText(true);
+    assert.match(guideGauhar, /Пошаговый гайд по кукам специально для Гаухар/);
+    assert.match(guideGauhar, /чтобы не спрашивать разработчика через 5 минут/);
+
+    // Test bot commands triggering guide
+    const originalFetch = global.fetch;
+    const sentMessages = [];
+    try {
+        global.fetch = async (url, opts = {}) => {
+            if (url && url.includes('/sendMessage')) {
+                sentMessages.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: {} }) };
+            }
+            return { ok: true, json: async () => ({}) };
+        };
+
+        process.env.TELEGRAM_BOT_TOKEN = 'test_token';
+        const createReq = (text) => ({
+            method: 'POST',
+            headers: {},
+            body: {
+                message: {
+                    message_id: 20,
+                    chat: { id: '1234567' },
+                    from: { id: '1234567', username: 'student' },
+                    text
+                }
+            }
+        });
+        const mockRes = {
+            setHeader: () => {},
+            status: () => mockRes,
+            json: () => {}
+        };
+
+        // 1. /cookie
+        await bot(createReq('/cookie'), mockRes);
+        assert.ok(sentMessages.length > 0);
+        assert.match(sentMessages[sentMessages.length - 1].text, /КАК ПОДКЛЮЧИТЬ КУКИ И НАПОМИНАНИЯ/);
+
+        // 2. /гайд
+        await bot(createReq('/гайд'), mockRes);
+        assert.match(sentMessages[sentMessages.length - 1].text, /КАК ПОДКЛЮЧИТЬ КУКИ И НАПОМИНАНИЯ/);
+
+        // 3. /set_lms without params
+        await bot(createReq('/set_lms'), mockRes);
+        assert.match(sentMessages[sentMessages.length - 1].text, /КАК ПОДКЛЮЧИТЬ КУКИ И НАПОМИНАНИЯ/);
+
+        // 4. Callback query wiz_cookie_guide
+        const callbackReq = {
+            method: 'POST',
+            headers: {},
+            body: {
+                callback_query: {
+                    id: 'cq_123',
+                    message: { chat: { id: '1234567' }, message_id: 21 },
+                    data: 'wiz_cookie_guide'
+                }
+            }
+        };
+        await bot(callbackReq, mockRes);
+        assert.match(sentMessages[sentMessages.length - 1].text, /КАК ПОДКЛЮЧИТЬ КУКИ И НАПОМИНАНИЯ/);
+
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
 
 
 
