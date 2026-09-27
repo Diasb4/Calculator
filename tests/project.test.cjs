@@ -1491,6 +1491,7 @@ test('LMS & Learn: marking assignments and quizzes completed isolates them from 
     const cron = require('../api/cron.js');
 
     const originalFetch = global.fetch;
+    const originalGetUpcomingQuizzes = aitu.getUpcomingQuizzes;
     const sentMessages = [];
 
     try {
@@ -1576,7 +1577,6 @@ test('LMS & Learn: marking assignments and quizzes completed isolates them from 
         assert.ok(learnCompleted.has('block_quiz_philosophy'));
 
         // Mock upcoming quizzes
-        const originalGetUpcomingQuizzes = aitu.getUpcomingQuizzes;
         aitu.getUpcomingQuizzes = async () => ({
             ok: true,
             quizzes: [
@@ -1601,10 +1601,10 @@ test('LMS & Learn: marking assignments and quizzes completed isolates them from 
                     courseName: 'Calculus',
                     title: 'Quiz 1. Limits',
                     link: 'https://learn.astanait.edu.kz/quiz1',
-                    dueDate: new Date(Date.now() + 3600000 * 20).toISOString(),
-                    diffMinutes: 1200,
-                    diffHours: 20,
-                    diffDays: 1,
+                    dueDate: new Date(Date.now() + 3600000 * 2).toISOString(),
+                    diffMinutes: 120,
+                    diffHours: 2,
+                    diffDays: 0,
                     isPast: false,
                     isCompleted: false
                 }
@@ -1663,12 +1663,11 @@ test('LMS & Learn: marking assignments and quizzes completed isolates them from 
         });
         assert.strictEqual(sentMessages.length, 0, 'Completed quiz must NOT trigger critical 1-hour alarm!');
 
-        // Restore
-        aitu.getUpcomingQuizzes = originalGetUpcomingQuizzes;
         await lms.deleteUserLmsSession(studentId);
         await aitu.deleteUserSession(studentId);
     } finally {
         global.fetch = originalFetch;
+        aitu.getUpcomingQuizzes = originalGetUpcomingQuizzes;
     }
 });
 
@@ -2191,6 +2190,107 @@ test('Message Routing: Cancel buttons, greetings, unknown commands, and feedback
 
         // Cleanup
         bot._userRateLimits.clear();
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
+test('Auto-detection: Calendar export URL and Learn cookie automatically connect without /set_lms or admin forward', async () => {
+    const bot = require('../api/bot/index.js');
+    const lms = require('../api/bot/lms.js');
+    const aitu = require('../api/bot/aitu.js');
+
+    const studentId = 'student_cal_autodetect_123';
+    const adminChatId = (process.env.ADMIN_CHAT_ID || '1365231049').split(/[,\s;]+/)[0];
+
+    const sampleCalendarUrl = 'https://lms.astanait.edu.kz/calendar/export_execute.php?userid=18258&authtoken=0d3c12c531aeec350de2ca7cc064e882f761b418&preset_what=all&preset_time=recentupcoming';
+
+    // 1. Test extractor functions directly
+    assert.strictEqual(bot.extractLmsCalendarOrCookie(sampleCalendarUrl), sampleCalendarUrl);
+    assert.strictEqual(bot.extractLmsCalendarOrCookie('Вот держи: ' + sampleCalendarUrl + ' спасибо!'), sampleCalendarUrl);
+    assert.strictEqual(bot.extractLmsCalendarOrCookie('webcal://lms.astanait.edu.kz/calendar/export_execute.php?userid=123&authtoken=abc'), 'https://lms.astanait.edu.kz/calendar/export_execute.php?userid=123&authtoken=abc');
+    assert.strictEqual(bot.extractLmsCalendarOrCookie('MoodleSession=test_moodle_session_123'), 'test_moodle_session_123');
+    assert.strictEqual(bot.extractLearnSessionId('sessionid=learn_session_token_xyz123'), 'learn_session_token_xyz123');
+
+    // 2. Test bot webhook behavior: student pastes ONLY the raw calendar URL into chat
+    const originalFetch = global.fetch;
+    const sentApiMessages = [];
+
+    const dummyIcal = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'BEGIN:VEVENT',
+        'UID:auto_cal_evt_1@lms.astanait.edu.kz',
+        'SUMMARY:Assignment 1. Final Project is due',
+        'CATEGORIES:Software Architecture',
+        `DTSTART:${new Date(Date.now() + 3600000 * 4).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+        `DTEND:${new Date(Date.now() + 3600000 * 4).toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+        'DESCRIPTION:https://lms.astanait.edu.kz/mod/assign/view.php?id=999',
+        'END:VEVENT',
+        'END:VCALENDAR'
+    ].join('\r\n');
+
+    global.fetch = async (url, options = {}) => {
+        if (url && url.includes('export_execute.php')) {
+            return {
+                ok: true,
+                status: 200,
+                text: async () => dummyIcal
+            };
+        }
+        if (url && url.includes('telegram.org')) {
+            const body = options.body ? JSON.parse(options.body) : {};
+            sentApiMessages.push({ url, body });
+            return {
+                ok: true,
+                status: 200,
+                json: async () => ({ ok: true, result: { message_id: 9999 } })
+            };
+        }
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    };
+
+    const mockRes = {
+        status: () => mockRes,
+        json: () => mockRes,
+        setHeader: () => mockRes
+    };
+
+    try {
+        await lms.deleteUserLmsSession(studentId);
+        sentApiMessages.length = 0;
+
+        // Student sends RAW calendar link (exactly like student 🚬 sent)
+        await bot({
+            method: 'POST',
+            body: {
+                message: {
+                    chat: { id: studentId },
+                    text: sampleCalendarUrl,
+                    from: { id: studentId, username: 'student_smoker' }
+                }
+            }
+        }, mockRes);
+
+        // Verify:
+        // A) Bot responded to student that LMS is successfully connected
+        const studentResponses = sentApiMessages.filter(m => String(m.body.chat_id) === String(studentId));
+        assert.ok(studentResponses.length >= 1);
+        const lastResponse = studentResponses[studentResponses.length - 1].body.text;
+        assert.match(lastResponse, /Moodle LMS успешно подключен/);
+        assert.match(lastResponse, /Сгенерирован вечный токен календаря/);
+
+        // B) Stored user session has the calendar URL
+        const savedUrl = await lms.getUserLmsSession(studentId);
+        assert.ok(savedUrl);
+        assert.strictEqual(savedUrl, sampleCalendarUrl);
+
+        // C) Admin received ZERO messages! (The calendar link was NOT forwarded as feedback/question)
+        const adminMessages = sentApiMessages.filter(m => String(m.body.chat_id) === String(adminChatId));
+        assert.strictEqual(adminMessages.length, 0, 'Admin must not be spammed when students paste calendar links');
+
+        // Cleanup
+        await lms.deleteUserLmsSession(studentId);
     } finally {
         global.fetch = originalFetch;
     }

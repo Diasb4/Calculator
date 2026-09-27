@@ -1670,6 +1670,115 @@ async function handleCallbackQuery(cq) {
 }
 
 // ==========================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ПОДКЛЮЧЕНИЯ LMS И LEARN
+// ==========================================
+
+function extractLmsCalendarOrCookie(input) {
+    if (!input || typeof input !== 'string') return null;
+    const str = input.trim();
+
+    // 1. Прямая ссылка на экспорт календаря Moodle LMS (https / http / webcal)
+    // Например: https://lms.astanait.edu.kz/calendar/export_execute.php?userid=18258&authtoken=0d3c12c531aeec350de2ca7cc064e882f761b418&preset_what=all&preset_time=recentupcoming
+    const calMatch = str.match(/(?:https?:\/\/|webcal:\/\/)[^\s<>"]*lms\.astanait\.edu\.kz\/calendar\/export_execute\.php[^\s<>"]*/i) ||
+                     str.match(/(?:https?:\/\/|webcal:\/\/)?[^\s<>"]*export_execute\.php\?[^\s<>"]*(?:authtoken|userid)=[^\s<>"]*/i);
+    if (calMatch) {
+        let url = calMatch[0];
+        if (url.startsWith('webcal://')) {
+            url = 'https://' + url.slice(9);
+        } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            url = 'https://' + url;
+        }
+        return url;
+    }
+
+    // 2. Кука MoodleSession (MoodleSession=... или moodlesession: ...)
+    const moodleMatch = str.match(/(?:moodlesession)\s*[:=]\s*([a-zA-Z0-9_\-]+)/i);
+    if (moodleMatch && moodleMatch[1]) {
+        return moodleMatch[1];
+    }
+
+    return null;
+}
+
+function extractLearnSessionId(input) {
+    if (!input || typeof input !== 'string') return null;
+    const str = input.trim();
+
+    // 1. Явное указание sessionid=... или sessionid: ...
+    const sidMatch = str.match(/(?:sessionid)\s*[:=]\s*([a-zA-Z0-9_\-]{16,64})/i);
+    if (sidMatch && sidMatch[1]) {
+        return sidMatch[1];
+    }
+
+    return null;
+}
+
+async function executeSetLms(chatId, val, isGauharUser) {
+    let cleanVal = String(val).trim();
+    if (cleanVal.startsWith('webcal://')) {
+        cleanVal = 'https://' + cleanVal.slice(9);
+    }
+
+    const limitCheck = await lms.canUserSubscribe(chatId);
+    if (!limitCheck.allowed) {
+        return sendMessage(chatId, limitCheck.message, { reply_markup: getMainKeyboard(chatId) });
+    }
+
+    await sendMessage(chatId, '⏳ <i>Проверяю подключение к lms.astanait.edu.kz и генерирую вечный токен...</i>');
+    const testRes = await lms.getUpcomingDeadlines(cleanVal);
+    if (testRes.ok) {
+        await lms.saveUserLmsSession(chatId, testRes.calendarUrl || cleanVal);
+        const successNote = isGauharUser
+            ? `🎉 <b>Гаухар, Moodle LMS успешно подключен!</b> 🧠✨\n` +
+              `Найдено активных дедлайнов: <b>${testRes.quizzesCount}</b>\n\n` +
+              `✅ Сгенерирован вечный токен: куки больше обновлять не нужно! Бот будет присылать напоминания каждое утро в 08:00 и за 1 час до дедлайна лично тебе.\n\n`
+            : `🎉 <b>Moodle LMS успешно подключен!</b>\n` +
+              `Найдено активных дедлайнов: <b>${testRes.quizzesCount}</b>\n\n` +
+              `✅ Сгенерирован вечный токен календаря: сессия не истечет через 20 минут. Напоминания включены!\n\n`;
+
+        return sendMessage(chatId, successNote + lms.formatLmsDeadlinesMessage(testRes, isGauharUser), {
+            reply_markup: getMainKeyboard(chatId),
+            disable_web_page_preview: true
+        });
+    } else {
+        return sendMessage(chatId, '⚠️ <b>Ошибка подключения к LMS:</b> ' + testRes.error + '\n\nУбедитесь, что скопировали корректную ссылку на экспорт календаря или актуальное значение <code>MoodleSession</code> из lms.astanait.edu.kz.', {
+            reply_markup: getMainKeyboard(chatId)
+        });
+    }
+}
+
+async function executeSetLearnCookie(chatId, cookieVal, isGauharUser) {
+    const limitCheck = await aitu.canUserSubscribe(chatId);
+    if (!limitCheck.allowed) {
+        return sendMessage(chatId, limitCheck.message, { reply_markup: getMainKeyboard(chatId) });
+    }
+
+    let cleanSid = String(cookieVal).trim();
+    const match = cleanSid.match(/sessionid=([^;\s]+)/i);
+    if (match) cleanSid = match[1].trim();
+
+    await sendMessage(chatId, '⏳ <i>Проверяю подключение к learn.astanait.edu.kz...</i>');
+    const testRes = await aitu.getUpcomingQuizzes(cleanSid);
+    if (testRes.ok) {
+        await aitu.saveUserSession(chatId, cleanSid);
+        const successNote = isGauharUser
+            ? `🎉 <b>Гаухар, сессия успешно подключена!</b> 🧠✨\nНайдено дедлайнов: <b>${testRes.quizzes.length}</b>\n\n` +
+              `✅ Теперь бот каждое утро в 08:00 и за 1 час до каждого дедлайна будет присылать персональные сигналы тревоги лично тебе, чтобы ты ничего не пропустила!\n\n`
+            : `🎉 <b>Успешно подключено к AITU!</b>\nНайдено дедлайнов: <b>${testRes.quizzes.length}</b>\n\n` +
+              `✅ Теперь бот каждое утро в 08:00 и экстренно за 1 час до дедлайна будет присылать персональные напоминания лично тебе!\n\n`;
+
+        return sendMessage(chatId, successNote + aitu.formatQuizzesMessage(testRes, isGauharUser, false, 'week'), {
+            reply_markup: getMainKeyboard(chatId),
+            disable_web_page_preview: true
+        });
+    } else {
+        return sendMessage(chatId, '⚠️ <b>Ошибка проверки сессии:</b> ' + testRes.error + '\n\nУбедитесь, что вы скопировали актуальный <code>sessionid</code> из браузера после входа в learn.astanait.edu.kz.', {
+            reply_markup: getMainKeyboard(chatId)
+        });
+    }
+}
+
+// ==========================================
 // ОБРАБОТКА ВХОДЯЩИХ ТЕКСТОВЫХ СООБЩЕНИЙ
 // ==========================================
 
@@ -1686,6 +1795,20 @@ async function handleMessage(msg) {
 
     const session = getSession(chatId);
     const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+
+    // 0. Автоматическое обнаружение ссылки календаря Moodle LMS или MoodleSession (даже если отправлена напрямую без команды)
+    const autoLms = extractLmsCalendarOrCookie(text);
+    if (autoLms) {
+        clearSession(chatId);
+        return executeSetLms(chatId, autoLms, isGauharUser);
+    }
+
+    // 0.1. Автоматическое обнаружение cookie AITU Learn sessionid=... (даже если отправлена без команды)
+    const autoLearn = extractLearnSessionId(text);
+    if (autoLearn) {
+        clearSession(chatId);
+        return executeSetLearnCookie(chatId, autoLearn, isGauharUser);
+    }
 
     // Обработка кнопки "Отмена / Главное меню" и любых вариантов отмены
     const isCancelText =
@@ -1872,35 +1995,7 @@ async function handleMessage(msg) {
                 disable_web_page_preview: true
             });
         }
-
-        const limitCheck = await aitu.canUserSubscribe(chatId);
-        if (!limitCheck.allowed) {
-            return sendMessage(chatId, limitCheck.message, { reply_markup: getMainKeyboard(chatId) });
-        }
-
-        let cleanSid = cookieVal;
-        const match = cookieVal.match(/sessionid=([^;\s]+)/);
-        if (match) cleanSid = match[1].trim();
-
-        await sendMessage(chatId, '⏳ <i>Проверяю подключение к learn.astanait.edu.kz...</i>');
-        const testRes = await aitu.getUpcomingQuizzes(cleanSid);
-        if (testRes.ok) {
-            await aitu.saveUserSession(chatId, cleanSid);
-            const successNote = isGauharUser
-                ? `🎉 <b>Гаухар, сессия успешно подключена!</b> 🧠✨\nНайдено дедлайнов: <b>${testRes.quizzes.length}</b>\n\n` +
-                  `✅ Теперь бот каждое утро в 08:00 и за 1 час до каждого дедлайна будет присылать персональные сигналы тревоги лично тебе, чтобы ты ничего не пропустила!\n\n`
-                : `🎉 <b>Успешно подключено к AITU!</b>\nНайдено дедлайнов: <b>${testRes.quizzes.length}</b>\n\n` +
-                  `✅ Теперь бот каждое утро в 08:00 и экстренно за 1 час до дедлайна будет присылать персональные напоминания лично тебе!\n\n`;
-
-            return sendMessage(chatId, successNote + aitu.formatQuizzesMessage(testRes, isGauharUser, false, 'week'), {
-                reply_markup: getMainKeyboard(chatId),
-                disable_web_page_preview: true
-            });
-        } else {
-            return sendMessage(chatId, '⚠️ <b>Ошибка проверки сессии:</b> ' + testRes.error + '\n\nУбедитесь, что вы скопировали актуальный <code>sessionid</code> из браузера после входа в learn.astanait.edu.kz.', {
-                reply_markup: getMainKeyboard(chatId)
-            });
-        }
+        return executeSetLearnCookie(chatId, cookieVal, isGauharUser);
     }
 
     // 1.6.1. /logout или /del_cookie (Отключение персональной сессии)
@@ -1989,33 +2084,7 @@ async function handleMessage(msg) {
                 disable_web_page_preview: true
             });
         }
-
-        const limitCheck = await lms.canUserSubscribe(chatId);
-        if (!limitCheck.allowed) {
-            return sendMessage(chatId, limitCheck.message, { reply_markup: getMainKeyboard(chatId) });
-        }
-
-        await sendMessage(chatId, '⏳ <i>Проверяю подключение к lms.astanait.edu.kz и генерирую вечный токен...</i>');
-        const testRes = await lms.getUpcomingDeadlines(val);
-        if (testRes.ok) {
-            await lms.saveUserLmsSession(chatId, testRes.calendarUrl || val);
-            const successNote = isGauharUser
-                ? `🎉 <b>Гаухар, Moodle LMS успешно подключен!</b> 🧠✨\n` +
-                  `Найдено активных дедлайнов: <b>${testRes.quizzesCount}</b>\n\n` +
-                  `✅ Сгенерирован вечный токен: куки больше обновлять не нужно! Бот будет присылать напоминания каждое утро в 08:00 и за 1 час до дедлайна лично тебе.\n\n`
-                : `🎉 <b>Moodle LMS успешно подключен!</b>\n` +
-                  `Найдено активных дедлайнов: <b>${testRes.quizzesCount}</b>\n\n` +
-                  `✅ Сгенерирован вечный токен календаря: сессия не истечет через 20 минут. Напоминания включены!\n\n`;
-
-            return sendMessage(chatId, successNote + lms.formatLmsDeadlinesMessage(testRes, isGauharUser), {
-                reply_markup: getMainKeyboard(chatId),
-                disable_web_page_preview: true
-            });
-        } else {
-            return sendMessage(chatId, '⚠️ <b>Ошибка подключения к LMS:</b> ' + testRes.error + '\n\nУбедитесь, что скопировали актуальное значение <code>MoodleSession</code> из браузера после входа в lms.astanait.edu.kz.', {
-                reply_markup: getMainKeyboard(chatId)
-            });
-        }
+        return executeSetLms(chatId, val, isGauharUser);
     }
 
     // 1.9. /del_lms или /logout_lms (Отключение сессии LMS)
@@ -2563,6 +2632,10 @@ module.exports.checkRateLimit = checkRateLimit;
 module.exports.recordRateLimit = recordRateLimit;
 module.exports._userRateLimits = userRateLimits;
 module.exports._userCourseListMemory = userCourseListMemory;
+module.exports.extractLmsCalendarOrCookie = extractLmsCalendarOrCookie;
+module.exports.extractLearnSessionId = extractLearnSessionId;
+module.exports.executeSetLms = executeSetLms;
+module.exports.executeSetLearnCookie = executeSetLearnCookie;
 
 // ==========================================
 // ЛОКАЛЬНЫЙ LONG-POLLING (ДЛЯ РАЗРАБОТКИ)
