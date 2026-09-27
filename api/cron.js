@@ -121,13 +121,55 @@ async function sendTelegram(chatId, text, options = {}) {
 }
 
 /**
+ * Определение срочности дедлайна по времени Алматы (UTC+5)
+ */
+function checkDeadlineUrgency(dueDateIso, nowDate = new Date()) {
+    try {
+        const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Almaty', year: 'numeric', month: '2-digit', day: '2-digit' });
+        const [nowY, nowM, nowD] = fmt.format(nowDate).split('-').map(Number);
+        const [dueY, dueM, dueD] = fmt.format(new Date(dueDateIso)).split('-').map(Number);
+        const nowUtc = Date.UTC(nowY, nowM - 1, nowD);
+        const dueUtc = Date.UTC(dueY, dueM - 1, dueD);
+        const diffDays = Math.round((dueUtc - nowUtc) / (24 * 60 * 60 * 1000));
+
+        const diffMs = new Date(dueDateIso).getTime() - nowDate.getTime();
+        const diffHours = Math.round((diffMs / (3600 * 1000)) * 10) / 10;
+        const diffMinutes = Math.round(diffMs / 60000);
+
+        return {
+            diffDays,
+            diffHours,
+            diffMinutes,
+            isPast: diffMs < 0,
+            isTonight: diffDays === 0 && diffMs > 0,
+            isTomorrow: diffDays === 1,
+            isRelevantForEvening: diffMs > 0 && (diffDays === 0 || diffDays === 1)
+        };
+    } catch {
+        const diffMs = new Date(dueDateIso).getTime() - nowDate.getTime();
+        const diffHours = Math.round((diffMs / (3600 * 1000)) * 10) / 10;
+        const diffMinutes = Math.round(diffMs / 60000);
+        return {
+            diffDays: Math.ceil(diffMs / (24 * 3600 * 1000)),
+            diffHours,
+            diffMinutes,
+            isPast: diffMs < 0,
+            isTonight: diffHours > 0 && diffHours <= 8,
+            isTomorrow: diffHours > 8 && diffHours <= 32,
+            isRelevantForEvening: diffHours > 0 && diffHours <= 32
+        };
+    }
+}
+
+/**
  * Проверка и отправка уведомлений для одного конкретного студента
  */
 async function processUserQuizzes(chatId, context) {
-    const { isMorningWindow, forceSend, todayStr, adminChatIds } = context;
+    const { isMorningWindow, isEveningWindow, forceSend, todayStr, adminChatIds } = context;
     const strChatId = String(chatId).trim();
     let criticalSent = 0;
     let dailySent = 0;
+    let eveningSent = 0;
 
     const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(strChatId);
     const result = await aitu.getUpcomingQuizzesForUser(strChatId);
@@ -179,7 +221,7 @@ async function processUserQuizzes(chatId, context) {
     const dailyKey = `daily:${strChatId}:${todayStr}`;
     const alreadySentDaily = await hasAlertBeenSent(dailyKey);
 
-    if (!alreadySentDaily && (isMorningWindow || forceSend)) {
+    if (!alreadySentDaily && (isMorningWindow || (forceSend && !isEveningWindow))) {
         const urgentQuizzes = uncompletedQuizzes.filter(q => !q.isPast && q.diffDays <= 3);
 
         if (urgentQuizzes.length > 0) {
@@ -243,13 +285,66 @@ async function processUserQuizzes(chatId, context) {
         }
     }
 
+    // =========================================================================
+    // 3. ВЕЧЕРНИЙ ЧЕК-ЛИСТ КВИЗОВ LEARN (за 4-5 часов до 23:59 и на завтра)
+    // =========================================================================
+    const eveningKey = `evening:${strChatId}:${todayStr}`;
+    const alreadySentEvening = await hasAlertBeenSent(eveningKey);
+
+    if (!alreadySentEvening && (isEveningWindow || (forceSend && isEveningWindow))) {
+        const tonightOrTomorrow = uncompletedQuizzes
+            .map(q => ({ ...q, _urgency: checkDeadlineUrgency(q.dueDate) }))
+            .filter(q => !q.isPast && q._urgency.isRelevantForEvening);
+
+        if (tonightOrTomorrow.length > 0) {
+            let alertMsg = isGauharUser
+                ? `🌆 <b>Гаухар, вечерний чек-лист квизов AITU!</b> 🧠✨\n<i>(Что нужно закрыть до сна или завтра):</i>\n\n`
+                : `🌆 <b>Вечерний чек-лист квизов AITU Learn:</b>\n<i>(Дедлайны на сегодня и завтра):</i>\n\n`;
+
+            for (const item of tonightOrTomorrow) {
+                const dateObj = new Date(item.dueDate);
+                const astanaTime = new Intl.DateTimeFormat('ru-RU', {
+                    timeZone: 'Asia/Almaty',
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }).format(dateObj);
+
+                const u = item._urgency;
+                let badge = '';
+                if (u.diffMinutes <= 60 && u.diffMinutes > 0) {
+                    badge = `🚨 <b>ОСТАЛОСЬ ${u.diffMinutes} МИН.!</b>`;
+                } else if (u.isTonight) {
+                    badge = `⏳ <b>СЕГОДНЯ: осталось ${u.diffHours} ч.!</b>`;
+                } else {
+                    badge = `🔥 <b>ЗАВТРА</b>`;
+                }
+
+                alertMsg += `📚 <b>${item.courseName}</b>\n` +
+                            `📝 <a href="${item.link}">${item.title}</a>\n` +
+                            `⏰ Дедлайн: <b>${astanaTime}</b> (${badge})\n\n`;
+            }
+
+            alertMsg += isGauharUser
+                ? `☕️ Гаухар, закрой квизы сейчас, чтобы спокойно лечь спать! 🛌✨\n` +
+                  `<i>(Сдала? Напиши /done, чтобы бот не шумел перед сном)</i>`
+                : `💡 <i>Сдавайте заранее, чтобы серверы не зависли перед полуночью!\n(Сдали работу? Отметьте через /done)</i>`;
+
+            await sendTelegram(strChatId, alertMsg);
+            await markAlertAsSent(eveningKey);
+            eveningSent++;
+        }
+    }
+
     return {
         chatId: strChatId,
         ok: true,
         quizzesCount: (result.quizzes || []).length,
         criticalQuizzesCount: criticalQuizzes.length,
         criticalSent,
-        dailySent
+        dailySent,
+        eveningSent
     };
 }
 
@@ -257,10 +352,11 @@ async function processUserQuizzes(chatId, context) {
  * Проверка и отправка уведомлений по дедлайнам Moodle LMS для конкретного студента
  */
 async function processUserLms(chatId, context) {
-    const { isMorningWindow, forceSend, todayStr, adminChatIds } = context;
+    const { isMorningWindow, isEveningWindow, forceSend, todayStr, adminChatIds } = context;
     const strChatId = String(chatId).trim();
     let criticalSent = 0;
     let dailySent = 0;
+    let eveningSent = 0;
 
     const isGauharUser = typeof lms.isGauhar === 'function' && lms.isGauhar(strChatId);
     const result = await lms.getUpcomingDeadlinesForUser(strChatId);
@@ -283,7 +379,7 @@ async function processUserLms(chatId, context) {
                 await markAlertAsSent(expKey);
             }
         }
-        return { chatId: strChatId, ok: false, type: 'lms', error: result.error, criticalSent, dailySent };
+        return { chatId: strChatId, ok: false, type: 'lms', error: result.error, criticalSent, dailySent, eveningSent };
     }
 
     const assignments = (result.activeAcademicEvents || result.academicEvents || []).filter(e => !e.isCompleted);
@@ -309,7 +405,7 @@ async function processUserLms(chatId, context) {
     const dailyKey = `daily:lms:${strChatId}:${todayStr}`;
     const alreadySentDaily = await hasAlertBeenSent(dailyKey);
 
-    if (!alreadySentDaily && (isMorningWindow || forceSend)) {
+    if (!alreadySentDaily && (isMorningWindow || (forceSend && !isEveningWindow))) {
         const urgentAssignments = assignments.filter(e => !e.isPast && e.diffDays <= 3);
 
         if (urgentAssignments.length > 0) {
@@ -353,6 +449,58 @@ async function processUserLms(chatId, context) {
         }
     }
 
+    // =========================================================================
+    // 3. ВЕЧЕРНИЙ ЧЕК-ЛИСТ ДЕДЛАЙНОВ LMS (за 4-5 часов до 23:59 и на завтра)
+    // =========================================================================
+    const eveningKey = `evening:lms:${strChatId}:${todayStr}`;
+    const alreadySentEvening = await hasAlertBeenSent(eveningKey);
+
+    if (!alreadySentEvening && (isEveningWindow || (forceSend && isEveningWindow))) {
+        const tonightOrTomorrow = assignments
+            .map(e => ({ ...e, _urgency: checkDeadlineUrgency(e.dueDate) }))
+            .filter(e => !e.isPast && e._urgency.isRelevantForEvening);
+
+        if (tonightOrTomorrow.length > 0) {
+            let alertMsg = isGauharUser
+                ? `🌆 <b>Гаухар, вечерний чек-лист дедлайнов LMS!</b> 🧠✨\n<i>(Что нужно сдать сегодня до ночи или завтра):</i>\n\n`
+                : `🌆 <b>Вечерний чек-лист Moodle LMS (AITU):</b>\n<i>(Дедлайны на сегодня и завтра):</i>\n\n`;
+
+            for (const item of tonightOrTomorrow) {
+                const dateObj = new Date(item.dueDate);
+                const astanaTime = new Intl.DateTimeFormat('ru-RU', {
+                    timeZone: 'Asia/Almaty',
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }).format(dateObj);
+
+                const u = item._urgency;
+                let badge = '';
+                if (u.diffMinutes <= 60 && u.diffMinutes > 0) {
+                    badge = `🚨 <b>ОСТАЛОСЬ ${u.diffMinutes} МИН.!</b>`;
+                } else if (u.isTonight) {
+                    badge = `⏳ <b>СЕГОДНЯ: осталось ${u.diffHours} ч.!</b>`;
+                } else {
+                    badge = `🔥 <b>ЗАВТРА</b>`;
+                }
+
+                alertMsg += `📌 <b>${item.courseName}</b>\n` +
+                            `👉 <a href="${item.link}">${item.title}</a>\n` +
+                            `⏰ Дедлайн: <b>${astanaTime}</b> (${badge})\n\n`;
+            }
+
+            alertMsg += isGauharUser
+                ? `⚡️ Гаухар, добей лабы сейчас, и ночь свободна! ☕️💻\n` +
+                  `<i>(Сдала? Напиши /done, чтобы вычеркнуть)</i>`
+                : `💡 <i>Лучше сдать сейчас, чем в 23:58 бороться с ошибками портала!\n(Сдали задание? Отметьте через /done)</i>`;
+
+            await sendTelegram(strChatId, alertMsg);
+            await markAlertAsSent(eveningKey);
+            eveningSent++;
+        }
+    }
+
     return {
         chatId: strChatId,
         ok: true,
@@ -360,7 +508,8 @@ async function processUserLms(chatId, context) {
         deadlinesCount: assignments.length,
         criticalDeadlinesCount: criticalEvents.length,
         criticalSent,
-        dailySent
+        dailySent,
+        eveningSent
     };
 }
 
@@ -400,14 +549,16 @@ module.exports = async function handler(req, res) {
     const astanaHour = Number(new Intl.DateTimeFormat('en-US', {
         timeZone: 'Asia/Almaty',
         hour: 'numeric',
-        hour12: false
+        hourCycle: 'h23'
     }).format(new Date()));
 
     const isMorningWindow = astanaHour >= 6 && astanaHour <= 11;
+    const isEveningWindow = astanaHour >= 19 && astanaHour <= 22;
     const forceSend = req && req.query && req.query.force === '1';
 
     const context = {
         isMorningWindow,
+        isEveningWindow,
         forceSend,
         todayStr,
         adminChatIds
@@ -432,6 +583,7 @@ module.exports = async function handler(req, res) {
 
     let totalCriticalSent = 0;
     let totalDailySent = 0;
+    let totalEveningSent = 0;
     let totalCriticalQuizzes = 0;
     const summary = [];
 
@@ -439,6 +591,7 @@ module.exports = async function handler(req, res) {
         if (r.status === 'fulfilled') {
             totalCriticalSent += r.value.criticalSent || 0;
             totalDailySent += r.value.dailySent || 0;
+            totalEveningSent += r.value.eveningSent || 0;
             totalCriticalQuizzes += (r.value.criticalQuizzesCount || r.value.criticalDeadlinesCount || 0);
             summary.push(r.value);
         } else {
@@ -453,6 +606,8 @@ module.exports = async function handler(req, res) {
             type: 'critical_1h',
             criticalSent: totalCriticalSent,
             criticalQuizzes: totalCriticalQuizzes,
+            dailySent: totalDailySent,
+            eveningSent: totalEveningSent,
             usersChecked: allTargetUsers.length,
             details: summary
         });
@@ -465,6 +620,7 @@ module.exports = async function handler(req, res) {
         criticalSent: totalCriticalSent,
         criticalQuizzes: totalCriticalQuizzes,
         dailySent: totalDailySent,
+        eveningSent: totalEveningSent,
         details: summary
     });
 };
@@ -475,3 +631,4 @@ module.exports.clearSentAlertsMemory = clearSentAlertsMemory;
 module.exports.sendTelegram = sendTelegram;
 module.exports.processUserQuizzes = processUserQuizzes;
 module.exports.processUserLms = processUserLms;
+module.exports.checkDeadlineUrgency = checkDeadlineUrgency;

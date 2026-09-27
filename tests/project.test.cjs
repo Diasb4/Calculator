@@ -2296,6 +2296,119 @@ test('Auto-detection: Calendar export URL and Learn cookie automatically connect
     }
 });
 
+test('Evening Digest: 20:00 checklist for LMS deadlines and Learn quizzes due tonight and tomorrow', async () => {
+    const cron = require('../api/cron.js');
+    const lms = require('../api/bot/lms.js');
+    const aitu = require('../api/bot/aitu.js');
+
+    const originalFetch = global.fetch;
+    const sentMessages = [];
+
+    try {
+        global.fetch = async (url, opts = {}) => {
+            if (url && url.includes('/sendMessage')) {
+                sentMessages.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: {} }) };
+            }
+            return { ok: true, json: async () => ({}) };
+        };
+
+        process.env.TELEGRAM_BOT_TOKEN = 'test_token';
+        cron.clearSentAlertsMemory();
+
+        // 1. Test checkDeadlineUrgency unit logic
+        const baseNow = new Date('2026-09-28T15:00:00Z'); // 20:00 Asia/Almaty (UTC+5)
+        const dueTonight = new Date('2026-09-28T18:59:00Z').toISOString(); // 23:59 Asia/Almaty tonight
+        const dueTomorrow = new Date('2026-09-29T18:59:00Z').toISOString(); // 23:59 Asia/Almaty tomorrow
+        const dueNextWeek = new Date('2026-10-04T18:59:00Z').toISOString();
+
+        const uTonight = cron.checkDeadlineUrgency(dueTonight, baseNow);
+        assert.strictEqual(uTonight.isTonight, true);
+        assert.strictEqual(uTonight.isRelevantForEvening, true);
+        assert.strictEqual(uTonight.diffDays, 0);
+
+        const uTomorrow = cron.checkDeadlineUrgency(dueTomorrow, baseNow);
+        assert.strictEqual(uTomorrow.isTonight, false);
+        assert.strictEqual(uTomorrow.isTomorrow, true);
+        assert.strictEqual(uTomorrow.isRelevantForEvening, true);
+        assert.strictEqual(uTomorrow.diffDays, 1);
+
+        const uNextWeek = cron.checkDeadlineUrgency(dueNextWeek, baseNow);
+        assert.strictEqual(uNextWeek.isRelevantForEvening, false);
+
+        // 2. Test processUserLms evening checklist
+        const studentId = 'student_evening_test_123';
+        const origGetDeadlines = lms.getUpcomingDeadlinesForUser;
+        lms.getUpcomingDeadlinesForUser = async () => ({
+            ok: true,
+            academicEvents: [
+                {
+                    id: 'lab_tonight',
+                    title: 'Database Lab 3',
+                    courseName: 'Databases',
+                    dueDate: dueTonight,
+                    diffMinutes: 239,
+                    diffHours: 4,
+                    diffDays: 0,
+                    link: 'https://lms.astanait.edu.kz/lab3'
+                },
+                {
+                    id: 'lab_tomorrow',
+                    title: 'Networks Assignment 1',
+                    courseName: 'Networks',
+                    dueDate: dueTomorrow,
+                    diffMinutes: 1679,
+                    diffHours: 28,
+                    diffDays: 1,
+                    link: 'https://lms.astanait.edu.kz/lab4'
+                },
+                {
+                    id: 'lab_far',
+                    title: 'Philosophy Essay',
+                    courseName: 'Philosophy',
+                    dueDate: dueNextWeek,
+                    diffMinutes: 8000,
+                    diffHours: 133,
+                    diffDays: 6,
+                    link: 'https://lms.astanait.edu.kz/essay'
+                }
+            ]
+        });
+
+        sentMessages.length = 0;
+        const eveningContext = {
+            isMorningWindow: false,
+            isEveningWindow: true,
+            forceSend: false,
+            todayStr: '2026-09-28',
+            adminChatIds: []
+        };
+
+        const lmsRes = await cron.processUserLms(studentId, eveningContext);
+        assert.strictEqual(lmsRes.ok, true);
+        assert.strictEqual(lmsRes.eveningSent, 1);
+        assert.strictEqual(lmsRes.dailySent, 0);
+        assert.strictEqual(lmsRes.criticalSent, 0);
+
+        assert.strictEqual(sentMessages.length, 1);
+        const lmsEveningMsg = sentMessages[0].text;
+        assert.match(lmsEveningMsg, /Вечерний чек-лист Moodle LMS/);
+        assert.match(lmsEveningMsg, /Database Lab 3/);
+        assert.match(lmsEveningMsg, /Networks Assignment 1/);
+        assert.doesNotMatch(lmsEveningMsg, /Philosophy Essay/);
+
+        // 3. Test Deduplication
+        const lmsRes2 = await cron.processUserLms(studentId, eveningContext);
+        assert.strictEqual(lmsRes2.eveningSent, 0, 'Evening checklist must not be sent twice on the same day');
+        assert.strictEqual(sentMessages.length, 1);
+
+        lms.getUpcomingDeadlinesForUser = origGetDeadlines;
+    } finally {
+        global.fetch = originalFetch;
+        cron.clearSentAlertsMemory();
+    }
+});
+
 
 
 
