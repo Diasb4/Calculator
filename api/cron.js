@@ -292,8 +292,9 @@ async function processUserQuizzes(chatId, context) {
     const alreadySentEvening = await hasAlertBeenSent(eveningKey);
 
     if (!alreadySentEvening && (isEveningWindow || (forceSend && isEveningWindow))) {
+        const nowDate = (context && context.nowDate) ? context.nowDate : new Date();
         const tonightOrTomorrow = uncompletedQuizzes
-            .map(q => ({ ...q, _urgency: checkDeadlineUrgency(q.dueDate) }))
+            .map(q => ({ ...q, _urgency: checkDeadlineUrgency(q.dueDate, nowDate) }))
             .filter(q => !q.isPast && q._urgency.isRelevantForEvening);
 
         if (tonightOrTomorrow.length > 0) {
@@ -456,8 +457,9 @@ async function processUserLms(chatId, context) {
     const alreadySentEvening = await hasAlertBeenSent(eveningKey);
 
     if (!alreadySentEvening && (isEveningWindow || (forceSend && isEveningWindow))) {
+        const nowDate = (context && context.nowDate) ? context.nowDate : new Date();
         const tonightOrTomorrow = assignments
-            .map(e => ({ ...e, _urgency: checkDeadlineUrgency(e.dueDate) }))
+            .map(e => ({ ...e, _urgency: checkDeadlineUrgency(e.dueDate, nowDate) }))
             .filter(e => !e.isPast && e._urgency.isRelevantForEvening);
 
         if (tonightOrTomorrow.length > 0) {

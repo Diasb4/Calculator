@@ -46,6 +46,99 @@ for (const id of ADMIN_CHAT_IDS) {
     activeUsers.add(id);
 }
 
+/**
+ * Регистрация пользователя бота:
+ * 1. Сохранение в in-memory Set (activeUsers) инстанса
+ * 2. Персистентная запись в Redis Set (gm:all_users)
+ */
+async function recordBotUser(chatId) {
+    if (!chatId) return;
+    const strId = String(chatId).trim();
+    if (!strId) return;
+
+    const isNewToMemory = !activeUsers.has(strId);
+    activeUsers.add(strId);
+
+    if (isNewToMemory) {
+        try {
+            if (typeof statsEngine.kvCommand === 'function') {
+                await statsEngine.kvCommand(['SADD', 'gm:all_users', strId]);
+            }
+        } catch (err) {
+            console.warn(`recordBotUser Redis warning for ${strId}:`, err.message);
+        }
+    }
+}
+
+/**
+ * Удаление пользователя из базы (если заблокировал бота или аккаунт удален)
+ */
+async function removeBotUser(chatId) {
+    if (!chatId) return;
+    const strId = String(chatId).trim();
+    activeUsers.delete(strId);
+    try {
+        if (typeof statsEngine.kvCommand === 'function') {
+            await statsEngine.kvCommand(['SREM', 'gm:all_users', strId]);
+        }
+    } catch (err) {
+        console.warn(`removeBotUser Redis warning for ${strId}:`, err.message);
+    }
+}
+
+/**
+ * Получение полного объединенного списка пользователей для рассылки:
+ * 1. Redis gm:all_users
+ * 2. In-memory activeUsers
+ * 3. Подписчики LMS Moodle (gm:lms_subscribers)
+ * 4. Подписчики квизов Learn (gm:quiz_subscribers)
+ * 5. Администраторы
+ */
+async function getAllBotUsers() {
+    const users = new Set(activeUsers);
+
+    try {
+        if (typeof statsEngine.kvCommand === 'function') {
+            const redisMembers = await statsEngine.kvCommand(['SMEMBERS', 'gm:all_users']);
+            if (Array.isArray(redisMembers)) {
+                for (const m of redisMembers) {
+                    if (m) users.add(String(m).trim());
+                }
+            }
+        }
+    } catch (err) {
+        console.warn('getAllBotUsers Redis warning:', err.message);
+    }
+
+    try {
+        if (typeof lms.getAllLmsUsers === 'function') {
+            const lmsUsers = await lms.getAllLmsUsers();
+            if (Array.isArray(lmsUsers)) {
+                for (const u of lmsUsers) if (u) users.add(String(u).trim());
+            }
+        }
+    } catch (err) {
+        console.warn('getAllBotUsers lms warning:', err.message);
+    }
+
+    try {
+        if (typeof aitu.getAllQuizUsers === 'function') {
+            const quizUsers = await aitu.getAllQuizUsers();
+            if (Array.isArray(quizUsers)) {
+                for (const u of quizUsers) if (u) users.add(String(u).trim());
+            }
+        }
+    } catch (err) {
+        console.warn('getAllBotUsers quiz warning:', err.message);
+    }
+
+    for (const adm of getAdminChatIds()) {
+        if (adm) users.add(String(adm).trim());
+    }
+
+    return Array.from(users).filter(Boolean);
+}
+
 // Хранилище таймаута на сообщения пользователей (1 сообщение в 5 минут для NLP и фидбека)
 const userRateLimits = new Map(); // chatId -> timestamp
 const userCourseListMemory = new Map(); // chatId + '_lms' / '_learn' -> Array<courseName>
@@ -923,11 +1016,16 @@ async function handleAdminPanel(chatId, messageId = null) {
         : 'Не настроена';
 
     const maxLimit = lms.MAX_SUBSCRIBERS_LIMIT;
+    let allBotUsersCount = activeUsers.size;
+    try {
+        const allU = await getAllBotUsers();
+        allBotUsersCount = allU.length;
+    } catch {}
 
     const adminMsg = `⚙️ <b>ПАНЕЛЬ АДМИНИСТРАТОРА GRADEMASTER:</b>\n\n` +
         `👤 <b>Ваш Admin Chat ID:</b> <code>${chatId}</code>\n` +
         `🌐 <b>Web App URL:</b> ${WEBAPP_URL}\n` +
-        `👥 <b>Активных пользователей в памяти:</b> ${activeUsers.size}\n` +
+        `👥 <b>Всего пользователей в базе:</b> <b>${allBotUsersCount}</b> чел. (в памяти: ${activeUsers.size})\n` +
         `📝 <b>Квизы Learn (AITU):</b> <b>${quizUsersCount} / ${maxLimit}</b> чел.\n` +
         `📚 <b>Дедлайны LMS (Moodle):</b> <b>${lmsUsersCount} / ${maxLimit}</b> чел.\n\n` +
         `🔑 <b>Статус переменных окружения и сервисов:</b>\n` +
@@ -1104,7 +1202,10 @@ function getLearnSessionKeyboard(result, mode = 'week') {
 async function handleCallbackQuery(cq) {
     if (!cq || !cq.data) return;
 
-    const chatId = cq.message?.chat?.id;
+    const chatId = cq.message?.chat?.id || cq.from?.id;
+    if (chatId) {
+        recordBotUser(chatId).catch(() => {});
+    }
     const messageId = cq.message?.message_id;
     const data = cq.data;
     const session = getSession(chatId);
@@ -1788,7 +1889,7 @@ async function handleMessage(msg) {
     const chatId = msg.chat.id;
     const text = msg.text.trim();
     const userName = msg.from.username ? `@${msg.from.username}` : `${msg.from.first_name || ''} ${msg.from.last_name || ''}`.trim();
-    activeUsers.add(String(chatId));
+    recordBotUser(chatId).catch(() => {});
 
     const anonId = statsEngine.anonymizeUserId(chatId);
     await statsEngine.recordVisit({ anonId, platform: 'bot' }).catch(() => {});
@@ -2238,17 +2339,35 @@ async function handleMessage(msg) {
             return sendMessage(chatId, 'Введите текст для рассылки: <code>/broadcast Внимание! ...</code>');
         }
 
+        const allUsers = await getAllBotUsers();
         let sent = 0;
         let failed = 0;
-        for (const user of activeUsers) {
+        let blocked = 0;
+        for (let i = 0; i < allUsers.length; i++) {
+            const user = allUsers[i];
             try {
                 await sendMessage(user, `<b>Объявление от GradeMaster:</b>\n\n${esc(broadcastText)}`);
                 sent++;
-            } catch {
+            } catch (err) {
                 failed++;
+                const errMsg = (err && err.message) ? err.message.toLowerCase() : '';
+                if (errMsg.includes('blocked') || errMsg.includes('deactivated') || errMsg.includes('chat not found')) {
+                    blocked++;
+                    await removeBotUser(user).catch(() => {});
+                }
+            }
+            if (i < allUsers.length - 1) {
+                await new Promise(r => setTimeout(r, 35));
             }
         }
-        return sendMessage(chatId, `<b>Рассылка завершена!</b>\nУспешно отправлено: <b>${sent}</b>\nОшибок: <b>${failed}</b>`);
+        let report = `<b>Рассылка завершена!</b>\n` +
+            `👥 Всего адресатов: <b>${allUsers.length}</b>\n` +
+            `✅ Успешно отправлено: <b>${sent}</b>\n` +
+            `⚠️ Ошибок: <b>${failed}</b>`;
+        if (blocked > 0) {
+            report += `\n🚫 Заблокировали бота (удалены из базы): <b>${blocked}</b>`;
+        }
+        return sendMessage(chatId, report);
     }
 
     // 6. /reply <chat_id> <текст> (ТОЛЬКО ДЛЯ АДМИНА)
@@ -2636,6 +2755,10 @@ module.exports.extractLmsCalendarOrCookie = extractLmsCalendarOrCookie;
 module.exports.extractLearnSessionId = extractLearnSessionId;
 module.exports.executeSetLms = executeSetLms;
 module.exports.executeSetLearnCookie = executeSetLearnCookie;
+module.exports.recordBotUser = recordBotUser;
+module.exports.removeBotUser = removeBotUser;
+module.exports.getAllBotUsers = getAllBotUsers;
+module.exports.activeUsers = activeUsers;
 
 // ==========================================
 // ЛОКАЛЬНЫЙ LONG-POLLING (ДЛЯ РАЗРАБОТКИ)

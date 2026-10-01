@@ -2381,6 +2381,7 @@ test('Evening Digest: 20:00 checklist for LMS deadlines and Learn quizzes due to
             isEveningWindow: true,
             forceSend: false,
             todayStr: '2026-09-28',
+            nowDate: baseNow,
             adminChatIds: []
         };
 
@@ -2408,6 +2409,163 @@ test('Evening Digest: 20:00 checklist for LMS deadlines and Learn quizzes due to
         cron.clearSentAlertsMemory();
     }
 });
+
+test('Telegram Bot: Persistent user registration in KV and /broadcast delivery with rate-limiting and auto-cleanup', async () => {
+    const bot = require('../api/bot/index.js');
+    const originalFetch = global.fetch;
+    const kvCalls = [];
+    const sentTelegramMessages = [];
+
+    const mockKvUrl = 'https://mock-kv.upstash.io';
+    const mockKvToken = 'mock_token_123';
+    process.env.KV_REST_API_URL = mockKvUrl;
+    process.env.KV_REST_API_TOKEN = mockKvToken;
+    process.env.TELEGRAM_BOT_TOKEN = 'test_broadcast_bot_token';
+    process.env.ADMIN_CHAT_ID = '999999999';
+
+    try {
+        global.fetch = async (url, opts = {}) => {
+            if (url && url.includes('upstash.io')) {
+                const body = JSON.parse(opts.body);
+                kvCalls.push(body);
+                const cmd = body[0];
+                if (cmd === 'SMEMBERS') {
+                    return {
+                        ok: true,
+                        json: async () => ({ result: ['11111', '22222', '33333'] })
+                    };
+                }
+                return {
+                    ok: true,
+                    json: async () => ({ result: 1 })
+                };
+            }
+            if (url && url.includes('/sendMessage')) {
+                const payload = JSON.parse(opts.body);
+                sentTelegramMessages.push(payload);
+                // Simulate user 22222 blocked the bot
+                if (String(payload.chat_id) === '22222') {
+                    return {
+                        ok: false,
+                        json: async () => ({ ok: false, description: 'Forbidden: bot was blocked by the user' })
+                    };
+                }
+                return {
+                    ok: true,
+                    json: async () => ({ ok: true, result: { message_id: 100 } })
+                };
+            }
+            return { ok: true, json: async () => ({}) };
+        };
+
+        // 1. Test recordBotUser
+        await bot.recordBotUser('44444');
+        assert.ok(bot.activeUsers.has('44444'));
+        const saddCall = kvCalls.find(c => c[0] === 'SADD' && c[1] === 'gm:all_users' && c[2] === '44444');
+        assert.ok(saddCall, 'recordBotUser must persist new user to gm:all_users in Redis');
+
+        // Verify in-memory deduplication: second call should not invoke Redis SADD again
+        const countBefore = kvCalls.length;
+        await bot.recordBotUser('44444');
+        assert.strictEqual(kvCalls.length, countBefore, 'In-memory cache must prevent redundant Redis SADD calls');
+
+        // 2. Test removeBotUser
+        await bot.removeBotUser('44444');
+        assert.strictEqual(bot.activeUsers.has('44444'), false);
+        const sremCall = kvCalls.find(c => c[0] === 'SREM' && c[1] === 'gm:all_users' && c[2] === '44444');
+        assert.ok(sremCall, 'removeBotUser must remove user from gm:all_users in Redis');
+
+        // 3. Test getAllBotUsers combining Redis, memory, subscribers, and admin
+        const allUsers = await bot.getAllBotUsers();
+        assert.ok(allUsers.includes('11111'));
+        assert.ok(allUsers.includes('22222'));
+        assert.ok(allUsers.includes('33333'));
+        assert.ok(allUsers.includes('999999999')); // admin
+
+        // 4. Test /broadcast security: unauthorized user
+        const nonAdminReq = {
+            method: 'POST',
+            body: {
+                message: {
+                    chat: { id: 123456 },
+                    from: { id: 123456, first_name: 'Student' },
+                    text: '/broadcast Важное объявление!'
+                }
+            }
+        };
+        let resJson = null;
+        let resStatus = 200;
+        const fakeRes = {
+            setHeader: () => {},
+            status: (s) => { resStatus = s; return fakeRes; },
+            json: (j) => { resJson = j; return fakeRes; },
+            end: () => {}
+        };
+        sentTelegramMessages.length = 0;
+        await bot(nonAdminReq, fakeRes);
+        assert.strictEqual(sentTelegramMessages.length, 1);
+        assert.strictEqual(sentTelegramMessages[0].chat_id, 123456);
+        assert.match(sentTelegramMessages[0].text, /Доступ запрещен/);
+
+        // 5. Test /broadcast empty prompt
+        const adminEmptyReq = {
+            method: 'POST',
+            body: {
+                message: {
+                    chat: { id: 999999999 },
+                    from: { id: 999999999, first_name: 'Admin' },
+                    text: '/broadcast'
+                }
+            }
+        };
+        sentTelegramMessages.length = 0;
+        await bot(adminEmptyReq, fakeRes);
+        assert.strictEqual(sentTelegramMessages.length, 1);
+        assert.match(sentTelegramMessages[0].text, /Введите текст для рассылки/);
+
+        // 6. Test /broadcast execution to all users + auto-cleanup of blocked user
+        const adminBroadcastReq = {
+            method: 'POST',
+            body: {
+                message: {
+                    chat: { id: 999999999 },
+                    from: { id: 999999999, first_name: 'Admin' },
+                    text: '/broadcast Обновление расписания на пятницу!'
+                }
+            }
+        };
+        sentTelegramMessages.length = 0;
+        await bot(adminBroadcastReq, fakeRes);
+
+        // Check delivered messages
+        const broadcastRecipients = sentTelegramMessages.map(m => String(m.chat_id));
+        assert.ok(broadcastRecipients.includes('11111'));
+        assert.ok(broadcastRecipients.includes('22222'));
+        assert.ok(broadcastRecipients.includes('33333'));
+
+        // Check content format
+        const studentMsg = sentTelegramMessages.find(m => String(m.chat_id) === '11111');
+        assert.match(studentMsg.text, /Объявление от GradeMaster:/);
+        assert.match(studentMsg.text, /Обновление расписания на пятницу!/);
+
+        // Check admin report (sent as the final confirmation message to admin)
+        const adminMessages = sentTelegramMessages.filter(m => String(m.chat_id) === '999999999');
+        const adminReportMsg = adminMessages[adminMessages.length - 1];
+        assert.match(adminReportMsg.text, /Рассылка завершена!/);
+        assert.match(adminReportMsg.text, /Всего адресатов:/);
+        assert.match(adminReportMsg.text, /Успешно отправлено:/);
+        assert.match(adminReportMsg.text, /Заблокировали бота \(удалены из базы\):/);
+
+        // Verify blocked user was removed via SREM
+        const blockedSrem = kvCalls.find(c => c[0] === 'SREM' && c[1] === 'gm:all_users' && c[2] === '22222');
+        assert.ok(blockedSrem, 'Blocked user 22222 must be automatically removed from gm:all_users in Redis');
+    } finally {
+        global.fetch = originalFetch;
+        delete process.env.KV_REST_API_URL;
+        delete process.env.KV_REST_API_TOKEN;
+    }
+});
+
 
 
 
