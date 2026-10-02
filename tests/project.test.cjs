@@ -1206,12 +1206,13 @@ test('LMS & AITU: 55-user hard subscriber limit enforcement', async () => {
 
         // Same test for AITU Learn module
         aitu._quizSubscribersMemory.clear();
-        for (let i = 1; i <= initialLimit; i++) {
+        const aituLimit = aitu.MAX_SUBSCRIBERS_LIMIT;
+        for (let i = 1; i <= aituLimit; i++) {
             await aitu.saveUserSession(`student_aitu_${i}`, `session_${i}`);
         }
-        const blockedAitu = await aitu.canUserSubscribe(`student_aitu_${initialLimit + 1}`);
+        const blockedAitu = await aitu.canUserSubscribe(`student_aitu_${aituLimit + 1}`);
         assert.equal(blockedAitu.allowed, false);
-        assert.match(blockedAitu.message, new RegExp(`Достигнут лимит активных пользователей \\(${initialLimit}\\/${initialLimit}\\)`));
+        assert.match(blockedAitu.message, new RegExp(`Достигнут лимит активных пользователей \\(${aituLimit}\\/${aituLimit}\\)`));
     } finally {
         // Cleanup
         lms._lmsSubscribersMemory.clear();

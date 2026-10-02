@@ -1052,7 +1052,8 @@ async function handleAdminPanel(chatId, messageId = null) {
         ? (storedLms.length > 25 ? `${storedLms.substring(0, 10)}...${storedLms.slice(-6)}` : 'Активна')
         : 'Не настроена';
 
-    const maxLimit = lms.MAX_SUBSCRIBERS_LIMIT;
+    const quizLimit = aitu.MAX_SUBSCRIBERS_LIMIT || 200;
+    const lmsLimit = lms.MAX_SUBSCRIBERS_LIMIT || 200;
     let allBotUsersCount = activeUsers.size;
     try {
         const allU = await getAllBotUsers();
@@ -1063,8 +1064,8 @@ async function handleAdminPanel(chatId, messageId = null) {
         `👤 <b>Ваш Admin Chat ID:</b> <code>${chatId}</code>\n` +
         `🌐 <b>Web App URL:</b> ${WEBAPP_URL}\n` +
         `👥 <b>Всего пользователей в базе:</b> <b>${allBotUsersCount}</b> чел. (в памяти: ${activeUsers.size})\n` +
-        `📝 <b>Квизы Learn (AITU):</b> <b>${quizUsersCount} / ${maxLimit}</b> чел.\n` +
-        `📚 <b>Дедлайны LMS (Moodle):</b> <b>${lmsUsersCount} / ${maxLimit}</b> чел.\n\n` +
+        `📝 <b>Квизы Learn (AITU):</b> <b>${quizUsersCount} / ${quizLimit}</b> чел.\n` +
+        `📚 <b>Дедлайны LMS (Moodle):</b> <b>${lmsUsersCount} / ${lmsLimit}</b> чел.\n\n` +
         `🔑 <b>Статус переменных окружения и сервисов:</b>\n` +
         `• <code>TELEGRAM_BOT_TOKEN</code>: ${hasBotToken ? '✅ Настроен' : '❌ Не задан'}\n` +
         `• <code>TELEGRAM_CHAT_ID</code>: ${hasAdminId ? '✅ Настроен' : '❌ Не задан'}\n` +
