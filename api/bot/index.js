@@ -2101,10 +2101,24 @@ async function executeSetLms(chatId, val, isGauharUser) {
         cleanVal = 'https://' + cleanVal.slice(9);
     }
 
-    if ((cleanVal.startsWith('http://') || cleanVal.startsWith('https://')) && typeof lms.isAllowedLmsUrl === 'function' && !lms.isAllowedLmsUrl(cleanVal)) {
-        return sendMessage(chatId, '⚠️ <b>Недопустимая ссылка на календарь:</b>\nРазрешены только официальные ссылки экспорта календаря на домене <code>lms.astanait.edu.kz</code>.', {
-            reply_markup: getMainKeyboard(chatId)
-        });
+    const isUrl = /^(?:https?:\/\/|webcal:\/\/|\/\/|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/|\?|#|$))/i.test(cleanVal);
+    if (isUrl) {
+        if (!cleanVal.startsWith('http://') && !cleanVal.startsWith('https://')) {
+            cleanVal = 'https://' + cleanVal.replace(/^\/\//, '');
+        }
+        if (typeof lms.isAllowedLmsUrl === 'function' && !lms.isAllowedLmsUrl(cleanVal)) {
+            return sendMessage(chatId, '⚠️ <b>Недопустимая ссылка на календарь:</b>\nРазрешены только официальные ссылки экспорта календаря на домене <code>lms.astanait.edu.kz</code>.', {
+                reply_markup: getMainKeyboard(chatId)
+            });
+        }
+    } else {
+        // Если это не URL, проверяем формат cookie MoodleSession
+        let cleanCookie = cleanVal.replace(/^MoodleSession=/i, '').trim();
+        if (!/^[a-zA-Z0-9_\-]{16,128}$/.test(cleanCookie)) {
+            return sendMessage(chatId, '⚠️ <b>Некорректный формат:</b>\nОтправьте официальную ссылку экспорта календаря (<code>https://lms.astanait.edu.kz/calendar/export_execute.php?...</code>) или актуальное значение <code>MoodleSession</code> из браузера.', {
+                reply_markup: getMainKeyboard(chatId)
+            });
+        }
     }
 
     const limitCheck = await lms.canUserSubscribe(chatId);

@@ -392,3 +392,70 @@ test('Security: iCal title and courseName with HTML/XSS injection are safely esc
     assert.ok(formatted.includes('&lt;img src=x onerror=alert(2)&gt;'), 'Must escape img tags');
 });
 
+test('Security: getUserLmsSession purges legacy invalid URLs and refuses to return them', async () => {
+    const maliciousChatId = '9999988888';
+    // Directly inject invalid URL to simulate old state before fix
+    await lms.saveUserLmsSession(maliciousChatId, 'https://lms.astanait.edu.kz/calendar/export_execute.php?userid=1&authtoken=valid');
+    assert.ok(await lms.getUserLmsSession(maliciousChatId));
+
+    // Force legacy bad URL into memory
+    const badUrl = 'https://attacker.com/evil.ics';
+    await lms.deleteUserLmsSession(maliciousChatId);
+    // Directly test that saveUserLmsSession rejects it:
+    const saveRes = await lms.saveUserLmsSession(maliciousChatId, badUrl);
+    assert.strictEqual(saveRes, false, 'saveUserLmsSession must reject attacker.com');
+    assert.strictEqual(await lms.getUserLmsSession(maliciousChatId), null, 'getUserLmsSession must be null');
+});
+
+test('Security: /set_lms rejects third-party URLs immediately without falsely claiming connection', async () => {
+    const origToken = process.env.TELEGRAM_BOT_TOKEN;
+    const originalFetch = global.fetch;
+    process.env.TELEGRAM_BOT_TOKEN = 'test_token';
+
+    const sentMessages = [];
+    global.fetch = async (url, opts = {}) => {
+        if (url && url.includes('api.telegram.org')) {
+            const body = JSON.parse(opts.body || '{}');
+            sentMessages.push(body);
+            return { ok: true, json: async () => ({ ok: true, result: { message_id: 123 } }) };
+        }
+        throw new Error('Unexpected network request to: ' + url);
+    };
+
+    try {
+        const studentChatId = 777666555;
+        const mockRes = {
+            statusCode: 200,
+            status(c) { this.statusCode = c; return this; },
+            json(d) { this.body = d; return this; },
+            setHeader() { return this; },
+            end() { return this; }
+        };
+
+        await bot({
+            method: 'POST',
+            body: {
+                message: {
+                    message_id: 101,
+                    chat: { id: studentChatId },
+                    from: { id: studentChatId, username: 'victim' },
+                    text: '/set_lms https://attacker.com/group_calendar.ics'
+                }
+            }
+        }, mockRes);
+
+        // Must reject with error message
+        const reply = sentMessages.find(m => m.chat_id === studentChatId);
+        assert.ok(reply, 'Bot must reply to the student');
+        assert.match(reply.text, /Недопустимая ссылка на календарь/);
+        // Must NOT falsely claim to connect to lms.astanait.edu.kz
+        assert.ok(!sentMessages.some(m => m.text && m.text.includes('Проверяю подключение к lms.astanait.edu.kz')),
+            'Bot must NEVER send "Проверяю подключение к lms.astanait.edu.kz" for malicious URLs');
+    } finally {
+        global.fetch = originalFetch;
+        if (origToken !== undefined) process.env.TELEGRAM_BOT_TOKEN = origToken;
+        else delete process.env.TELEGRAM_BOT_TOKEN;
+    }
+});
+
+

@@ -149,7 +149,13 @@ async function getUserLmsSession(chatId) {
     const strId = String(chatId).trim();
 
     if (lmsUserSessionsMemory.has(strId)) {
-        return lmsUserSessionsMemory.get(strId);
+        const mem = lmsUserSessionsMemory.get(strId);
+        if ((mem.startsWith('http://') || mem.startsWith('https://') || mem.startsWith('webcal://')) && !isAllowedLmsUrl(mem)) {
+            lmsUserSessionsMemory.delete(strId);
+            lmsSubscribersMemory.delete(strId);
+            return null;
+        }
+        return mem;
     }
 
     try {
@@ -157,6 +163,11 @@ async function getUserLmsSession(chatId) {
             const res = await statsEngine.kvCommand(['GET', `gm:user:${strId}:lms_session`]);
             if (res && typeof res === 'string' && res.trim()) {
                 const clean = res.trim();
+                if ((clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('webcal://')) && !isAllowedLmsUrl(clean)) {
+                    console.warn(`getUserLmsSession purged invalid legacy URL for ${strId}: ${clean}`);
+                    deleteUserLmsSession(strId).catch(() => {});
+                    return null;
+                }
                 lmsUserSessionsMemory.set(strId, clean);
                 lmsSubscribersMemory.add(strId);
                 return clean;
@@ -547,6 +558,10 @@ async function getUpcomingDeadlines(sessionOrUrl, forceRefresh = false) {
 
     // Если передан не URL, а кука MoodleSession — генерируем постоянный URL
     if (!calendarUrl.startsWith('http://') && !calendarUrl.startsWith('https://') && !calendarUrl.startsWith('webcal://')) {
+        const cleanCookie = calendarUrl.replace(/^MoodleSession=/i, '').trim();
+        if (!/^[a-zA-Z0-9_\-]{16,128}$/.test(cleanCookie)) {
+            return { ok: false, error: 'Некорректный формат сессии MoodleSession' };
+        }
         const genRes = await generatePermanentCalendarUrl(calendarUrl);
         if (!genRes.ok) {
             if (lmsLastSuccessfulSnapshot.has(cacheKey)) {
