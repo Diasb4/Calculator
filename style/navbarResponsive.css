@@ -1,8 +1,7 @@
-/* Shared responsive tweaks for the fixed top navbar.
-   Goal: keep the header compact on phones and prevent overlap of the language/theme buttons. */
+/* style/navbarResponsive.css - Shared responsive tweaks for the fixed top navbar */
 
 select#language-toggle {
-    font-family: inherit;
+    font-family: var(--font-sans, inherit);
     cursor: pointer;
     min-width: 96px;
     width: auto;
@@ -10,21 +9,26 @@ select#language-toggle {
     color-scheme: light;
 }
 
-.dark-mode select#language-toggle {
+.dark-mode select#language-toggle,
+body.dark-mode select#language-toggle {
     color-scheme: dark;
 }
 
 select#language-toggle:focus-visible {
-    outline: 2px solid currentColor;
-    outline-offset: 3px;
+    outline: 2px solid var(--border-focus, #2563eb);
+    outline-offset: 2px;
 }
 
 @media (max-width: 768px) {
-    /* Many pages increase all buttons on mobile; keep navbar buttons compact */
+    /* Keep navbar buttons compact on tablets and mobile */
+    nav.navbar {
+        padding: 10px 14px;
+    }
+
     nav.navbar .nav-button {
-        padding: 6px 10px !important;
+        padding: 6px 12px !important;
         font-size: 13px !important;
-        line-height: 1.1;
+        line-height: 1.15;
         flex: 0 0 auto;
         white-space: nowrap;
     }
@@ -40,10 +44,14 @@ select#language-toggle:focus-visible {
         flex-wrap: nowrap;
         gap: 6px;
         align-items: center;
+        background: var(--nav-bg, rgba(255, 255, 255, 0.9));
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border-bottom: 1px solid var(--nav-border, rgba(15, 23, 42, 0.08));
     }
 
     nav.navbar > a.nav-button {
-        max-width: 48vw;
+        max-width: 44vw;
         overflow: hidden;
         text-overflow: ellipsis;
     }
@@ -54,12 +62,13 @@ select#language-toggle:focus-visible {
         flex-direction: row;
         flex-wrap: nowrap;
         justify-content: flex-end;
-        gap: 5px;
+        align-items: center;
+        gap: 6px;
         overflow-x: auto;
         overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
-        padding-bottom: 2px;
+        padding-bottom: 1px;
     }
 
     nav.navbar .nav-buttons::-webkit-scrollbar {
@@ -67,11 +76,11 @@ select#language-toggle:focus-visible {
     }
 
     nav.navbar .nav-button {
-        padding: 5px 8px !important;
+        padding: 5px 9px !important;
         font-size: 12px !important;
     }
 
-    /* Make language + theme the same small size, with readable text */
+    /* Keep language and theme buttons neatly aligned and compact */
     #language-toggle,
     #theme-toggle {
         width: 88px;
@@ -81,4 +90,3 @@ select#language-toggle:focus-visible {
         text-overflow: ellipsis;
     }
 }
-

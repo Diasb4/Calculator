@@ -15,7 +15,7 @@ const DEFAULT_COURSES = [
 
 const STORAGE_PREFIX = 'GM_AITU_SESSION:';
 const GAUHAR_CHAT_ID = '1365231049';
-const MAX_SUBSCRIBERS_LIMIT = parseInt(process.env.MAX_SUBSCRIBERS_LIMIT || '60', 10);
+const MAX_SUBSCRIBERS_LIMIT = parseInt(process.env.MAX_SUBSCRIBERS_LIMIT || '200', 10);
 function isGauhar(chatId) {
     return String(chatId).trim() === GAUHAR_CHAT_ID;
 }

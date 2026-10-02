@@ -1,7 +1,7 @@
 // Service Worker для GradeMaster PWA
 // Обеспечивает кэширование статических ресурсов и работу в автономном режиме (Offline)
 
-const CACHE_NAME = 'grademaster-v2';
+const CACHE_NAME = 'grademaster-v3';
 
 const STATIC_ASSETS = [
     './',
