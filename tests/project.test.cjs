@@ -2827,6 +2827,54 @@ test('Telegram Bot: formatBroadcastContent preserves safe tags and converts mark
     assert.strictEqual(formatted2, 'Вызовите команду <code>/cookie</code> и <b>жирный текст</b> &amp; &lt;неизвестный тег&gt;');
 });
 
+test('Telegram Bot: clicking stale schedule button resets keyboard cleanly', async () => {
+    const bot = require('../api/bot/index.js');
+    const originalFetch = global.fetch;
+    process.env.TELEGRAM_BOT_TOKEN = 'mock_bot_token';
+    const sentMessages = [];
+    global.fetch = async (url, options) => {
+        if (url.includes('/sendMessage')) {
+            const body = JSON.parse(options.body);
+            sentMessages.push(body);
+            return {
+                ok: true,
+                json: async () => ({ ok: true, result: { message_id: 123 } })
+            };
+        }
+        return { ok: true, json: async () => ({ ok: true }) };
+    };
+
+    try {
+        const req = {
+            method: 'POST',
+            body: {
+                message: {
+                    chat: { id: 777123 },
+                    from: { id: 777123, first_name: 'Student' },
+                    text: '📅 Расписание'
+                }
+            }
+        };
+        const res = {
+            setHeader: () => {},
+            status: () => res,
+            json: () => res,
+            end: () => {}
+        };
+        await bot(req, res);
+
+        assert.strictEqual(sentMessages.length, 1);
+        assert.match(sentMessages[0].text, /Кнопка расписания удалена/);
+        assert.ok(sentMessages[0].reply_markup && sentMessages[0].reply_markup.keyboard);
+        const keyboardButtons = sentMessages[0].reply_markup.keyboard.flat().map(b => b.text);
+        assert.strictEqual(keyboardButtons.includes('📅 Расписание'), false);
+    } finally {
+        global.fetch = originalFetch;
+        delete process.env.TELEGRAM_BOT_TOKEN;
+    }
+});
+
+
 
 
 

@@ -2531,6 +2531,26 @@ async function handleMessage(msg) {
         });
     }
 
+    // 1.9.0. Удаление/сброс старой кнопки «Расписание» и связанных команд
+    if (
+        text === '📅 Расписание' ||
+        text === 'Расписание' ||
+        text === '/schedule' ||
+        text === '/today' ||
+        text === '/пары' ||
+        text === '/расписание' ||
+        text === '/del_schedule' ||
+        text === '/tomorrow' ||
+        text === '/завтра' ||
+        text === '/week_schedule' ||
+        text.startsWith('/set_group')
+    ) {
+        clearSession(chatId);
+        return sendMessage(chatId, '🗑 <b>Кнопка расписания удалена.</b>\n\nФункционал расписания отключён, ваша клавиатура обновлена.', {
+            reply_markup: getMainKeyboard(chatId)
+        });
+    }
+
     // 1.9.1. /done, /сдал, /сдано (Отметка сданных заданий и квизов)
     const lowerText = text.toLowerCase();
     const isDoneCmd = lowerText === '/done' || lowerText === '/сдал' || lowerText === '/сдано' || lowerText === '/completed' || text === '✅ Отметить сданное';
