@@ -2566,6 +2566,257 @@ test('Telegram Bot: Persistent user registration in KV and /broadcast delivery w
     }
 });
 
+test('Bot: Mark All Done and in-place multi-select for LMS and Learn (/done all, mark_all_*, unmark_all_*)', async () => {
+    const bot = require('../api/bot/index.js');
+    const aitu = require('../api/bot/aitu.js');
+    const lms = require('../api/bot/lms.js');
+
+    const originalFetch = global.fetch;
+    const sentMessages = [];
+    const editedMessages = [];
+    const answeredQueries = [];
+
+    const studentId = 'test_student_mark_all_999';
+
+    try {
+        global.fetch = async (url, opts = {}) => {
+            if (url && url.includes('/sendMessage')) {
+                sentMessages.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: { message_id: 201 } }) };
+            }
+            if (url && url.includes('/editMessageText')) {
+                editedMessages.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: { message_id: 201 } }) };
+            }
+            if (url && url.includes('/answerCallbackQuery')) {
+                answeredQueries.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: true }) };
+            }
+            return { ok: true, json: async () => ({}) };
+        };
+
+        process.env.TELEGRAM_BOT_TOKEN = 'test_token_mark_all';
+
+        // 1. Test markAllQuizzesCompleted and markAllLmsEventsCompleted direct helpers
+        await aitu.clearUserCompletedQuizzes(studentId);
+        await lms.clearUserCompletedLmsEvents(studentId);
+
+        const aituCount = await aitu.markAllQuizzesCompleted(studentId, ['quiz_a', 'quiz_b', 'quiz_c']);
+        assert.strictEqual(aituCount, 3);
+        const completedAitu = await aitu.getUserCompletedQuizzes(studentId);
+        assert.ok(completedAitu.has('quiz_a'));
+        assert.ok(completedAitu.has('quiz_b'));
+        assert.ok(completedAitu.has('quiz_c'));
+
+        const lmsCount = await lms.markAllLmsEventsCompleted(studentId, ['evt_1', 'evt_2']);
+        assert.strictEqual(lmsCount, 2);
+        const completedLms = await lms.getUserCompletedLmsEvents(studentId);
+        assert.ok(completedLms.has('evt_1'));
+        assert.ok(completedLms.has('evt_2'));
+
+        // Reset for menu tests
+        await aitu.clearUserCompletedQuizzes(studentId);
+        await lms.clearUserCompletedLmsEvents(studentId);
+
+        // 2. Test buildLearnMarkMenu (active items vs zero active items)
+        const mockLearnActive = {
+            ok: true,
+            activeQuizzes: [
+                { id: 'q1', shortId: 'q1', title: 'Calculus Quiz 1' },
+                { id: 'q2', shortId: 'q2', title: 'Algorithms Quiz 2' }
+            ]
+        };
+        const learnMenu = bot.buildLearnMarkMenu(mockLearnActive, false);
+        assert.match(learnMenu.text, /Выберите сданные квизы AITU Learn/);
+        assert.ok(learnMenu.reply_markup.inline_keyboard[0][0].text.includes('✨ Отметить ВСЕ как сданные (2)'));
+        assert.strictEqual(learnMenu.reply_markup.inline_keyboard[0][0].callback_data, 'mark_all_lrn');
+        assert.ok(learnMenu.reply_markup.inline_keyboard.some(row => row.some(b => b.callback_data === 'mark_lrn_q1')));
+        assert.ok(learnMenu.reply_markup.inline_keyboard.some(row => row.some(b => b.callback_data === 'mark_lrn_q2')));
+
+        const mockLearnEmpty = { ok: true, activeQuizzes: [], completedCount: 2 };
+        const emptyLearnMenu = bot.buildLearnMarkMenu(mockLearnEmpty, false);
+        assert.match(emptyLearnMenu.text, /Все квизы.*отмечены как сданные/);
+        assert.ok(emptyLearnMenu.reply_markup.inline_keyboard.some(row => row.some(b => b.callback_data === 'learn_show_completed')));
+
+        // 3. Test buildLmsMarkMenu (active items vs zero active items)
+        const mockLmsActive = {
+            ok: true,
+            academicEvents: [
+                { id: 'e1', title: 'Network Lab 1' },
+                { id: 'e2', title: 'Database Assignment 1' }
+            ]
+        };
+        const lmsMenu = bot.buildLmsMarkMenu(mockLmsActive, false);
+        assert.match(lmsMenu.text, /Выберите сданные задания Moodle LMS/);
+        assert.ok(lmsMenu.reply_markup.inline_keyboard[0][0].text.includes('✨ Отметить ВСЕ как сданные (2)'));
+        assert.strictEqual(lmsMenu.reply_markup.inline_keyboard[0][0].callback_data, 'mark_all_lms');
+        assert.ok(lmsMenu.reply_markup.inline_keyboard.some(row => row.some(b => b.callback_data === 'mark_lms_e1')));
+        assert.ok(lmsMenu.reply_markup.inline_keyboard.some(row => row.some(b => b.callback_data === 'mark_lms_e2')));
+
+        const mockLmsEmpty = { ok: true, academicEvents: [], completedCount: 2 };
+        const emptyLmsMenu = bot.buildLmsMarkMenu(mockLmsEmpty, false);
+        assert.match(emptyLmsMenu.text, /Все задания.*отмечены как сданные/);
+        assert.ok(emptyLmsMenu.reply_markup.inline_keyboard.some(row => row.some(b => b.callback_data === 'lms_show_completed')));
+
+        // 4. Test callback handling through bot webhook
+        const mockRes = { setHeader: () => {}, status: () => mockRes, json: () => {} };
+        const makeCallbackReq = (data) => ({
+            method: 'POST',
+            headers: {},
+            body: {
+                callback_query: {
+                    id: 'cq_test_mark',
+                    message: { chat: { id: studentId }, message_id: 555 },
+                    data
+                }
+            }
+        });
+
+        // Mock aitu.getUpcomingQuizzesForUser and lms.getUpcomingDeadlinesForUser
+        const origGetQuizzes = aitu.getUpcomingQuizzesForUser;
+        const origGetDeadlines = lms.getUpcomingDeadlinesForUser;
+
+        let curActiveQuizzes = [
+            { id: 'q10', shortId: 'q10', title: 'Math Quiz 1', isPast: false, isCompleted: false },
+            { id: 'q20', shortId: 'q20', title: 'Physics Quiz 2', isPast: false, isCompleted: false }
+        ];
+        let curActiveLms = [
+            { id: 'lms10', title: 'CS Lab 1', isPast: false, isCompleted: false },
+            { id: 'lms20', title: 'CS Lab 2', isPast: false, isCompleted: false }
+        ];
+
+        aitu.getUpcomingQuizzesForUser = async () => {
+            const completed = await aitu.getUserCompletedQuizzes(studentId);
+            const active = curActiveQuizzes.filter(q => !completed.has(q.id));
+            const done = curActiveQuizzes.filter(q => completed.has(q.id));
+            return {
+                ok: true,
+                quizzes: curActiveQuizzes,
+                activeQuizzes: active,
+                completedQuizzes: done,
+                pendingCount: active.length,
+                completedCount: done.length
+            };
+        };
+
+        lms.getUpcomingDeadlinesForUser = async () => {
+            const completed = await lms.getUserCompletedLmsEvents(studentId);
+            const active = curActiveLms.filter(e => !completed.has(e.id));
+            const done = curActiveLms.filter(e => completed.has(e.id));
+            return {
+                ok: true,
+                academicEvents: active,
+                activeAcademicEvents: active,
+                completedAcademicEvents: done,
+                pendingCount: active.length,
+                completedCount: done.length
+            };
+        };
+
+        // In-place mark single quiz (mark_lrn_q10)
+        await bot(makeCallbackReq('mark_lrn_q10'), mockRes);
+        assert.ok((await aitu.getUserCompletedQuizzes(studentId)).has('q10'));
+        // Verify editMessageText was called and still contains remaining quiz q20
+        const lastEdit = editedMessages[editedMessages.length - 1];
+        assert.ok(lastEdit);
+        assert.ok(lastEdit.reply_markup.inline_keyboard.some(row => row.some(b => b.callback_data === 'mark_lrn_q20')));
+        assert.ok(!lastEdit.reply_markup.inline_keyboard.some(row => row.some(b => b.callback_data === 'mark_lrn_q10')));
+
+        // Mark ALL remaining quizzes (mark_all_lrn)
+        await bot(makeCallbackReq('mark_all_lrn'), mockRes);
+        assert.ok((await aitu.getUserCompletedQuizzes(studentId)).has('q20'));
+        const finishEdit = editedMessages[editedMessages.length - 1];
+        assert.match(finishEdit.text, /Все квизы.*отмечены как сданные/);
+
+        // Unmark ALL quizzes (unmark_all_lrn)
+        await bot(makeCallbackReq('unmark_all_lrn'), mockRes);
+        assert.strictEqual((await aitu.getUserCompletedQuizzes(studentId)).size, 0);
+
+        // In-place mark single LMS event (mark_lms_lms10)
+        await bot(makeCallbackReq('mark_lms_lms10'), mockRes);
+        assert.ok((await lms.getUserCompletedLmsEvents(studentId)).has('lms10'));
+        const lmsEdit = editedMessages[editedMessages.length - 1];
+        assert.ok(lmsEdit.reply_markup.inline_keyboard.some(row => row.some(b => b.callback_data === 'mark_lms_lms20')));
+        assert.ok(!lmsEdit.reply_markup.inline_keyboard.some(row => row.some(b => b.callback_data === 'mark_lms_lms10')));
+
+        // Mark ALL remaining LMS events (mark_all_lms)
+        await bot(makeCallbackReq('mark_all_lms'), mockRes);
+        assert.ok((await lms.getUserCompletedLmsEvents(studentId)).has('lms20'));
+        const lmsFinishEdit = editedMessages[editedMessages.length - 1];
+        assert.match(lmsFinishEdit.text, /Все задания.*отмечены как сданные/);
+
+        // Unmark ALL LMS events (unmark_all_lms)
+        await bot(makeCallbackReq('unmark_all_lms'), mockRes);
+        assert.strictEqual((await lms.getUserCompletedLmsEvents(studentId)).size, 0);
+
+        // Mark everything at once (mark_all_everything)
+        await bot(makeCallbackReq('mark_all_everything'), mockRes);
+        assert.ok((await aitu.getUserCompletedQuizzes(studentId)).has('q10'));
+        assert.ok((await aitu.getUserCompletedQuizzes(studentId)).has('q20'));
+        assert.ok((await lms.getUserCompletedLmsEvents(studentId)).has('lms10'));
+        assert.ok((await lms.getUserCompletedLmsEvents(studentId)).has('lms20'));
+
+        // 5. Test /done all, /сдал все text command
+        const makeMsgReq = (text) => ({
+            method: 'POST',
+            headers: {},
+            body: {
+                message: {
+                    chat: { id: studentId },
+                    from: { id: studentId, username: 'test_student' },
+                    text
+                }
+            }
+        });
+
+        // Reset completed items
+        await aitu.clearUserCompletedQuizzes(studentId);
+        await lms.clearUserCompletedLmsEvents(studentId);
+
+        // Mock user session states for /done all:
+        // Case A: Both LMS and Learn connected
+        await lms.saveUserLmsSession(studentId, 'https://lms.astanait.edu.kz/calendar/export_execute.php?userid=999&authtoken=test');
+        await aitu.saveUserSession(studentId, 'fake_sessionid_999');
+
+        await bot(makeMsgReq('/done all'), mockRes);
+        const bothPrompt = sentMessages[sentMessages.length - 1];
+        assert.match(bothPrompt.text, /Отметить всё как сданное/);
+        assert.ok(bothPrompt.reply_markup.inline_keyboard.some(row => row.some(b => b.callback_data === 'mark_all_everything')));
+
+        // Case B: Russian command variant /сдал всё
+        await bot(makeMsgReq('/сдал всё'), mockRes);
+        const rusPrompt = sentMessages[sentMessages.length - 1];
+        assert.match(rusPrompt.text, /Отметить всё как сданное/);
+
+        // Case C: Only LMS connected
+        await aitu.deleteUserSession(studentId);
+        await lms.clearUserCompletedLmsEvents(studentId);
+        await bot(makeMsgReq('/done all'), mockRes);
+        assert.ok((await lms.getUserCompletedLmsEvents(studentId)).has('lms10'));
+        assert.ok((await lms.getUserCompletedLmsEvents(studentId)).has('lms20'));
+        const lmsDoneMsg = sentMessages[sentMessages.length - 1];
+        assert.match(lmsDoneMsg.text, /Все задания Moodle LMS .* отмечены как сданные/);
+
+        // Case D: Only Learn connected
+        await lms.deleteUserLmsSession(studentId);
+        await aitu.saveUserSession(studentId, 'fake_sessionid_999');
+        await aitu.clearUserCompletedQuizzes(studentId);
+        await bot(makeMsgReq('/сдал все'), mockRes);
+        assert.ok((await aitu.getUserCompletedQuizzes(studentId)).has('q10'));
+        assert.ok((await aitu.getUserCompletedQuizzes(studentId)).has('q20'));
+        const aituDoneMsg = sentMessages[sentMessages.length - 1];
+        assert.match(aituDoneMsg.text, /Все квизы AITU Learn .* отмечены как сданные/);
+
+        aitu.getUpcomingQuizzesForUser = origGetQuizzes;
+        lms.getUpcomingDeadlinesForUser = origGetDeadlines;
+        await lms.deleteUserLmsSession(studentId);
+        await aitu.deleteUserSession(studentId);
+    } finally {
+        global.fetch = originalFetch;
+        delete process.env.TELEGRAM_BOT_TOKEN;
+    }
+});
+
 
 
 

@@ -217,6 +217,29 @@ async function markLmsEventCompleted(chatId, eventId) {
 }
 
 /**
+ * Отметить сразу несколько заданий LMS как сданные (массовая отметка)
+ */
+async function markAllLmsEventsCompleted(chatId, eventIds = []) {
+    if (!chatId || !Array.isArray(eventIds) || eventIds.length === 0) return 0;
+    const strId = String(chatId).trim();
+    if (!lmsCompletedEventsMemory.has(strId)) {
+        lmsCompletedEventsMemory.set(strId, new Set());
+    }
+    const cleanIds = eventIds.map(id => String(id).trim()).filter(Boolean);
+    for (const id of cleanIds) {
+        lmsCompletedEventsMemory.get(strId).add(id);
+    }
+    try {
+        if (typeof statsEngine.kvCommand === 'function' && cleanIds.length > 0) {
+            await statsEngine.kvCommand(['SADD', `gm:user:${strId}:lms_completed`, ...cleanIds]);
+        }
+    } catch (err) {
+        console.warn(`markAllLmsEventsCompleted Redis error for ${strId}:`, err.message);
+    }
+    return cleanIds.length;
+}
+
+/**
  * Снять отметку сданного с задания LMS (вернуть в активные)
  */
 async function unmarkLmsEventCompleted(chatId, eventId) {
@@ -825,6 +848,7 @@ module.exports = {
     formatCriticalHourLmsAlert,
     getUserCompletedLmsEvents,
     markLmsEventCompleted,
+    markAllLmsEventsCompleted,
     unmarkLmsEventCompleted,
     clearUserCompletedLmsEvents,
     getEndOfWeek,

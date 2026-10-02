@@ -1195,6 +1195,88 @@ function getLearnSessionKeyboard(result, mode = 'week') {
     return { inline_keyboard };
 }
 
+// Вспомогательные функции построения меню отметки сданного
+function buildLmsMarkMenu(result, isGauharUser = false) {
+    const active = (result && result.academicEvents) ? result.academicEvents : [];
+    if (active.length === 0) {
+        const text = isGauharUser
+            ? `🎉 <b>Гаухар, все задания Moodle LMS отмечены как сданные!</b> 🧠✨\n\nТы всё сдала (или отметила)! Бот не будет доставать тебя напоминаниями по ним 🔕\n\n<i>(Если нужно вернуть задания обратно в дедлайны — нажми «📦 Показать сданные»)</i>`
+            : `🎉 <b>Все задания Moodle LMS отмечены как сданные!</b>\n\nБот исключил их из списка дедлайнов и отключил утренние и экстренные напоминания 🔕\n\n<i>(Если захотите вернуть их в дедлайны — нажмите «📦 Показать сданные»)</i>`;
+        const buttons = [];
+        if (result && result.completedCount > 0) {
+            buttons.push([{ text: `📦 Показать сданные (${result.completedCount})`, callback_data: 'lms_show_completed' }]);
+        }
+        buttons.push([{ text: '◀️ Вернуться к дедлайнам', callback_data: 'user_lms_refresh' }]);
+        return { text, reply_markup: { inline_keyboard: buttons } };
+    }
+
+    const buttons = [];
+    buttons.push([{ text: `✨ Отметить ВСЕ как сданные (${active.length})`, callback_data: 'mark_all_lms' }]);
+    for (const ev of active.slice(0, 15)) {
+        const titleRaw = ev.title || 'Задание';
+        const courseRaw = ev.courseName || '';
+        const shortTitle = titleRaw.length > 25 ? titleRaw.slice(0, 22) + '...' : titleRaw;
+        const shortCourse = courseRaw.length > 15 ? courseRaw.slice(0, 12) + '...' : courseRaw;
+        const label = shortCourse ? `✅ ${shortCourse}: ${shortTitle}` : `✅ ${shortTitle}`;
+        buttons.push([{
+            text: label,
+            callback_data: `mark_lms_${String(ev.id).slice(0, 45)}`
+        }]);
+    }
+    buttons.push([{ text: '◀️ Готово', callback_data: 'user_lms_refresh' }]);
+
+    const text = isGauharUser
+        ? `<b>Гаухар, выбери сданные задания Moodle LMS:</b> 🎓\n\n` +
+          `Нажимай на задания, которые ты уже сдала. Бот исключит их из напоминаний 🔕\n\n` +
+          `💡 <i>Можно нажимать подряд несколько заданий или нажать «✨ Сдать всё». По завершении нажми «Готово».</i>`
+        : `<b>Выберите сданные задания Moodle LMS:</b>\n\n` +
+          `Нажимайте на задания, которые вы уже сдали. Бот исключит их из списка дедлайнов и отключит утренние и экстренные напоминания 🔕\n\n` +
+          `💡 <i>Можно нажимать подряд несколько заданий или нажать «✨ Сдать всё». По завершении нажмите «Готово».</i>`;
+
+    return { text, reply_markup: { inline_keyboard: buttons } };
+}
+
+function buildLearnMarkMenu(result, isGauharUser = false) {
+    const active = (result && result.activeQuizzes) ? result.activeQuizzes : [];
+    if (active.length === 0) {
+        const text = isGauharUser
+            ? `🎉 <b>Гаухар, все квизы AITU Learn отмечены как сданные!</b> 🧠✨\n\nТы всё сдала! Бот не будет доставать тебя напоминаниями по ним 🔕\n\n<i>(Если нужно вернуть квизы обратно — нажми «📦 Показать сданные»)</i>`
+            : `🎉 <b>Все квизы AITU Learn отмечены как сданные!</b>\n\nБот исключил их из списка и отключил звуковые напоминания и утреннюю сводку 🔕\n\n<i>(Если захотите вернуть их — нажмите «📦 Показать сданные»)</i>`;
+        const buttons = [];
+        if (result && result.completedCount > 0) {
+            buttons.push([{ text: `📦 Показать сданные (${result.completedCount})`, callback_data: 'learn_show_completed' }]);
+        }
+        buttons.push([{ text: '◀️ Вернуться к квизам', callback_data: 'user_quizzes_refresh' }]);
+        return { text, reply_markup: { inline_keyboard: buttons } };
+    }
+
+    const buttons = [];
+    buttons.push([{ text: `✨ Отметить ВСЕ как сданные (${active.length})`, callback_data: 'mark_all_lrn' }]);
+    for (const q of active.slice(0, 15)) {
+        const titleRaw = q.title || 'Квиз';
+        const courseRaw = q.courseName || '';
+        const shortTitle = titleRaw.length > 25 ? titleRaw.slice(0, 22) + '...' : titleRaw;
+        const shortCourse = courseRaw.length > 15 ? courseRaw.slice(0, 12) + '...' : courseRaw;
+        const label = shortCourse ? `✅ ${shortCourse}: ${shortTitle}` : `✅ ${shortTitle}`;
+        const qId = q.shortId || q.id || q.blockId;
+        buttons.push([{
+            text: label,
+            callback_data: `mark_lrn_${String(qId).slice(0, 45)}`
+        }]);
+    }
+    buttons.push([{ text: '◀️ Готово', callback_data: 'user_quizzes_refresh' }]);
+
+    const text = isGauharUser
+        ? `<b>Гаухар, выбери пройденные квизы AITU Learn:</b> 🎓\n\n` +
+          `Нажимай на квизы, которые ты уже сдала. Бот исключит их из напоминаний 🔕\n\n` +
+          `💡 <i>Можно нажимать подряд несколько квизов или нажать «✨ Сдать всё». По завершении нажми «Готово».</i>`
+        : `<b>Выберите сданные квизы AITU Learn:</b>\n\n` +
+          `Нажимайте на квизы, которые вы уже сдали. Бот исключит их из списка и отключит звуковые напоминания и утреннюю сводку 🔕\n\n` +
+          `💡 <i>Можно нажимать подряд несколько квизов или нажать «✨ Сдать всё». По завершении нажмите «Готово».</i>`;
+
+    return { text, reply_markup: { inline_keyboard: buttons } };
+}
+
 // ==========================================
 // ОБРАБОТКА CALLBACK_QUERY (INLINE КНОПКИ)
 // ==========================================
@@ -1570,43 +1652,45 @@ async function handleCallbackQuery(cq) {
     // Меню отметки сданных заданий LMS
     if (data === 'lms_mark_menu') {
         const result = await lms.getUpcomingDeadlinesForUser(chatId);
-        const active = (result && result.academicEvents) ? result.academicEvents : [];
-        if (active.length === 0) {
-            await answerCallbackQuery(cq.id, 'У вас нет активных заданий в LMS!', true);
-            return;
-        }
-        const buttons = [];
-        for (const ev of active.slice(0, 15)) {
-            const shortTitle = ev.title.length > 25 ? ev.title.slice(0, 22) + '...' : ev.title;
-            const shortCourse = ev.courseName.length > 15 ? ev.courseName.slice(0, 12) + '...' : ev.courseName;
-            buttons.push([{
-                text: `✅ ${shortCourse}: ${shortTitle}`,
-                callback_data: `mark_lms_${String(ev.id).slice(0, 45)}`
-            }]);
-        }
-        buttons.push([{ text: '◀️ Назад к дедлайнам', callback_data: 'user_lms_refresh' }]);
-        const markPrompt = `<b>Выберите сданное задание Moodle LMS:</b>\n\n` +
-            `Нажмите на задание, которое вы уже сдали. Бот исключит его из списка дедлайнов и отключит утренние и экстренные напоминания 🔕\n\n` +
-            `<i>(Вы всегда сможете вернуть его обратно в разделе «📦 Показать сданные»)</i>`;
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const menu = buildLmsMarkMenu(result, isGauharUser);
         if (messageId) {
-            return editMessageText(chatId, messageId, markPrompt, { reply_markup: { inline_keyboard: buttons } });
+            return editMessageText(chatId, messageId, menu.text, { reply_markup: menu.reply_markup });
         }
-        return sendMessage(chatId, markPrompt, { reply_markup: { inline_keyboard: buttons } });
+        return sendMessage(chatId, menu.text, { reply_markup: menu.reply_markup });
     }
 
-    // Отметка задания LMS как сданного
+    // Отметка конкретного задания LMS как сданного (мультивыбор: остается в меню)
     if (data.startsWith('mark_lms_')) {
         const eventId = data.replace('mark_lms_', '').trim();
         await lms.markLmsEventCompleted(chatId, eventId);
         await answerCallbackQuery(cq.id, '✅ Задание отмечено как сданное!', false);
         const refreshed = await lms.getUpcomingDeadlinesForUser(chatId);
         const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
-        const msgText = lms.formatLmsDeadlinesMessage(refreshed, isGauharUser);
-        const sessionKeyboard = getLmsSessionKeyboard(refreshed, 'active');
+        const menu = buildLmsMarkMenu(refreshed, isGauharUser);
         if (messageId) {
-            return editMessageText(chatId, messageId, msgText, { reply_markup: sessionKeyboard });
+            return editMessageText(chatId, messageId, menu.text, { reply_markup: menu.reply_markup });
         }
-        return sendMessage(chatId, msgText, { reply_markup: sessionKeyboard });
+        return sendMessage(chatId, menu.text, { reply_markup: menu.reply_markup });
+    }
+
+    // Отметка ВСЕХ заданий LMS как сданных в один клик
+    if (data === 'mark_all_lms') {
+        const result = await lms.getUpcomingDeadlinesForUser(chatId);
+        const activeIds = (result && result.academicEvents) ? result.academicEvents.map(e => e.id).filter(Boolean) : [];
+        if (activeIds.length > 0) {
+            await lms.markAllLmsEventsCompleted(chatId, activeIds);
+            await answerCallbackQuery(cq.id, `🎉 Все задания LMS (${activeIds.length}) отмечены как сданные!`, false);
+        } else {
+            await answerCallbackQuery(cq.id, 'У вас нет активных заданий в LMS!', true);
+        }
+        const refreshed = await lms.getUpcomingDeadlinesForUser(chatId);
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const menu = buildLmsMarkMenu(refreshed, isGauharUser);
+        if (messageId) {
+            return editMessageText(chatId, messageId, menu.text, { reply_markup: menu.reply_markup });
+        }
+        return sendMessage(chatId, menu.text, { reply_markup: menu.reply_markup });
     }
 
     // Просмотр сданных заданий LMS
@@ -1616,6 +1700,9 @@ async function handleCallbackQuery(cq) {
         const msgText = lms.formatLmsDeadlinesMessage(result, isGauharUser, true);
         const buttons = [];
         const completed = (result && result.completedAcademicEvents) ? result.completedAcademicEvents : [];
+        if (completed.length > 0) {
+            buttons.push([{ text: `↩️ Вернуть ВСЕ в активные (${completed.length})`, callback_data: 'unmark_all_lms' }]);
+        }
         for (const ev of completed.slice(0, 15)) {
             const shortTitle = ev.title.length > 25 ? ev.title.slice(0, 22) + '...' : ev.title;
             buttons.push([{
@@ -1630,7 +1717,21 @@ async function handleCallbackQuery(cq) {
         return sendMessage(chatId, msgText, { reply_markup: { inline_keyboard: buttons } });
     }
 
-    // Возврат задания LMS в активные
+    // Возврат ВСЕХ заданий LMS в активные
+    if (data === 'unmark_all_lms') {
+        await lms.clearUserCompletedLmsEvents(chatId);
+        await answerCallbackQuery(cq.id, '↩️ Все задания возвращены в активные!', false);
+        const refreshed = await lms.getUpcomingDeadlinesForUser(chatId);
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const msgText = lms.formatLmsDeadlinesMessage(refreshed, isGauharUser);
+        const sessionKeyboard = getLmsSessionKeyboard(refreshed, 'active');
+        if (messageId) {
+            return editMessageText(chatId, messageId, msgText, { reply_markup: sessionKeyboard });
+        }
+        return sendMessage(chatId, msgText, { reply_markup: sessionKeyboard });
+    }
+
+    // Возврат одного задания LMS в активные
     if (data.startsWith('unmark_lms_')) {
         const eventId = data.replace('unmark_lms_', '').trim();
         await lms.unmarkLmsEventCompleted(chatId, eventId);
@@ -1640,6 +1741,7 @@ async function handleCallbackQuery(cq) {
         if (refreshed.completedCount > 0) {
             const msgText = lms.formatLmsDeadlinesMessage(refreshed, isGauharUser, true);
             const buttons = [];
+            buttons.push([{ text: `↩️ Вернуть ВСЕ в активные (${refreshed.completedCount})`, callback_data: 'unmark_all_lms' }]);
             for (const ev of refreshed.completedAcademicEvents.slice(0, 15)) {
                 const shortTitle = ev.title.length > 25 ? ev.title.slice(0, 22) + '...' : ev.title;
                 buttons.push([{
@@ -1665,44 +1767,45 @@ async function handleCallbackQuery(cq) {
     // Меню отметки сданных квизов Learn
     if (data === 'learn_mark_menu') {
         const result = await aitu.getUpcomingQuizzesForUser(chatId);
-        const active = (result && result.activeQuizzes) ? result.activeQuizzes : [];
-        if (active.length === 0) {
-            await answerCallbackQuery(cq.id, 'У вас нет активных несданных квизов!', true);
-            return;
-        }
-        const buttons = [];
-        for (const q of active.slice(0, 15)) {
-            const shortTitle = q.title.length > 25 ? q.title.slice(0, 22) + '...' : q.title;
-            const shortCourse = q.courseName.length > 15 ? q.courseName.slice(0, 12) + '...' : q.courseName;
-            const qId = q.shortId || q.id || q.blockId;
-            buttons.push([{
-                text: `✅ ${shortCourse}: ${shortTitle}`,
-                callback_data: `mark_lrn_${String(qId).slice(0, 45)}`
-            }]);
-        }
-        buttons.push([{ text: '◀️ Назад к квизам', callback_data: 'user_quizzes_refresh' }]);
-        const markPrompt = `<b>Выберите пройденный квиз AITU Learn:</b>\n\n` +
-            `Нажмите на квиз, который вы уже сдали. Бот исключит его из списка и отключит звуковые напоминания и утреннюю сводку 🔕\n\n` +
-            `<i>(Вы всегда сможете вернуть его обратно в разделе «📦 Показать сданные»)</i>`;
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const menu = buildLearnMarkMenu(result, isGauharUser);
         if (messageId) {
-            return editMessageText(chatId, messageId, markPrompt, { reply_markup: { inline_keyboard: buttons } });
+            return editMessageText(chatId, messageId, menu.text, { reply_markup: menu.reply_markup });
         }
-        return sendMessage(chatId, markPrompt, { reply_markup: { inline_keyboard: buttons } });
+        return sendMessage(chatId, menu.text, { reply_markup: menu.reply_markup });
     }
 
-    // Отметка квиза Learn как сданного
+    // Отметка конкретного квиза Learn как сданного (мультивыбор: остается в меню)
     if (data.startsWith('mark_lrn_')) {
         const quizId = data.replace('mark_lrn_', '').trim();
         await aitu.markQuizCompleted(chatId, quizId);
         await answerCallbackQuery(cq.id, '✅ Квиз отмечен как сданный!', false);
         const refreshed = await aitu.getUpcomingQuizzesForUser(chatId);
         const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
-        const msgText = aitu.formatQuizzesMessage(refreshed, isGauharUser);
-        const sessionKeyboard = getLearnSessionKeyboard(refreshed, 'active');
+        const menu = buildLearnMarkMenu(refreshed, isGauharUser);
         if (messageId) {
-            return editMessageText(chatId, messageId, msgText, { reply_markup: sessionKeyboard });
+            return editMessageText(chatId, messageId, menu.text, { reply_markup: menu.reply_markup });
         }
-        return sendMessage(chatId, msgText, { reply_markup: sessionKeyboard });
+        return sendMessage(chatId, menu.text, { reply_markup: menu.reply_markup });
+    }
+
+    // Отметка ВСЕХ квизов Learn как сданных в один клик
+    if (data === 'mark_all_lrn') {
+        const result = await aitu.getUpcomingQuizzesForUser(chatId);
+        const activeIds = (result && result.activeQuizzes) ? result.activeQuizzes.map(q => q.shortId || q.id || q.blockId).filter(Boolean) : [];
+        if (activeIds.length > 0) {
+            await aitu.markAllQuizzesCompleted(chatId, activeIds);
+            await answerCallbackQuery(cq.id, `🎉 Все квизы (${activeIds.length}) отмечены как сданные!`, false);
+        } else {
+            await answerCallbackQuery(cq.id, 'У вас нет активных несданных квизов!', true);
+        }
+        const refreshed = await aitu.getUpcomingQuizzesForUser(chatId);
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const menu = buildLearnMarkMenu(refreshed, isGauharUser);
+        if (messageId) {
+            return editMessageText(chatId, messageId, menu.text, { reply_markup: menu.reply_markup });
+        }
+        return sendMessage(chatId, menu.text, { reply_markup: menu.reply_markup });
     }
 
     // Просмотр сданных квизов Learn
@@ -1712,6 +1815,9 @@ async function handleCallbackQuery(cq) {
         const msgText = aitu.formatQuizzesMessage(result, isGauharUser, true);
         const buttons = [];
         const completed = (result && result.completedQuizzes) ? result.completedQuizzes : [];
+        if (completed.length > 0) {
+            buttons.push([{ text: `↩️ Вернуть ВСЕ в активные (${completed.length})`, callback_data: 'unmark_all_lrn' }]);
+        }
         for (const q of completed.slice(0, 15)) {
             const shortTitle = q.title.length > 25 ? q.title.slice(0, 22) + '...' : q.title;
             const qId = q.shortId || q.id || q.blockId;
@@ -1727,7 +1833,21 @@ async function handleCallbackQuery(cq) {
         return sendMessage(chatId, msgText, { reply_markup: { inline_keyboard: buttons } });
     }
 
-    // Возврат квиза Learn в активные
+    // Возврат ВСЕХ квизов Learn в активные
+    if (data === 'unmark_all_lrn') {
+        await aitu.clearUserCompletedQuizzes(chatId);
+        await answerCallbackQuery(cq.id, '↩️ Все квизы возвращены в активные!', false);
+        const refreshed = await aitu.getUpcomingQuizzesForUser(chatId);
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const msgText = aitu.formatQuizzesMessage(refreshed, isGauharUser);
+        const sessionKeyboard = getLearnSessionKeyboard(refreshed, 'active');
+        if (messageId) {
+            return editMessageText(chatId, messageId, msgText, { reply_markup: sessionKeyboard });
+        }
+        return sendMessage(chatId, msgText, { reply_markup: sessionKeyboard });
+    }
+
+    // Возврат одного квиза Learn в активные
     if (data.startsWith('unmark_lrn_')) {
         const quizId = data.replace('unmark_lrn_', '').trim();
         await aitu.unmarkQuizCompleted(chatId, quizId);
@@ -1737,6 +1857,7 @@ async function handleCallbackQuery(cq) {
         if (refreshed.completedCount > 0) {
             const msgText = aitu.formatQuizzesMessage(refreshed, isGauharUser, true);
             const buttons = [];
+            buttons.push([{ text: `↩️ Вернуть ВСЕ в активные (${refreshed.completedCount})`, callback_data: 'unmark_all_lrn' }]);
             for (const q of refreshed.completedQuizzes.slice(0, 15)) {
                 const shortTitle = q.title.length > 25 ? q.title.slice(0, 22) + '...' : q.title;
                 const qId = q.shortId || q.id || q.blockId;
@@ -1758,6 +1879,37 @@ async function handleCallbackQuery(cq) {
             }
             return sendMessage(chatId, msgText, { reply_markup: sessionKeyboard });
         }
+    }
+
+    // Отметка ВСЕГО (и LMS, и Learn)
+    if (data === 'mark_all_everything') {
+        let totalCount = 0;
+        const [lmsRes, aituRes] = await Promise.all([
+            lms.getUpcomingDeadlinesForUser(chatId),
+            aitu.getUpcomingQuizzesForUser(chatId)
+        ]);
+        const lmsIds = (lmsRes && lmsRes.academicEvents) ? lmsRes.academicEvents.map(e => e.id).filter(Boolean) : [];
+        if (lmsIds.length > 0) {
+            await lms.markAllLmsEventsCompleted(chatId, lmsIds);
+            totalCount += lmsIds.length;
+        }
+        const aituIds = (aituRes && aituRes.activeQuizzes) ? aituRes.activeQuizzes.map(q => q.shortId || q.id || q.blockId).filter(Boolean) : [];
+        if (aituIds.length > 0) {
+            await aitu.markAllQuizzesCompleted(chatId, aituIds);
+            totalCount += aituIds.length;
+        }
+        await answerCallbackQuery(cq.id, `🎉 Все задачи (${totalCount}) отмечены как сданные!`, false);
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const finishMsg = isGauharUser
+            ? `🎉 <b>Гаухар, вообще всё сдано!</b> 🧠✨\n\nВсе активные лабы LMS и квизы Learn отмечены как сданные. Бот отключил все сигналы тревоги 🔕\n\nМожешь спокойно отдыхать!`
+            : `🎉 <b>Все задания LMS и квизы Learn отмечены как сданные!</b>\n\nБот отключил по ним утренние дайджесты и экстренные напоминания 🔕`;
+        const buttons = [
+            [{ text: '◀️ В главное меню', callback_data: 'user_main_menu' }]
+        ];
+        if (messageId) {
+            return editMessageText(chatId, messageId, finishMsg, { reply_markup: { inline_keyboard: buttons } });
+        }
+        return sendMessage(chatId, finishMsg, { reply_markup: { inline_keyboard: buttons } });
     }
 
     if (data.startsWith('add_final_')) {
@@ -2200,7 +2352,14 @@ async function handleMessage(msg) {
     }
 
     // 1.9.1. /done, /сдал, /сдано (Отметка сданных заданий и квизов)
-    if (text === '/done' || text === '/сдал' || text === '/сдано' || text === '/completed' || text === '✅ Отметить сданное') {
+    const lowerText = text.toLowerCase();
+    const isDoneCmd = lowerText === '/done' || lowerText === '/сдал' || lowerText === '/сдано' || lowerText === '/completed' || text === '✅ Отметить сданное';
+    const isDoneAllCmd = lowerText === '/done all' || lowerText === '/done все' || lowerText === '/done всё' ||
+                         lowerText === '/сдал все' || lowerText === '/сдал всё' ||
+                         lowerText === '/сдано все' || lowerText === '/сдано всё' ||
+                         lowerText === '/completed all';
+
+    if (isDoneCmd || isDoneAllCmd) {
         const hasLms = Boolean(await lms.getUserLmsSession(chatId));
         const hasAitu = Boolean(await aitu.getUserSession(chatId));
 
@@ -2208,6 +2367,57 @@ async function handleMessage(msg) {
             return sendMessage(chatId, 'ℹ️ У вас пока не подключены ни LMS, ни AITU Learn.\n\nПодключите их:\n• <code>/set_lms ВАША_КУКА_ИЛИ_ССЫЛКА</code> — для домашних заданий LMS\n• <code>/set_cookie ВАШ_SESSION_ID</code> — для квизов Learn\n\nИли напишите <code>/cookie</code> для инструкции.', {
                 reply_markup: getMainKeyboard(chatId)
             });
+        }
+
+        if (isDoneAllCmd) {
+            if (hasLms && hasAitu) {
+                const buttons = [
+                    [{ text: '📝 Сдать ВСЕ квизы Learn', callback_data: 'mark_all_lrn' }],
+                    [{ text: '📚 Сдать ВСЕ задания LMS', callback_data: 'mark_all_lms' }],
+                    [{ text: '✨ Сдать абсолютно ВСЁ', callback_data: 'mark_all_everything' }]
+                ];
+                return sendMessage(chatId, isGauharUser
+                    ? '🎯 <b>Гаухар, сдаем всё разом!</b> ⚡️\nЧто именно отметить как сданное?'
+                    : '🎯 <b>Отметить всё как сданное:</b>\nВыберите сервис для массовой отметки:', {
+                    reply_markup: { inline_keyboard: buttons }
+                });
+            } else if (hasLms) {
+                const lmsRes = await lms.getUpcomingDeadlinesForUser(chatId);
+                const activeEvents = (lmsRes && lmsRes.academicEvents) ? lmsRes.academicEvents : [];
+                if (activeEvents.length === 0) {
+                    return sendMessage(chatId, '🎉 У вас нет активных заданий в LMS — все уже сданы!', {
+                        reply_markup: getMainKeyboard(chatId)
+                    });
+                }
+                const ids = activeEvents.map(e => e.id).filter(Boolean);
+                await lms.markAllLmsEventsCompleted(chatId, ids);
+                return sendMessage(chatId, `🎉 Отлично! Все задания Moodle LMS (${ids.length} шт.) отмечены как сданные.\nНапоминания по ним отключены 🔕`, {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '📦 Показать сданные LMS', callback_data: 'lms_show_completed' }],
+                            [{ text: '📚 К дедлайнам LMS', callback_data: 'user_lms_refresh' }]
+                        ]
+                    }
+                });
+            } else {
+                const aituRes = await aitu.getUpcomingQuizzesForUser(chatId);
+                const active = (aituRes && aituRes.activeQuizzes) ? aituRes.activeQuizzes : [];
+                if (active.length === 0) {
+                    return sendMessage(chatId, '🎉 У вас нет активных квизов в Learn — все уже сданы!', {
+                        reply_markup: getMainKeyboard(chatId)
+                    });
+                }
+                const ids = active.map(q => q.shortId || q.id || q.blockId).filter(Boolean);
+                await aitu.markAllQuizzesCompleted(chatId, ids);
+                return sendMessage(chatId, `🎉 Отлично! Все квизы AITU Learn (${ids.length} шт.) отмечены как сданные.\nНапоминания по ним отключены 🔕`, {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '📦 Показать сданные квизы', callback_data: 'learn_show_completed' }],
+                            [{ text: '📝 К квизам Learn', callback_data: 'user_quizzes_refresh' }]
+                        ]
+                    }
+                });
+            }
         }
 
         const buttons = [];
@@ -2759,6 +2969,8 @@ module.exports.recordBotUser = recordBotUser;
 module.exports.removeBotUser = removeBotUser;
 module.exports.getAllBotUsers = getAllBotUsers;
 module.exports.activeUsers = activeUsers;
+module.exports.buildLmsMarkMenu = buildLmsMarkMenu;
+module.exports.buildLearnMarkMenu = buildLearnMarkMenu;
 
 // ==========================================
 // ЛОКАЛЬНЫЙ LONG-POLLING (ДЛЯ РАЗРАБОТКИ)

@@ -424,6 +424,29 @@ async function markQuizCompleted(chatId, blockId) {
 }
 
 /**
+ * Отметить сразу несколько квизов Learn как сданные (массовая отметка)
+ */
+async function markAllQuizzesCompleted(chatId, blockIds = []) {
+    if (!chatId || !Array.isArray(blockIds) || blockIds.length === 0) return 0;
+    const strId = String(chatId).trim();
+    if (!quizCompletedMemory.has(strId)) {
+        quizCompletedMemory.set(strId, new Set());
+    }
+    const cleanIds = blockIds.map(id => String(id).trim()).filter(Boolean);
+    for (const id of cleanIds) {
+        quizCompletedMemory.get(strId).add(id);
+    }
+    try {
+        if (typeof statsEngine.kvCommand === 'function' && cleanIds.length > 0) {
+            await statsEngine.kvCommand(['SADD', `gm:user:${strId}:quiz_completed`, ...cleanIds]);
+        }
+    } catch (err) {
+        console.warn(`markAllQuizzesCompleted Redis error for ${strId}:`, err.message);
+    }
+    return cleanIds.length;
+}
+
+/**
  * Снять отметку сданного с квиза Learn (вернуть в активные)
  */
 async function unmarkQuizCompleted(chatId, blockId) {
@@ -1034,6 +1057,7 @@ module.exports = {
     DEFAULT_COURSES,
     getUserCompletedQuizzes,
     markQuizCompleted,
+    markAllQuizzesCompleted,
     unmarkQuizCompleted,
     clearUserCompletedQuizzes,
     _userSessionsMemory: userSessionsMemory,
