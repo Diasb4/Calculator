@@ -51,6 +51,38 @@ function getLmsCacheFilePath() {
 }
 
 /**
+ * Проверка безопасности URL платформы LMS (защита от SSRF / intranet сканирования)
+ */
+function isAllowedLmsUrl(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== 'string') return false;
+    let urlStr = rawUrl.trim();
+    if (urlStr.startsWith('webcal://')) {
+        urlStr = 'https://' + urlStr.slice(9);
+    }
+    try {
+        const parsed = new URL(urlStr);
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+            return false;
+        }
+        const hostname = parsed.hostname.toLowerCase();
+        const allowedHosts = ['lms.astanait.edu.kz'];
+        if (process.env.LMS_ALLOWED_HOST) {
+            allowedHosts.push(process.env.LMS_ALLOWED_HOST.trim().toLowerCase());
+        }
+        if (!allowedHosts.includes(hostname)) {
+            return false;
+        }
+        // Защита от локальных/приватных адресов и облачных метаданных
+        if (/^(?:127\.|10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.|localhost|::1)/i.test(hostname)) {
+            return false;
+        }
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
  * Проверить, не превышен ли лимит подписчиков (55 человек)
  * @param {string|number} chatId
  * @param {'lms'|'learn'} type
@@ -131,6 +163,11 @@ async function saveUserLmsSession(chatId, sessionOrUrl) {
     if (!chatId || !sessionOrUrl) return false;
     const strId = String(chatId).trim();
     const clean = String(sessionOrUrl).trim();
+
+    if ((clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('webcal://')) && !isAllowedLmsUrl(clean)) {
+        console.warn(`saveUserLmsSession SSRF protection blocked invalid URL: ${clean}`);
+        return false;
+    }
 
     lmsUserSessionsMemory.set(strId, clean);
     lmsSubscribersMemory.add(strId);
@@ -489,7 +526,7 @@ async function getUpcomingDeadlines(sessionOrUrl, forceRefresh = false) {
     }
 
     // Если передан не URL, а кука MoodleSession — генерируем постоянный URL
-    if (!calendarUrl.startsWith('http://') && !calendarUrl.startsWith('https://')) {
+    if (!calendarUrl.startsWith('http://') && !calendarUrl.startsWith('https://') && !calendarUrl.startsWith('webcal://')) {
         const genRes = await generatePermanentCalendarUrl(calendarUrl);
         if (!genRes.ok) {
             if (lmsLastSuccessfulSnapshot.has(cacheKey)) {
@@ -503,6 +540,13 @@ async function getUpcomingDeadlines(sessionOrUrl, forceRefresh = false) {
             return genRes;
         }
         calendarUrl = genRes.calendarUrl;
+    } else {
+        if (!isAllowedLmsUrl(calendarUrl)) {
+            return {
+                ok: false,
+                error: 'Недопустимый адрес календаря. Разрешены только защищенные ссылки на lms.astanait.edu.kz'
+            };
+        }
     }
 
     try {
@@ -840,6 +884,7 @@ module.exports = {
     MAX_SUBSCRIBERS_LIMIT,
     isGauhar,
     canUserSubscribe,
+    isAllowedLmsUrl,
     getUserLmsSession,
     saveUserLmsSession,
     deleteUserLmsSession,

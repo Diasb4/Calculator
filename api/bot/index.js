@@ -185,6 +185,45 @@ function clearSession(chatId) {
     userSessions.delete(String(chatId));
 }
 
+/**
+ * Анализ безопасности входящих сообщений от студентов
+ * Выявляет ссылки на BotFather, фишинг, вредоносные токены
+ */
+function analyzeMessageSecurity(text) {
+    if (!text || typeof text !== 'string') {
+        return { hasLinks: false, isSuspicious: false, isBotFatherLink: false, foundUrls: [], warnings: [] };
+    }
+    const warnings = [];
+    const urlRegex = /(?:https?:\/\/|tg:\/\/|t\.me\/|telegram\.me\/)[^\s<>"]+/gi;
+    const foundUrls = text.match(urlRegex) || [];
+    const hasLinks = foundUrls.length > 0;
+
+    let isBotFatherLink = false;
+    let isPhishingOrDangerous = false;
+
+    for (const rawUrl of foundUrls) {
+        const lower = rawUrl.toLowerCase();
+        if (lower.includes('botfather')) {
+            isBotFatherLink = true;
+            warnings.push(`🚨 <b>Внимание:</b> Сообщение содержит ссылку на <b>@BotFather</b> (<code>${esc(rawUrl)}</code>). ` +
+                `Ни в коем случае не нажимайте и не подтверждайте системные команды передачи прав (/transfer), сброса токена (/token) или удаления бота (/deletebot)!`);
+        } else if (lower.includes('login') || lower.includes('auth') || lower.includes('verify') || lower.includes('token=') || lower.includes('gift') || lower.includes('airdrop') || lower.includes('boost')) {
+            isPhishingOrDangerous = true;
+            warnings.push(`⚠️ <b>Внимание:</b> Ссылка содержит подозрительные маркеры авторизации/розыгрыша (<code>${esc(rawUrl)}</code>). Возможно, фишинг!`);
+        } else {
+            warnings.push(`ℹ️ <i>В сообщении есть внешняя ссылка:</i> <code>${esc(rawUrl)}</code> <i>(будьте осторожны)</i>`);
+        }
+    }
+
+    return {
+        hasLinks,
+        isBotFatherLink,
+        isSuspicious: isBotFatherLink || isPhishingOrDangerous,
+        foundUrls,
+        warnings
+    };
+}
+
 // ==========================================
 // TELEGRAM API CLIENT
 // ==========================================
@@ -2009,13 +2048,16 @@ function extractLmsCalendarOrCookie(input) {
     // 1. Прямая ссылка на экспорт календаря Moodle LMS (https / http / webcal)
     // Например: https://lms.astanait.edu.kz/calendar/export_execute.php?userid=18258&authtoken=0d3c12c531aeec350de2ca7cc064e882f761b418&preset_what=all&preset_time=recentupcoming
     const calMatch = str.match(/(?:https?:\/\/|webcal:\/\/)[^\s<>"]*lms\.astanait\.edu\.kz\/calendar\/export_execute\.php[^\s<>"]*/i) ||
-                     str.match(/(?:https?:\/\/|webcal:\/\/)?[^\s<>"]*export_execute\.php\?[^\s<>"]*(?:authtoken|userid)=[^\s<>"]*/i);
+                     str.match(/(?:https?:\/\/|webcal:\/\/)?[^\s<>"]*lms\.astanait\.edu\.kz\/[^?\s<>"]*export_execute\.php\?[^\s<>"]*(?:authtoken|userid)=[^\s<>"]*/i);
     if (calMatch) {
         let url = calMatch[0];
         if (url.startsWith('webcal://')) {
             url = 'https://' + url.slice(9);
         } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
             url = 'https://' + url;
+        }
+        if (typeof lms.isAllowedLmsUrl === 'function' && !lms.isAllowedLmsUrl(url)) {
+            return null;
         }
         return url;
     }
@@ -2042,10 +2084,27 @@ function extractLearnSessionId(input) {
     return null;
 }
 
+/**
+ * Извлечение ID студента из текста сообщения, на которое отвечает администратор
+ */
+function extractTargetIdFromReply(replyText) {
+    if (!replyText || typeof replyText !== 'string') return null;
+    const match = replyText.match(/\(ID:\s*(?:<code>)?(-?\d{4,16})(?:<\/code>)?\)/i) ||
+                  replyText.match(/\/reply\s+(-?\d{4,16})/i) ||
+                  replyText.match(/ID:\s*(?:<code>)?(-?\d{4,16})(?:<\/code>)?/i);
+    return match ? match[1] : null;
+}
+
 async function executeSetLms(chatId, val, isGauharUser) {
     let cleanVal = String(val).trim();
     if (cleanVal.startsWith('webcal://')) {
         cleanVal = 'https://' + cleanVal.slice(9);
+    }
+
+    if ((cleanVal.startsWith('http://') || cleanVal.startsWith('https://')) && typeof lms.isAllowedLmsUrl === 'function' && !lms.isAllowedLmsUrl(cleanVal)) {
+        return sendMessage(chatId, '⚠️ <b>Недопустимая ссылка на календарь:</b>\nРазрешены только официальные ссылки экспорта календаря на домене <code>lms.astanait.edu.kz</code>.', {
+            reply_markup: getMainKeyboard(chatId)
+        });
     }
 
     const limitCheck = await lms.canUserSubscribe(chatId);
@@ -2086,6 +2145,12 @@ async function executeSetLearnCookie(chatId, cookieVal, isGauharUser) {
     const match = cleanSid.match(/sessionid=([^;\s]+)/i);
     if (match) cleanSid = match[1].trim();
 
+    if (!/^[a-zA-Z0-9_\-]{16,128}$/.test(cleanSid)) {
+        return sendMessage(chatId, '⚠️ <b>Некорректный формат sessionid:</b>\nЗначение должно содержать только буквы, цифры, дефис или подчёркивание (длина 16-128 символов).\n\nНапишите <code>/cookie</code> для инструкции.', {
+            reply_markup: getMainKeyboard(chatId)
+        });
+    }
+
     await sendMessage(chatId, '⏳ <i>Проверяю подключение к learn.astanait.edu.kz...</i>');
     const testRes = await aitu.getUpcomingQuizzes(cleanSid);
     if (testRes.ok) {
@@ -2124,6 +2189,19 @@ async function handleMessage(msg) {
 
     const session = getSession(chatId);
     const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+
+    // Быстрый ответ администратора свайпом (Reply) на сообщение-уведомление от студента
+    if (isAdmin(chatId) && msg.reply_to_message && msg.reply_to_message.text) {
+        const targetId = extractTargetIdFromReply(msg.reply_to_message.text);
+        if (targetId && !text.startsWith('/')) {
+            try {
+                await sendMessage(targetId, `<b>Ответ от администратора GradeMaster:</b>\n\n${esc(text)}\n\n<i>Вы можете написать сюда в ответ, чтобы продолжить диалог.</i>`);
+                return sendMessage(chatId, `✅ <b>Ответ успешно доставлен студенту</b> (ID: <code>${targetId}</code>)!`);
+            } catch (err) {
+                return sendMessage(chatId, `❌ Ошибка отправки ответа студенту: ${esc(err.message)}`);
+            }
+        }
+    }
 
     // 0. Автоматическое обнаружение ссылки календаря Moodle LMS или MoodleSession (даже если отправлена напрямую без команды)
     const autoLms = extractLmsCalendarOrCookie(text);
@@ -2671,6 +2749,9 @@ async function handleMessage(msg) {
             return sendMessage(chatId, '<b>Формат команды:</b> <code>/reply &lt;chat_id&gt; &lt;текст ответа&gt;</code>\n<i>Пример:</i> <code>/reply 123456789 Ваш вопрос решен!</code>');
         }
         const targetId = parts[1];
+        if (!/^-?\d{4,16}$/.test(targetId)) {
+            return sendMessage(chatId, '❌ <b>Ошибка:</b> некорректный ID пользователя. ID должен состоять только из цифр (например, <code>8123089212</code>).');
+        }
         const replyBody = parts.slice(2).join(' ');
 
         try {
@@ -2866,11 +2947,17 @@ async function handleMessage(msg) {
         const targetAdmin = getPrimaryAdminId();
         if (targetAdmin && String(chatId) !== String(targetAdmin)) {
             try {
+                const secAnalysis = analyzeMessageSecurity(text);
+                let secWarningBlock = '';
+                if (secAnalysis.warnings.length > 0) {
+                    secWarningBlock = `\n\n🛡️ <b>Безопасность:</b>\n` + secAnalysis.warnings.join('\n');
+                }
                 const notify = `📨 <b>Новое обращение от студента:</b>\n\n` +
                     `👤 <b>От:</b> ${esc(userName)} (ID: <code>${chatId}</code>)\n` +
-                    `💬 <b>Текст:</b>\n${esc(text)}\n\n` +
-                    `<i>💡 Чтобы ответить студенту, отправьте:</i>\n<code>/reply ${chatId} Ваш ответ</code>`;
-                await sendMessage(targetAdmin, notify);
+                    `💬 <b>Текст:</b>\n${esc(text)}` +
+                    secWarningBlock + `\n\n` +
+                    `<i>💡 Чтобы ответить:</i> просто ответьте на это сообщение (Reply) или <code>/reply ${chatId} Ваш ответ</code>`;
+                await sendMessage(targetAdmin, notify, { disable_web_page_preview: true });
             } catch (e) {
                 console.error('Failed to notify admin:', e);
             }
@@ -2923,15 +3010,32 @@ async function handleMessage(msg) {
             return sendMessage(chatId, rl.message, { reply_markup: getMainKeyboard(chatId) });
         }
         recordRateLimit(chatId);
+
+        const secAnalysis = analyzeMessageSecurity(text);
+        let secWarningBlock = '';
+        if (secAnalysis.warnings.length > 0) {
+            secWarningBlock = `\n\n🛡️ <b>Безопасность:</b>\n` + secAnalysis.warnings.join('\n');
+        }
+
         try {
             const notify = `📨 <b>Сообщение от студента:</b>\n\n` +
                 `👤 <b>От:</b> ${esc(userName)} (ID: <code>${chatId}</code>)\n` +
-                `💬 <b>Текст:</b>\n${esc(text)}\n\n` +
-                `<i>💡 Чтобы ответить:</i> <code>/reply ${chatId} Ваш ответ</code>`;
-            await sendMessage(targetAdmin, notify);
+                `💬 <b>Текст:</b>\n${esc(text)}` +
+                secWarningBlock + `\n\n` +
+                `<i>💡 Чтобы ответить:</i> просто ответьте на это сообщение (Reply) или <code>/reply ${chatId} Ваш ответ</code>`;
+            await sendMessage(targetAdmin, notify, { disable_web_page_preview: true });
         } catch (e) {
             console.error('Admin forward error:', e);
         }
+
+        if (secAnalysis.isBotFatherLink) {
+            return sendMessage(chatId, `ℹ️ <b>Обратите внимание:</b> ссылки на <b>@BotFather</b> не требуются для работы бота GradeMaster.\n\n` +
+                `• Для квизов AITU Learn: отправьте <code>/cookie</code>\n` +
+                `• Для дедлайнов Moodle LMS: отправьте <code>/set_lms</code>\n` +
+                `• Для списка калькуляторов: нажмите кнопки в меню ниже или <code>/help</code>\n\n` +
+                `Ваше сообщение также передано разработчику!`, { reply_markup: getMainKeyboard(chatId), disable_web_page_preview: true });
+        }
+
         return sendMessage(chatId, `📨 <b>Ваше сообщение получено и передано разработчику!</b>\n\nДля выбора калькулятора используйте кнопки внизу меню или напишите <code>/help</code>.`, { reply_markup: getMainKeyboard(chatId) });
     }
 
@@ -2957,6 +3061,17 @@ module.exports = async function handler(req, res) {
         const setupParam = query.setup || query.action || (urlObj ? urlObj.searchParams.get('setup') || urlObj.searchParams.get('action') : null);
 
         if (setupParam === '1' || setupParam === 'setWebhook') {
+            const secret = process.env.TELEGRAM_SECRET_TOKEN;
+            if (secret) {
+                const authHeader = req.headers ? (req.headers['authorization'] || req.headers['x-telegram-bot-api-secret-token']) : null;
+                const secretParam = query.secret || (urlObj ? urlObj.searchParams.get('secret') : null);
+                if (authHeader !== `Bearer ${secret}` && authHeader !== secret && secretParam !== secret) {
+                    return res.status(401).json({
+                        ok: false,
+                        error: 'Unauthorized: TELEGRAM_SECRET_TOKEN обязателен для настройки Webhook'
+                    });
+                }
+            }
             if (!getBotToken()) {
                 return res.status(500).json({
                     ok: false,
@@ -3038,6 +3153,8 @@ module.exports.getCookieGuideText = getCookieGuideText;
 module.exports.getLmsSessionKeyboard = getLmsSessionKeyboard;
 module.exports.getLearnSessionKeyboard = getLearnSessionKeyboard;
 module.exports.parseNaturalLanguageAcademicQuery = parseNaturalLanguageAcademicQuery;
+module.exports.analyzeMessageSecurity = analyzeMessageSecurity;
+module.exports.extractTargetIdFromReply = extractTargetIdFromReply;
 module.exports.checkRateLimit = checkRateLimit;
 module.exports.recordRateLimit = recordRateLimit;
 module.exports._userRateLimits = userRateLimits;

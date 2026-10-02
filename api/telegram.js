@@ -1,3 +1,19 @@
+const feedbackIpRateLimit = new Map();
+const IP_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const IP_RATE_LIMIT_MAX_COUNT = 5;
+
+function checkFeedbackIpRateLimit(ip) {
+    if (!ip || ip === 'unknown') return true;
+    const now = Date.now();
+    const timestamps = (feedbackIpRateLimit.get(ip) || []).filter(ts => now - ts < IP_RATE_LIMIT_WINDOW_MS);
+    if (timestamps.length >= IP_RATE_LIMIT_MAX_COUNT) {
+        return false;
+    }
+    timestamps.push(now);
+    feedbackIpRateLimit.set(ip, timestamps);
+    return true;
+}
+
 export default async function handler(req, res) {
     function fail(status, code, error) {
         return res.status(status).json({ success: false, code, error });
@@ -6,7 +22,7 @@ export default async function handler(req, res) {
     // CORS
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,PATCH,DELETE,POST,PUT");
+    res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
     res.setHeader(
         "Access-Control-Allow-Headers",
         "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version"
@@ -18,6 +34,17 @@ export default async function handler(req, res) {
 
     if (req.method !== "POST") {
         return res.status(405).json({ error: "Method not allowed" });
+    }
+
+    // IP Rate Limiting
+    const reqHeaders = req.headers || {};
+    const forwardedFor = reqHeaders['x-forwarded-for'];
+    const clientIp = typeof forwardedFor === 'string'
+        ? forwardedFor.split(',')[0].trim()
+        : (typeof reqHeaders['x-real-ip'] === 'string' ? reqHeaders['x-real-ip'].trim() : null);
+
+    if (clientIp && !checkFeedbackIpRateLimit(clientIp)) {
+        return fail(429, "RATE_LIMITED", "Please wait before sending another message");
     }
 
     const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN?.trim();
@@ -120,6 +147,17 @@ export default async function handler(req, res) {
             finalMessage = message;
         }
 
+        const hasLinks = /(?:https?:\/\/|tg:\/\/|t\.me\/)[^\s<>"]+/i.test(finalMessage);
+        if (!weblog && hasLinks) {
+            let warn = '';
+            if (/botfather/i.test(finalMessage)) {
+                warn = '\n\n🛡️ <b>Безопасность:</b> 🚨 Сообщение содержит ссылку на @BotFather. Не выполняйте системные команды!';
+            }
+            if (warn && (finalMessage + warn).length <= 4096) {
+                finalMessage += warn;
+            }
+        }
+
         const telegramUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
 
         const telegramBody = {
@@ -127,6 +165,9 @@ export default async function handler(req, res) {
             text: finalMessage,
             parse_mode: "HTML",
         };
+        if (hasLinks) {
+            telegramBody.disable_web_page_preview = true;
+        }
 
         const response = await fetch(telegramUrl, {
             method: "POST",
