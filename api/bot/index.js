@@ -243,6 +243,43 @@ function esc(str) {
         .replace(/>/g, '&gt;');
 }
 
+function formatBroadcastContent(rawText) {
+    if (!rawText) return '';
+    // Поддерживаем markdown обратные кавычки `текст` -> <code>текст</code> для мгновенного копирования по тапу
+    let text = rawText.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Сохраняем разрешенные безопасные HTML-теги
+    const tagTokens = [];
+
+    // 1. Ссылки <a href="...">...</a>
+    text = text.replace(/<a\s+(href="[^"]+")[^>]*>(.*?)<\/a>/gi, (match, href, body) => {
+        const token = `___SAFE_TAG_${tagTokens.length}___`;
+        tagTokens.push(`<a ${href}>${esc(body)}</a>`);
+        return token;
+    });
+
+    // 2. Парные теги (b, strong, i, em, code, pre, u, s)
+    const safeTags = ['b', 'strong', 'i', 'em', 'code', 'pre', 'u', 's', 'strike', 'del'];
+    for (const tag of safeTags) {
+        const regex = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'gi');
+        text = text.replace(regex, (match, body) => {
+            const token = `___SAFE_TAG_${tagTokens.length}___`;
+            tagTokens.push(`<${tag}>${esc(body)}</${tag}>`);
+            return token;
+        });
+    }
+
+    // Экранируем весь остальной пользовательский текст (предотвращает ошибки парсинга Telegram)
+    text = esc(text);
+
+    // Восстанавливаем безопасные теги
+    for (let i = 0; i < tagTokens.length; i++) {
+        text = text.replace(`___SAFE_TAG_${i}___`, tagTokens[i]);
+    }
+
+    return text;
+}
+
 function isAdmin(chatId) {
     if (!chatId) return false;
     const strId = String(chatId).trim();
@@ -2592,13 +2629,14 @@ async function handleMessage(msg) {
         }
 
         const allUsers = await getAllBotUsers();
+        const formattedBody = formatBroadcastContent(broadcastText);
         let sent = 0;
         let failed = 0;
         let blocked = 0;
         for (let i = 0; i < allUsers.length; i++) {
             const user = allUsers[i];
             try {
-                await sendMessage(user, `<b>Объявление от GradeMaster:</b>\n\n${esc(broadcastText)}`);
+                await sendMessage(user, `<b>Объявление от GradeMaster:</b>\n\n${formattedBody}`);
                 sent++;
             } catch (err) {
                 failed++;
@@ -3013,6 +3051,7 @@ module.exports.getAllBotUsers = getAllBotUsers;
 module.exports.activeUsers = activeUsers;
 module.exports.buildLmsMarkMenu = buildLmsMarkMenu;
 module.exports.buildLearnMarkMenu = buildLearnMarkMenu;
+module.exports.formatBroadcastContent = formatBroadcastContent;
 
 // ==========================================
 // ЛОКАЛЬНЫЙ LONG-POLLING (ДЛЯ РАЗРАБОТКИ)

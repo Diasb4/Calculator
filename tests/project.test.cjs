@@ -2817,6 +2817,15 @@ test('Bot: Mark All Done and in-place multi-select for LMS and Learn (/done all,
     }
 });
 
+test('Telegram Bot: formatBroadcastContent preserves safe tags and converts markdown backticks to code', () => {
+    const bot = require('../api/bot/index.js');
+    const formatted1 = bot.formatBroadcastContent('Вызовите команду `/cookie` для инструкции');
+    assert.strictEqual(formatted1, 'Вызовите команду <code>/cookie</code> для инструкции');
+
+    const formatted2 = bot.formatBroadcastContent('Вызовите команду <code>/cookie</code> и <b>жирный текст</b> & <неизвестный тег>');
+    assert.strictEqual(formatted2, 'Вызовите команду <code>/cookie</code> и <b>жирный текст</b> &amp; &lt;неизвестный тег&gt;');
+});
+
 
 
 
