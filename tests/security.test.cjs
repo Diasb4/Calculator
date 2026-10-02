@@ -362,3 +362,33 @@ test('Feature: Admin can swipe-reply directly to student notification without ty
         else delete process.env.ADMIN_CHAT_ID;
     }
 });
+
+test('Security: URL credentials and non-standard ports are rejected by isAllowedLmsUrl', () => {
+    assert.strictEqual(lms.isAllowedLmsUrl('https://admin:secret@lms.astanait.edu.kz/calendar/export.php'), false);
+    assert.strictEqual(lms.isAllowedLmsUrl('https://lms.astanait.edu.kz:8443/calendar/export.php'), false);
+    assert.strictEqual(lms.isAllowedLmsUrl('https://lms.astanait.edu.kz:22/calendar/export.php'), false);
+});
+
+test('Security: iCal title and courseName with HTML/XSS injection are safely escaped', () => {
+    const maliciousResult = {
+        ok: true,
+        quizzesCount: 1,
+        activeAcademicEvents: [{
+            id: '123',
+            title: '<script>alert(1)</script> & <b>bold</b>',
+            courseName: 'Hacking <img src=x onerror=alert(2)>',
+            dueDate: new Date(Date.now() + 86400000).toISOString(),
+            diffMinutes: 1440,
+            diffHours: 24,
+            diffDays: 1,
+            link: 'https://lms.astanait.edu.kz/mod/assign/view.php?id=123'
+        }]
+    };
+
+    const formatted = lms.formatLmsDeadlinesMessage(maliciousResult, false, false, 'week');
+    assert.ok(!formatted.includes('<script>'), 'Must not contain raw <script>');
+    assert.ok(formatted.includes('&lt;script&gt;alert(1)&lt;/script&gt;'), 'Must escape script tags');
+    assert.ok(!formatted.includes('<img'), 'Must not contain raw <img');
+    assert.ok(formatted.includes('&lt;img src=x onerror=alert(2)&gt;'), 'Must escape img tags');
+});
+

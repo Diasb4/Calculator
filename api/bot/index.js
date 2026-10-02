@@ -2116,11 +2116,23 @@ async function executeSetLms(chatId, val, isGauharUser) {
     const testRes = await lms.getUpcomingDeadlines(cleanVal);
     if (testRes.ok) {
         await lms.saveUserLmsSession(chatId, testRes.calendarUrl || cleanVal);
+        let sourceHost = 'lms.astanait.edu.kz';
+        try {
+            const targetUrl = testRes.calendarUrl || (cleanVal.startsWith('http') ? cleanVal : null);
+            if (targetUrl) {
+                sourceHost = new URL(targetUrl).hostname.toLowerCase();
+            }
+        } catch {
+            sourceHost = 'lms.astanait.edu.kz';
+        }
+
         const successNote = isGauharUser
             ? `🎉 <b>Гаухар, Moodle LMS успешно подключен!</b> 🧠✨\n` +
+              `🌐 <b>Источник:</b> <code>${sourceHost}</code>\n` +
               `Найдено активных дедлайнов: <b>${testRes.quizzesCount}</b>\n\n` +
               `✅ Сгенерирован вечный токен: куки больше обновлять не нужно! Бот будет присылать напоминания каждое утро в 08:00 и за 1 час до дедлайна лично тебе.\n\n`
             : `🎉 <b>Moodle LMS успешно подключен!</b>\n` +
+              `🌐 <b>Источник:</b> <code>${sourceHost}</code>\n` +
               `Найдено активных дедлайнов: <b>${testRes.quizzesCount}</b>\n\n` +
               `✅ Сгенерирован вечный токен календаря: сессия не истечет через 20 минут. Напоминания включены!\n\n`;
 

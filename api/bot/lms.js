@@ -59,9 +59,20 @@ function isAllowedLmsUrl(rawUrl) {
     if (urlStr.startsWith('webcal://')) {
         urlStr = 'https://' + urlStr.slice(9);
     }
+    if (urlStr.startsWith('http://lms.astanait.edu.kz')) {
+        urlStr = 'https://' + urlStr.slice(7);
+    }
     try {
         const parsed = new URL(urlStr);
         if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+            return false;
+        }
+        // Запрет учетных данных в URL (user:pass@...)
+        if (parsed.username || parsed.password) {
+            return false;
+        }
+        // Запрет нестандартных портов для LMS
+        if (parsed.port && parsed.port !== '443' && parsed.port !== '80') {
             return false;
         }
         const hostname = parsed.hostname.toLowerCase();
@@ -80,6 +91,15 @@ function isAllowedLmsUrl(rawUrl) {
     } catch {
         return false;
     }
+}
+
+function esc(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
 /**
@@ -554,7 +574,8 @@ async function getUpcomingDeadlines(sessionOrUrl, forceRefresh = false) {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) GradeMasterBot/2.0'
             },
-            signal: AbortSignal.timeout(6000)
+            redirect: 'error',
+            signal: AbortSignal.timeout(5000)
         });
 
         if (res.status === 403 || res.status === 401) {
@@ -691,8 +712,8 @@ function formatLmsDeadlinesMessage(result, isGauharUser = false, showCompletedOn
         }
         let compText = staleBanner + `📋 <b>Ваши сданные задания Moodle LMS (${completed.length}):</b>\n\n`;
         for (const item of completed) {
-            compText += `✅ <b>${item.courseName}</b>\n` +
-                        `• <a href="${item.link}">${item.title}</a>\n\n`;
+            compText += `✅ <b>${esc(item.courseName)}</b>\n` +
+                        `• <a href="${item.link}">${esc(item.title)}</a>\n\n`;
         }
         compText += `<i>💡 Эти задания скрыты из списка дедлайнов и утренних напоминаний. Чтобы вернуть задание в активные, выберите его в меню ниже.</i>`;
         return compText;
@@ -785,7 +806,7 @@ function formatLmsDeadlinesMessage(result, isGauharUser = false, showCompletedOn
                 }
 
                 const icon = item.isQuiz ? '📝' : '📌';
-                text += `${icon} <b>${item.courseName}</b> — <a href="${item.link}">${item.title}</a>\n` +
+                text += `${icon} <b>${esc(item.courseName)}</b> — <a href="${item.link}">${esc(item.title)}</a>\n` +
                         `⏰ До <b>${astanaTime}</b> (${badge})\n\n`;
             }
         }
@@ -800,7 +821,7 @@ function formatLmsDeadlinesMessage(result, isGauharUser = false, showCompletedOn
 
     // Режим всего семестра ('all') или просмотр одного курса
     let text = targetCourse
-        ? `🔍 <b>Дедлайны по предмету: ${targetCourse}</b>\n\n`
+        ? `🔍 <b>Дедлайны по предмету: ${esc(targetCourse)}</b>\n\n`
         : (isGauharUser
             ? `📚 <b>Все дедлайны Moodle LMS на семестр для Гаухар:</b> 🧠\n\n`
             : `📚 <b>Все актуальные дедлайны Moodle LMS на семестр:</b>\n\n`);
@@ -828,8 +849,8 @@ function formatLmsDeadlinesMessage(result, isGauharUser = false, showCompletedOn
         }
 
         const icon = item.isQuiz ? '📝' : '📌';
-        text += `${icon} <b>${item.courseName}</b>\n` +
-                `👉 <a href="${item.link}">${item.title}</a>\n` +
+        text += `${icon} <b>${esc(item.courseName)}</b>\n` +
+                `👉 <a href="${item.link}">${esc(item.title)}</a>\n` +
                 `⏰ Дедлайн: <b>${astanaTime}</b> (${badge})\n\n`;
     }
 
@@ -859,14 +880,14 @@ function formatCriticalHourLmsAlert(event, isGauharUser = false) {
     if (isGauharUser) {
         text = `🚨🚨🚨 <b>ГАУХАР! СРОЧНЫЙ ДЕДЛАЙН В LMS: ${minsLeft} МИНУТ!</b> 🚨🚨🚨\n\n` +
             `🧠 <b>Мы знали, что ты забыла! Срочно бросай всё и открывай:</b>\n` +
-            `📚 <b>Предмет:</b> ${event.courseName}\n` +
-            `📌 <b>Задание:</b> <code>${event.title}</code>\n` +
+            `📚 <b>Предмет:</b> ${esc(event.courseName)}\n` +
+            `📌 <b>Задание:</b> <code>${esc(event.title)}</code>\n` +
             `⏰ <b>Срок сдачи:</b> <b>${astanaTime}</b> (ровно через ${minsLeft} мин.!)\n\n` +
             `🚀 <i>Нажми кнопку ниже прямо сейчас, пока портал не закрыл прием работ!</i> 👇`;
     } else {
         text = `🚨🚨🚨 <b>ВНИМАНИЕ! ГОРЯЩИЙ ДЕДЛАЙН В LMS: 1 ЧАС!</b> 🚨🚨🚨\n\n` +
-            `📚 <b>Курс:</b> ${event.courseName}\n` +
-            `📌 <b>Задание:</b> <code>${event.title}</code>\n` +
+            `📚 <b>Курс:</b> ${esc(event.courseName)}\n` +
+            `📌 <b>Задание:</b> <code>${esc(event.title)}</code>\n` +
             `⏰ <b>Окончание приёма:</b> <b>${astanaTime}</b> (осталось всего <b>${minsLeft} мин.</b>)\n\n` +
             `⚡️ Не откладывай на последние 5 минут — сдай работу прямо сейчас!`;
     }
