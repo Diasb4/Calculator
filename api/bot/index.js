@@ -1197,7 +1197,9 @@ function getLearnSessionKeyboard(result, mode = 'week') {
 
 // Вспомогательные функции построения меню отметки сданного
 function buildLmsMarkMenu(result, isGauharUser = false) {
-    const active = (result && result.academicEvents) ? result.academicEvents : [];
+    const active = (result && result.activeAcademicEvents)
+        ? result.activeAcademicEvents
+        : (result?.academicEvents ? result.academicEvents.filter(e => !e.isCompleted) : []);
     if (active.length === 0) {
         const text = isGauharUser
             ? `🎉 <b>Гаухар, все задания Moodle LMS отмечены как сданные!</b> 🧠✨\n\nТы всё сдала (или отметила)! Бот не будет доставать тебя напоминаниями по ним 🔕\n\n<i>(Если нужно вернуть задания обратно в дедлайны — нажми «📦 Показать сданные»)</i>`
@@ -1237,7 +1239,9 @@ function buildLmsMarkMenu(result, isGauharUser = false) {
 }
 
 function buildLearnMarkMenu(result, isGauharUser = false) {
-    const active = (result && result.activeQuizzes) ? result.activeQuizzes : [];
+    const active = (result && result.activeQuizzes)
+        ? result.activeQuizzes
+        : (result?.quizzes ? result.quizzes.filter(q => !q.isPast && !q.isCompleted) : []);
     if (active.length === 0) {
         const text = isGauharUser
             ? `🎉 <b>Гаухар, все квизы AITU Learn отмечены как сданные!</b> 🧠✨\n\nТы всё сдала! Бот не будет доставать тебя напоминаниями по ним 🔕\n\n<i>(Если нужно вернуть квизы обратно — нажми «📦 Показать сданные»)</i>`
@@ -1292,7 +1296,13 @@ async function handleCallbackQuery(cq) {
     const data = cq.data;
     const session = getSession(chatId);
 
-    await answerCallbackQuery(cq.id);
+    // Не гасим уведомление сразу, если обработчик отправляет свой тост (например, "✅ Задание отмечено")
+    const hasCustomToast = data.startsWith('mark_') || data.startsWith('unmark_') ||
+                           data === 'mark_all_lms' || data === 'mark_all_lrn' || data === 'mark_all_everything' ||
+                           data === 'unmark_all_lms' || data === 'unmark_all_lrn';
+    if (!hasCustomToast) {
+        await answerCallbackQuery(cq.id);
+    }
 
     // Админские колбэки
     if (data.startsWith('adm_')) {
@@ -1669,7 +1679,11 @@ async function handleCallbackQuery(cq) {
         const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
         const menu = buildLmsMarkMenu(refreshed, isGauharUser);
         if (messageId) {
-            return editMessageText(chatId, messageId, menu.text, { reply_markup: menu.reply_markup });
+            return editMessageText(chatId, messageId, menu.text, { reply_markup: menu.reply_markup }).catch(err => {
+                if (!err.message?.includes('message is not modified')) {
+                    console.error('editMessageText mark_lms error:', err.message);
+                }
+            });
         }
         return sendMessage(chatId, menu.text, { reply_markup: menu.reply_markup });
     }
@@ -1677,7 +1691,10 @@ async function handleCallbackQuery(cq) {
     // Отметка ВСЕХ заданий LMS как сданных в один клик
     if (data === 'mark_all_lms') {
         const result = await lms.getUpcomingDeadlinesForUser(chatId);
-        const activeIds = (result && result.academicEvents) ? result.academicEvents.map(e => e.id).filter(Boolean) : [];
+        const active = (result && result.activeAcademicEvents)
+            ? result.activeAcademicEvents
+            : (result?.academicEvents ? result.academicEvents.filter(e => !e.isCompleted) : []);
+        const activeIds = active.map(e => e.id).filter(Boolean);
         if (activeIds.length > 0) {
             await lms.markAllLmsEventsCompleted(chatId, activeIds);
             await answerCallbackQuery(cq.id, `🎉 Все задания LMS (${activeIds.length}) отмечены как сданные!`, false);
@@ -1688,7 +1705,11 @@ async function handleCallbackQuery(cq) {
         const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
         const menu = buildLmsMarkMenu(refreshed, isGauharUser);
         if (messageId) {
-            return editMessageText(chatId, messageId, menu.text, { reply_markup: menu.reply_markup });
+            return editMessageText(chatId, messageId, menu.text, { reply_markup: menu.reply_markup }).catch(err => {
+                if (!err.message?.includes('message is not modified')) {
+                    console.error('editMessageText mark_all_lms error:', err.message);
+                }
+            });
         }
         return sendMessage(chatId, menu.text, { reply_markup: menu.reply_markup });
     }
@@ -1784,7 +1805,11 @@ async function handleCallbackQuery(cq) {
         const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
         const menu = buildLearnMarkMenu(refreshed, isGauharUser);
         if (messageId) {
-            return editMessageText(chatId, messageId, menu.text, { reply_markup: menu.reply_markup });
+            return editMessageText(chatId, messageId, menu.text, { reply_markup: menu.reply_markup }).catch(err => {
+                if (!err.message?.includes('message is not modified')) {
+                    console.error('editMessageText mark_lrn error:', err.message);
+                }
+            });
         }
         return sendMessage(chatId, menu.text, { reply_markup: menu.reply_markup });
     }
@@ -1792,7 +1817,10 @@ async function handleCallbackQuery(cq) {
     // Отметка ВСЕХ квизов Learn как сданных в один клик
     if (data === 'mark_all_lrn') {
         const result = await aitu.getUpcomingQuizzesForUser(chatId);
-        const activeIds = (result && result.activeQuizzes) ? result.activeQuizzes.map(q => q.shortId || q.id || q.blockId).filter(Boolean) : [];
+        const active = (result && result.activeQuizzes)
+            ? result.activeQuizzes
+            : (result?.quizzes ? result.quizzes.filter(q => !q.isPast && !q.isCompleted) : []);
+        const activeIds = active.map(q => q.shortId || q.id || q.blockId).filter(Boolean);
         if (activeIds.length > 0) {
             await aitu.markAllQuizzesCompleted(chatId, activeIds);
             await answerCallbackQuery(cq.id, `🎉 Все квизы (${activeIds.length}) отмечены как сданные!`, false);
@@ -1803,7 +1831,11 @@ async function handleCallbackQuery(cq) {
         const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
         const menu = buildLearnMarkMenu(refreshed, isGauharUser);
         if (messageId) {
-            return editMessageText(chatId, messageId, menu.text, { reply_markup: menu.reply_markup });
+            return editMessageText(chatId, messageId, menu.text, { reply_markup: menu.reply_markup }).catch(err => {
+                if (!err.message?.includes('message is not modified')) {
+                    console.error('editMessageText mark_all_lrn error:', err.message);
+                }
+            });
         }
         return sendMessage(chatId, menu.text, { reply_markup: menu.reply_markup });
     }
@@ -1888,12 +1920,18 @@ async function handleCallbackQuery(cq) {
             lms.getUpcomingDeadlinesForUser(chatId),
             aitu.getUpcomingQuizzesForUser(chatId)
         ]);
-        const lmsIds = (lmsRes && lmsRes.academicEvents) ? lmsRes.academicEvents.map(e => e.id).filter(Boolean) : [];
+        const activeLms = (lmsRes && lmsRes.activeAcademicEvents)
+            ? lmsRes.activeAcademicEvents
+            : (lmsRes?.academicEvents ? lmsRes.academicEvents.filter(e => !e.isCompleted) : []);
+        const lmsIds = activeLms.map(e => e.id).filter(Boolean);
         if (lmsIds.length > 0) {
             await lms.markAllLmsEventsCompleted(chatId, lmsIds);
             totalCount += lmsIds.length;
         }
-        const aituIds = (aituRes && aituRes.activeQuizzes) ? aituRes.activeQuizzes.map(q => q.shortId || q.id || q.blockId).filter(Boolean) : [];
+        const activeLearn = (aituRes && aituRes.activeQuizzes)
+            ? aituRes.activeQuizzes
+            : (aituRes?.quizzes ? aituRes.quizzes.filter(q => !q.isPast && !q.isCompleted) : []);
+        const aituIds = activeLearn.map(q => q.shortId || q.id || q.blockId).filter(Boolean);
         if (aituIds.length > 0) {
             await aitu.markAllQuizzesCompleted(chatId, aituIds);
             totalCount += aituIds.length;
@@ -2383,7 +2421,9 @@ async function handleMessage(msg) {
                 });
             } else if (hasLms) {
                 const lmsRes = await lms.getUpcomingDeadlinesForUser(chatId);
-                const activeEvents = (lmsRes && lmsRes.academicEvents) ? lmsRes.academicEvents : [];
+                const activeEvents = (lmsRes && lmsRes.activeAcademicEvents)
+                    ? lmsRes.activeAcademicEvents
+                    : (lmsRes?.academicEvents ? lmsRes.academicEvents.filter(e => !e.isCompleted) : []);
                 if (activeEvents.length === 0) {
                     return sendMessage(chatId, '🎉 У вас нет активных заданий в LMS — все уже сданы!', {
                         reply_markup: getMainKeyboard(chatId)
@@ -2401,7 +2441,9 @@ async function handleMessage(msg) {
                 });
             } else {
                 const aituRes = await aitu.getUpcomingQuizzesForUser(chatId);
-                const active = (aituRes && aituRes.activeQuizzes) ? aituRes.activeQuizzes : [];
+                const active = (aituRes && aituRes.activeQuizzes)
+                    ? aituRes.activeQuizzes
+                    : (aituRes?.quizzes ? aituRes.quizzes.filter(q => !q.isPast && !q.isCompleted) : []);
                 if (active.length === 0) {
                     return sendMessage(chatId, '🎉 У вас нет активных квизов в Learn — все уже сданы!', {
                         reply_markup: getMainKeyboard(chatId)

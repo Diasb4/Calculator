@@ -588,9 +588,13 @@ async function getUpcomingDeadlinesForUser(chatId, forceRefresh = false) {
     if (!res.ok) return res;
 
     const completedSet = await getUserCompletedLmsEvents(chatId);
+    const completedList = Array.from(completedSet);
     if (res.academicEvents) {
         for (const ev of res.academicEvents) {
-            ev.isCompleted = completedSet.has(String(ev.id)) || completedSet.has(String(ev.uid));
+            const evId = String(ev.id || '');
+            const uid = String(ev.uid || '');
+            ev.isCompleted = completedSet.has(evId) || completedSet.has(uid) ||
+                             completedList.some(cId => (evId && evId.startsWith(cId)) || (uid && uid.startsWith(cId)));
         }
         res.activeAcademicEvents = res.academicEvents.filter(e => !e.isCompleted);
         res.completedAcademicEvents = res.academicEvents.filter(e => e.isCompleted);

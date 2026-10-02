@@ -537,8 +537,13 @@ async function getUpcomingQuizzesForUser(chatId, forceRefresh = false) {
 
     if (res && res.ok && res.quizzes) {
         const completedSet = await getUserCompletedQuizzes(chatId);
+        const completedList = Array.from(completedSet);
         for (const q of res.quizzes) {
-            if (completedSet.has(String(q.blockId)) || (q.id && completedSet.has(String(q.id))) || (q.shortId && completedSet.has(String(q.shortId)))) {
+            const bId = String(q.blockId || '');
+            const id = String(q.id || '');
+            const shortId = String(q.shortId || '');
+            if (completedSet.has(bId) || completedSet.has(id) || completedSet.has(shortId) ||
+                completedList.some(cId => (bId && (bId.startsWith(cId) || bId.includes(cId))) || (id && id.startsWith(cId)) || (shortId && shortId.startsWith(cId)))) {
                 q.isCompleted = true;
             }
         }
