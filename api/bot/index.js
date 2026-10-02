@@ -1052,7 +1052,7 @@ async function handleAdminPanel(chatId, messageId = null) {
         ? (storedLms.length > 25 ? `${storedLms.substring(0, 10)}...${storedLms.slice(-6)}` : 'Активна')
         : 'Не настроена';
 
-    const quizLimit = aitu.MAX_SUBSCRIBERS_LIMIT || 200;
+    const quizLimit = aitu.MAX_SUBSCRIBERS_LIMIT || 70;
     const lmsLimit = lms.MAX_SUBSCRIBERS_LIMIT || 200;
     let allBotUsersCount = activeUsers.size;
     try {
