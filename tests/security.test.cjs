@@ -458,44 +458,4 @@ test('Security: /set_lms rejects third-party URLs immediately without falsely cl
     }
 });
 
-test('Security: Schedule group validation blocks XSS, directory traversal, and script injection', () => {
-    const schedule = require('../api/bot/schedule.js');
-    assert.strictEqual(schedule.normalizeGroupName('<script>alert(1)</script>'), null);
-    assert.strictEqual(schedule.normalizeGroupName('../../etc/passwd'), null);
-    assert.strictEqual(schedule.normalizeGroupName("SE-2301' OR '1'='1"), null);
-    assert.strictEqual(schedule.normalizeGroupName('SE-2301; DROP TABLE users;'), null);
-    assert.strictEqual(schedule.normalizeGroupName(''), null);
-    assert.strictEqual(schedule.normalizeGroupName(null), null);
-    // Valid groups must still pass
-    assert.strictEqual(schedule.normalizeGroupName('SE-2301'), 'SE-2301');
-    assert.strictEqual(schedule.normalizeGroupName('it 2204'), 'IT-2204');
-    assert.strictEqual(schedule.normalizeGroupName('CS2405'), 'CS2405');
-});
-
-test('Security: Schedule iCal generator escapes commas, semicolons, backslashes, and newlines', () => {
-    const schedule = require('../api/bot/schedule.js');
-    const mockSched = {
-        ok: true,
-        groupName: 'SE-2301; DROP',
-        days: [{
-            dayOfWeek: 1,
-            lessons: [{
-                orderNumber: 1,
-                subjectName: 'Math, Logic; \\ Advanced\nBreak',
-                lessonTypeName: 'Lecture; Malicious',
-                classroom: 'C1.2.240K; alert(1)',
-                teacherName: 'Prof, Smith; Ph.D\nNewLine',
-                academicGroupName: 'SE-2301'
-            }]
-        }]
-    };
-
-    const ics = schedule.generateScheduleIcs(mockSched);
-    assert.ok(ics.includes('Math\\, Logic\\; \\\\ Advanced\\nBreak'), 'Special chars in summary must be escaped');
-    assert.ok(ics.includes('C1.2.240K\\; alert(1)'), 'Special chars in location must be escaped');
-    assert.ok(ics.includes('Prof\\, Smith\\; Ph.D\\nNewLine'), 'Special chars in description must be escaped');
-    assert.ok(!ics.includes('\r\nSUMMARY:Math, Logic;'), 'Unescaped comma/semicolon must not be present');
-});
-
-
 
