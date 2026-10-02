@@ -1161,6 +1161,9 @@ async function handleAdminPanel(chatId, messageId = null) {
                 { text: '🔄 Обновить Webhook', callback_data: 'adm_setwebhook' }
             ],
             [
+                { text: '🧪 Тест My DU WebApp', web_app: { url: `${WEBAPP_URL}/du_auth.html` } }
+            ],
+            [
                 { text: '🏠 Главное меню', callback_data: 'adm_home' }
             ]
         ]
@@ -2274,9 +2277,36 @@ async function executeSetLearnCookie(chatId, cookieVal, isGauharUser) {
 // ==========================================
 
 async function handleMessage(msg) {
-    if (!msg || !msg.text) return;
+    if (!msg) return;
 
-    const chatId = msg.chat.id;
+    const chatId = msg.chat ? msg.chat.id : null;
+    if (!chatId) return;
+
+    // Обработка данных из тестового Telegram WebApp (sendData)
+    if (msg.web_app_data && msg.web_app_data.data) {
+        try {
+            const appData = JSON.parse(msg.web_app_data.data);
+            if (appData.action === 'du_auth_test' && appData.code) {
+                await sendMessage(chatId, '⏳ <i>[Dev WebApp] Получен код авторизации My DU, произвожу обмен...</i>');
+                const loginRes = await schedule.loginWithOAuthCode(chatId, appData.code);
+                if (loginRes.ok) {
+                    const schedRes = await schedule.getScheduleForUser(chatId);
+                    const schedMsg = schedule.formatScheduleMessage(schedRes, 'today', { isGauhar: false });
+                    return sendMessage(chatId, '🎉 <b>[Dev WebApp] My DU успешно авторизован!</b>\n\n' + schedMsg, {
+                        reply_markup: getScheduleKeyboard('today'),
+                        disable_web_page_preview: true
+                    });
+                } else {
+                    return sendMessage(chatId, `⚠️ <b>[Dev WebApp] Ошибка авторизации:</b> ${esc(loginRes.error)}`);
+                }
+            }
+        } catch (e) {
+            console.error('Error parsing web_app_data:', e);
+        }
+    }
+
+    if (!msg.text) return;
+
     const text = msg.text.trim();
     const userName = msg.from.username ? `@${msg.from.username}` : `${msg.from.first_name || ''} ${msg.from.last_name || ''}`.trim();
     recordBotUser(chatId).catch(() => {});
@@ -2350,12 +2380,19 @@ async function handleMessage(msg) {
         }
     }
 
-    // 0.3. Прямой токен My DU (access_token / refresh_token из куки браузера или eyJ...)
-    const isJwtToken = /^(?:(?:access_token|refresh_token)=)?eyJ[a-zA-Z0-9_-]{20,}/.test(text.trim());
-    if (isJwtToken) {
+    // 0.3. Прямой токен My DU (access_token / refresh_token из куки браузера, заголовка Cookie, cURL или eyJ...)
+    let directToken = null;
+    const cookieHeaderMatch = text.match(/(?:(?:refresh_token|access_token)=)(eyJ[a-zA-Z0-9._-]+)/i);
+    if (cookieHeaderMatch) {
+        directToken = cookieHeaderMatch[1];
+    } else if (/^(?:(?:access_token|refresh_token)=)?eyJ[a-zA-Z0-9._-]{20,}/.test(text.trim())) {
+        directToken = text.trim();
+    }
+
+    if (directToken) {
         clearSession(chatId);
         await sendMessage(chatId, '⏳ <i>Подключаю токен My DU и загружаю ваше расписание...</i>');
-        const loginRes = await schedule.loginWithToken(chatId, text.trim());
+        const loginRes = await schedule.loginWithToken(chatId, directToken);
         if (loginRes.ok) {
             const schedRes = await schedule.getScheduleForUser(chatId);
             const schedMsg = schedule.formatScheduleMessage(schedRes, 'today', { isGauhar: isGauharUser });
@@ -2904,6 +2941,24 @@ async function handleMessage(msg) {
             return sendMessage(chatId, 'Команда не найдена. Напишите <code>/help</code> для просмотра доступных функций.', { reply_markup: getMainKeyboard(chatId) });
         }
         return handleAdminPanel(chatId);
+    }
+
+    // 3.0. /test_du_login или /du_test (ТЕСТОВЫЙ WEBAPP АВТОРИЗАЦИИ MY DU — ТОЛЬКО ДЛЯ АДМИНА)
+    if (text === '/test_du_login' || text === '/du_test' || text === '/du_auth') {
+        if (!isAdmin(chatId)) {
+            return sendMessage(chatId, 'Команда не найдена. Напишите <code>/help</code> для просмотра доступных функций.', { reply_markup: getMainKeyboard(chatId) });
+        }
+        return sendMessage(chatId, '🧪 <b>My DU WebApp Connector (Developer / Test Mode):</b>\n\n' +
+            '🔒 Данный шлюз открыт <b>только вам</b> для тестирования авторизации и расписания My DU и полностью скрыт от обычных пользователей.\n\n' +
+            'Нажмите кнопку ниже, чтобы открыть тестовый WebApp:', {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '🚀 Открыть My DU WebApp', web_app: { url: `${WEBAPP_URL}/du_auth.html` } }
+                    ]
+                ]
+            }
+        });
     }
 
     // 3.1. /stats (ТОЛЬКО ДЛЯ АДМИНА)

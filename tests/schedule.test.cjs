@@ -527,3 +527,150 @@ test('Schedule: Cron processUserSchedule sends morning schedule for enrolled gro
     }
 });
 
+test('Schedule: parseScheduleData correctly parses student/me/search response format', () => {
+    const studentMeResponse = {
+        studyYear: 2026,
+        term: 1,
+        weekNumber: 4,
+        slots: [
+            {
+                weekDay: { id: 1, name: 'Понедельник' },
+                items: [
+                    {
+                        uid: 8501,
+                        classTime: { id: 5, shiftNumber: 1, orderNumber: 5, title: '12:00–12:50' },
+                        academicGroupName: 'PM43-EN-L134',
+                        subjectName: 'Управление проектами',
+                        lessonType: 'Лекции',
+                        building: 'Главный корпус',
+                        classroom: 'C1.2.123',
+                        teacherName: 'Ибадильдин Н.А.',
+                        online: false
+                    },
+                    {
+                        uid: null,
+                        classTime: { id: 4, shiftNumber: 1, orderNumber: 4, title: '11:00–11:50' },
+                        subjectName: null // empty window
+                    }
+                ]
+            },
+            {
+                weekDay: { id: 5, name: 'Пятница' },
+                items: [
+                    {
+                        uid: 8502,
+                        classTime: { id: 9, shiftNumber: 2, orderNumber: 4, title: '17:00–17:50' },
+                        academicGroupName: 'CN52-EN-P353',
+                        subjectName: 'Компьютерные сети',
+                        lessonType: 'Практические занятия',
+                        building: 'Главный корпус',
+                        classroom: 'C1.2.231K',
+                        teacherName: 'Сағымбай А.Б.',
+                        online: false
+                    }
+                ]
+            }
+        ]
+    };
+
+    const parsed = schedule.parseScheduleData(studentMeResponse);
+    assert.strictEqual(parsed.ok, true);
+    assert.strictEqual(parsed.weekNumber, 4);
+    assert.strictEqual(parsed.studyYear, 2026);
+
+    const monday = parsed.days.find(d => d.dayOfWeek === 1);
+    assert.ok(monday);
+    assert.strictEqual(monday.lessons.length, 1); // empty slot was filtered out
+    assert.strictEqual(monday.lessons[0].subjectName, 'Управление проектами');
+    assert.strictEqual(monday.lessons[0].time, '12:00–12:50');
+    assert.strictEqual(monday.lessons[0].startTime, '12:00');
+    assert.strictEqual(monday.lessons[0].endTime, '12:50');
+    assert.strictEqual(monday.lessons[0].academicGroupName, 'PM43-EN-L134');
+    assert.strictEqual(monday.lessons[0].classroom, 'Главный корпус.C1.2.123');
+
+    const friday = parsed.days.find(d => d.dayOfWeek === 5);
+    assert.ok(friday);
+    assert.strictEqual(friday.lessons.length, 1);
+    assert.strictEqual(friday.lessons[0].subjectName, 'Компьютерные сети');
+});
+
+test('Schedule: /test_du_login is strictly isolated to admin and invisible to regular students', async () => {
+    const originalFetch = global.fetch;
+    const origBotToken = process.env.TELEGRAM_BOT_TOKEN;
+    process.env.TELEGRAM_BOT_TOKEN = 'mock_test_token';
+    const sentMessages = [];
+
+    global.fetch = async (url, opts) => {
+        if (typeof url === 'string' && url.includes('/sendMessage')) {
+            const body = JSON.parse(opts.body);
+            sentMessages.push(body);
+            return {
+                ok: true,
+                json: async () => ({ ok: true, result: { message_id: 1234 } })
+            };
+        }
+        return { ok: true, json: async () => ({}) };
+    };
+
+    try {
+        const regularStudentChatId = 99998888;
+        const adminChatId = 1365231049; // Gauhar or test admin
+
+        const mockRes = {
+            setHeader: () => {},
+            status: () => ({ json: () => {} })
+        };
+
+        // 1. Regular student sends /test_du_login
+        await bot({
+            method: 'POST',
+            body: {
+                message: {
+                    chat: { id: regularStudentChatId },
+                    from: { id: regularStudentChatId, username: 'regular_user' },
+                    text: '/test_du_login'
+                }
+            },
+            headers: {}
+        }, mockRes);
+
+        const studentReply = sentMessages.find(m => m.chat_id === regularStudentChatId);
+        assert.ok(studentReply);
+        assert.match(studentReply.text, /Команда не найдена/);
+        assert.strictEqual(Boolean(studentReply.reply_markup?.inline_keyboard?.some(row => row.some(b => b.web_app))), false, 'Regular student must NOT receive WebApp button');
+
+        // 2. Admin sends /test_du_login
+        const origAdminEnv = process.env.ADMIN_CHAT_ID;
+        process.env.ADMIN_CHAT_ID = String(adminChatId);
+
+        await bot({
+            method: 'POST',
+            body: {
+                message: {
+                    chat: { id: adminChatId },
+                    from: { id: adminChatId, username: 'admin_user' },
+                    text: '/test_du_login'
+                }
+            },
+            headers: {}
+        }, mockRes);
+
+        const adminReply = sentMessages.find(m => m.chat_id === adminChatId);
+        assert.ok(adminReply);
+        assert.match(adminReply.text, /My DU WebApp Connector/);
+        const webAppBtn = adminReply.reply_markup?.inline_keyboard?.flat().find(b => b.web_app);
+        assert.ok(webAppBtn, 'Admin must receive web_app button');
+        assert.match(webAppBtn.web_app.url, /du_auth\.html/);
+
+        if (origAdminEnv !== undefined) process.env.ADMIN_CHAT_ID = origAdminEnv;
+        else delete process.env.ADMIN_CHAT_ID;
+
+    } finally {
+        global.fetch = originalFetch;
+        if (origBotToken !== undefined) process.env.TELEGRAM_BOT_TOKEN = origBotToken;
+        else delete process.env.TELEGRAM_BOT_TOKEN;
+    }
+});
+
+
+

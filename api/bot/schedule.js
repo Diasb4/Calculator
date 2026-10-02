@@ -262,7 +262,10 @@ async function loginWithOAuthCode(chatId, code) {
             provider: 'microsoft',
             token: code.trim(),
             email: null,
-            device_info: { platform: 'web', device_id: null },
+            device_info: {
+                platform: 'android',
+                device_id: 'a1b2c3d4-e5f6-7890-abcd-' + String(chatId || '0').slice(-12).padStart(12, '0')
+            },
             avatar_url: null,
             first_name: null,
             last_name: null
@@ -271,8 +274,9 @@ async function loginWithOAuthCode(chatId, code) {
         const res = await fetch(`${MY_DU_BASE_URL}/api/auth/external-login`, {
             method: 'POST',
             headers: {
+                'Accept': 'application/json, text/plain, */*',
                 'Content-Type': 'application/json',
-                'User-Agent': 'GradeMasterBot/2.0'
+                'User-Agent': 'okhttp/4.9.2 (Linux; Android 14; MyDU/1.0)'
             },
             body: JSON.stringify(payload)
         });
@@ -426,6 +430,43 @@ async function getValidTokenForUser(chatId) {
     return accessToken || null;
 }
 
+let cachedAcademicPeriod = null;
+let cachedAcademicPeriodTime = 0;
+
+/**
+ * Получить текущий академический год, семестр и неделю
+ */
+async function getAcademicPeriod(token) {
+    if (cachedAcademicPeriod && (Date.now() - cachedAcademicPeriodTime < 3600000)) {
+        return cachedAcademicPeriod;
+    }
+    let studyYear = 2026;
+    let term = 1;
+    let weekNumber = 4;
+    try {
+        if (token) {
+            const headers = {
+                'Authorization': `Bearer ${token}`,
+                'User-Agent': 'okhttp/4.9.2 (Linux; Android 14; MyDU/1.0)'
+            };
+            const ytRes = await fetch(`${MY_DU_BASE_URL}/api/edu-process/currentYearTerm`, { headers });
+            if (ytRes.ok) {
+                const yt = await ytRes.json();
+                if (yt.currentStudyYear) studyYear = yt.currentStudyYear;
+                if (yt.currentStudyTerm) term = yt.currentStudyTerm;
+            }
+            const cwRes = await fetch(`${MY_DU_BASE_URL}/api/edu-process/classSchedule/studentCurrentWeek?studyYear=${studyYear}&term=${term}`, { headers });
+            if (cwRes.ok) {
+                const cw = await cwRes.json();
+                if (cw.CurrentWeek) weekNumber = cw.CurrentWeek;
+            }
+            cachedAcademicPeriod = { studyYear, term, weekNumber };
+            cachedAcademicPeriodTime = Date.now();
+        }
+    } catch {}
+    return cachedAcademicPeriod || { studyYear, term, weekNumber };
+}
+
 /**
  * Парсер слотов расписания из API ответа My DU
  */
@@ -438,8 +479,8 @@ function parseScheduleData(data) {
         const title = t.title || (t.startTime && t.endTime ? `${t.startTime} - ${t.endTime}` : '');
         let startTime = t.startTime || '';
         let endTime = t.endTime || '';
-        if (!startTime && title.includes('-')) {
-            const parts = title.split('-').map(s => s.trim());
+        if (!startTime && (title.includes('-') || title.includes('–'))) {
+            const parts = title.split(/[-–]/).map(s => s.trim());
             startTime = parts[0] || '';
             endTime = parts[1] || '';
         }
@@ -469,25 +510,40 @@ function parseScheduleData(data) {
 
     const slots = data.slots || [];
     for (const slot of slots) {
-        const timeObj = timesMap.get(String(slot.classTimeId)) || {};
+        const slotDayNum = Number(slot.weekDay?.id || slot.weekDayId);
         const items = slot.items || [];
 
         for (const item of items) {
-            const dayNum = Number(item.weekDayId || slot.weekDayId);
+            // Пропускаем пустые "окна"
+            const subject = (item.subjectName || item.name || '').trim();
+            if (!subject) continue;
+
+            const dayNum = Number(item.weekDayId || item.weekDay?.id || slotDayNum);
             const bucket = dayBuckets.get(dayNum);
             if (!bucket) continue;
+
+            // Время пары из объекта classTime или timesMap
+            const ct = item.classTime || timesMap.get(String(item.classTimeId || slot.classTimeId)) || {};
+            const title = ct.title || (ct.startTime && ct.endTime ? `${ct.startTime} - ${ct.endTime}` : '09:00 - 09:50');
+            let startTime = ct.startTime || '';
+            let endTime = ct.endTime || '';
+            if (!startTime && (title.includes('-') || title.includes('–'))) {
+                const parts = title.split(/[-–]/).map(s => s.trim());
+                startTime = parts[0] || '';
+                endTime = parts[1] || '';
+            }
 
             const building = item.building || '';
             const classroom = item.classroom || '';
             const roomFormatted = [building, classroom].filter(Boolean).join('.');
 
             const lesson = {
-                id: item.id || slot.id,
-                time: timeObj.title || '09:00 - 09:50',
-                startTime: timeObj.startTime || '09:00',
-                endTime: timeObj.endTime || '09:50',
-                orderNumber: timeObj.orderNumber || 1,
-                subjectName: item.subjectName || item.name || 'Занятие',
+                id: item.uid || item.id || slot.id,
+                time: title,
+                startTime: startTime || '09:00',
+                endTime: endTime || '09:50',
+                orderNumber: ct.orderNumber || 1,
+                subjectName: subject,
                 lessonTypeName: item.lessonTypeName || item.lessonType || '',
                 classroom: roomFormatted || 'Аудитория уточняется',
                 building,
@@ -542,7 +598,6 @@ async function getScheduleForUser(chatId, options = {}) {
 
     // Если токена нет вовсе (пользователь еще не передал и нет глобального)
     if (!token) {
-        // Возвращаем graceful-ответ с запросом токена или группы
         return {
             ok: false,
             requiresAuth: true,
@@ -552,38 +607,72 @@ async function getScheduleForUser(chatId, options = {}) {
     }
 
     try {
-        const isPersonal = !groupName && Boolean(token);
-        const endpoint = isPersonal
-            ? `${MY_DU_BASE_URL}/api/edu-process/classSchedule/student/me/search`
-            : `${MY_DU_BASE_URL}/api/edu-process/classSchedule/search`;
-        let filters = [];
+        const period = await getAcademicPeriod(token);
+        const targetWeek = Number(options.weekNumber || period.weekNumber || 4);
 
-        if (groupName) {
-            filters.push({ id: 'groupId', value: groupName });
-        }
-        if (options.weekNumber) {
-            filters.push({ id: 'weekNumber', value: Number(options.weekNumber) });
+        // Для авторизованных студентов используем персональный эндпоинт student/me/search
+        let res = null;
+        let usedPersonalEndpoint = true;
+
+        if (groupName && !token) {
+            usedPersonalEndpoint = false;
         }
 
-        const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
-                'Cookie': `access_token=${token}`,
-                'User-Agent': 'GradeMasterBot/2.0'
-            },
-            body: JSON.stringify({
-                filters,
-                sorting: [],
-                start: 0,
-                size: 100
-            })
-        });
+        if (usedPersonalEndpoint) {
+            res = await fetch(`${MY_DU_BASE_URL}/api/edu-process/classSchedule/student/me/search`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'Cookie': `access_token=${token}`,
+                    'User-Agent': 'okhttp/4.9.2 (Linux; Android 14; MyDU/1.0)'
+                },
+                body: JSON.stringify({
+                    filters: [
+                        { id: 'studyYear', value: period.studyYear },
+                        { id: 'term', value: period.term },
+                        { id: 'weekNumber', value: targetWeek }
+                    ]
+                })
+            });
+        }
+
+        // Если личный запрос не прошел или требовался глобальный поиск группы
+        if (!res || !res.ok) {
+            if (res && res.status === 401) {
+                return { ok: false, sessionExpired: true, error: 'Сессия My DU истекла' };
+            }
+
+            const searchFilters = [];
+            if (groupName) searchFilters.push({ id: 'groupId', value: groupName });
+            if (targetWeek) searchFilters.push({ id: 'weekNumber', value: targetWeek });
+
+            res = await fetch(`${MY_DU_BASE_URL}/api/edu-process/classSchedule/search`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'Cookie': `access_token=${token}`,
+                    'User-Agent': 'okhttp/4.9.2 (Linux; Android 14; MyDU/1.0)'
+                },
+                body: JSON.stringify({
+                    filters: searchFilters,
+                    sorting: [],
+                    start: 0,
+                    size: 100
+                })
+            });
+        }
 
         if (!res.ok) {
             if (res.status === 401) {
                 return { ok: false, sessionExpired: true, error: 'Сессия My DU истекла' };
+            }
+            if (res.status === 403) {
+                return {
+                    ok: false,
+                    error: 'Доступ ограничен: университетский портал My DU разрешает студентам просмотр расписания только своих зарегистрированных дисциплин.'
+                };
             }
             throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         }
