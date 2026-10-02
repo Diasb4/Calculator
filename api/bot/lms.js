@@ -225,10 +225,12 @@ async function deleteUserLmsSession(chatId) {
 
     lmsUserSessionsMemory.delete(strId);
     lmsSubscribersMemory.delete(strId);
+    lmsCompletedEventsMemory.delete(strId);
 
     try {
         if (typeof statsEngine.kvCommand === 'function') {
             await statsEngine.kvCommand(['DEL', `gm:user:${strId}:lms_session`]);
+            await statsEngine.kvCommand(['DEL', `gm:user:${strId}:lms_completed`]);
             await statsEngine.kvCommand(['SREM', 'gm:lms_subscribers', strId]);
         }
     } catch (err) {

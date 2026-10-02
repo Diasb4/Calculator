@@ -358,10 +358,12 @@ async function deleteUserSession(chatId) {
 
     userSessionsMemory.delete(strId);
     quizSubscribersMemory.delete(strId);
+    quizCompletedMemory.delete(strId);
 
     try {
         if (typeof statsEngine.kvCommand === 'function') {
             await statsEngine.kvCommand(['DEL', `gm:user:${strId}:session`]);
+            await statsEngine.kvCommand(['DEL', `gm:user:${strId}:completed`]);
             await statsEngine.kvCommand(['SREM', 'gm:quiz_subscribers', strId]);
         }
     } catch (err) {
