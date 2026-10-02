@@ -5,6 +5,7 @@
 
 const aitu = require('./aitu.js');
 const lms = require('./lms.js');
+const schedule = require('./schedule.js');
 const statsEngine = require('../stats/engine.js');
 function getBotToken() {
     return (process.env.TELEGRAM_BOT_TOKEN || '').trim();
@@ -340,24 +341,45 @@ function getMainKeyboard(chatId) {
 
     if (isUserAdmin) {
         keyboard.unshift(
-            [{ text: 'Панель Администратора' }, { text: '📝 Квизы AITU' }, { text: '📚 Дедлайны LMS' }]
+            [{ text: 'Панель Администратора' }, { text: '📝 Квизы AITU' }, { text: '📚 Дедлайны LMS' }],
+            [{ text: '📅 Расписание' }]
         );
     } else {
         const strId = String(chatId);
         const hasAitu = Boolean(chatId && aitu._userSessionsMemory && aitu._userSessionsMemory.has(strId));
         const hasLms = Boolean(chatId && lms._lmsUserSessionsMemory && lms._lmsUserSessionsMemory.has(strId));
-        if (hasAitu && hasLms) {
-            keyboard.unshift([{ text: '📝 Мои квизы AITU' }, { text: '📚 Дедлайны LMS' }]);
-        } else if (hasAitu) {
-            keyboard.unshift([{ text: '📝 Мои квизы AITU' }]);
-        } else if (hasLms) {
-            keyboard.unshift([{ text: '📚 Дедлайны LMS' }]);
+        const hasSched = Boolean(chatId && schedule._scheduleUserSessionsMemory && schedule._scheduleUserSessionsMemory.has(strId));
+        const topRow = [];
+        if (hasAitu) topRow.push({ text: '📝 Мои квизы AITU' });
+        if (hasLms) topRow.push({ text: '📚 Дедлайны LMS' });
+        if (hasSched) topRow.push({ text: '📅 Расписание' });
+
+        if (topRow.length > 0) {
+            keyboard.unshift(topRow);
+        } else {
+            keyboard.unshift([{ text: '📅 Расписание' }]);
         }
     }
 
     return {
         keyboard,
         resize_keyboard: true
+    };
+}
+
+function getScheduleKeyboard(mode = 'today') {
+    return {
+        inline_keyboard: [
+            [
+                { text: mode === 'today' ? '• Сегодня •' : '📅 Сегодня', callback_data: 'sched_today' },
+                { text: mode === 'tomorrow' ? '• Завтра •' : '🌅 Завтра', callback_data: 'sched_tomorrow' },
+                { text: mode === 'week' ? '• Неделя •' : '🗓 Неделя', callback_data: 'sched_week' }
+            ],
+            [
+                { text: '👥 Сменить группу', callback_data: 'sched_group_prompt' },
+                { text: '📥 Календарь iCal (.ics)', callback_data: 'sched_ical' }
+            ]
+        ]
     };
 }
 
@@ -1552,6 +1574,55 @@ async function handleCallbackQuery(cq) {
         });
     }
 
+    if (data === 'sched_today') {
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const schedRes = await schedule.getScheduleForUser(chatId);
+        const msgText = schedule.formatScheduleMessage(schedRes, 'today', { isGauhar: isGauharUser });
+        if (messageId) {
+            return editMessageText(chatId, messageId, msgText, { reply_markup: getScheduleKeyboard('today'), disable_web_page_preview: true });
+        }
+        return sendMessage(chatId, msgText, { reply_markup: getScheduleKeyboard('today'), disable_web_page_preview: true });
+    }
+
+    if (data === 'sched_tomorrow') {
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const schedRes = await schedule.getScheduleForUser(chatId);
+        const msgText = schedule.formatScheduleMessage(schedRes, 'tomorrow', { isGauhar: isGauharUser });
+        if (messageId) {
+            return editMessageText(chatId, messageId, msgText, { reply_markup: getScheduleKeyboard('tomorrow'), disable_web_page_preview: true });
+        }
+        return sendMessage(chatId, msgText, { reply_markup: getScheduleKeyboard('tomorrow'), disable_web_page_preview: true });
+    }
+
+    if (data === 'sched_week') {
+        const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+        const schedRes = await schedule.getScheduleForUser(chatId);
+        const msgText = schedule.formatScheduleMessage(schedRes, 'week', { isGauhar: isGauharUser });
+        if (messageId) {
+            return editMessageText(chatId, messageId, msgText, { reply_markup: getScheduleKeyboard('week'), disable_web_page_preview: true });
+        }
+        return sendMessage(chatId, msgText, { reply_markup: getScheduleKeyboard('week'), disable_web_page_preview: true });
+    }
+
+    if (data === 'sched_group_prompt') {
+        const session = getSession(chatId);
+        session.step = 'schedule_group_input';
+        return sendMessage(chatId, '👥 <b>Смена академической группы:</b>\n\nНапишите название вашей группы (например: <code>SE-2301</code> или <code>IT-2204</code>):', {
+            reply_markup: getCancelKeyboard()
+        });
+    }
+
+    if (data === 'sched_ical') {
+        const schedRes = await schedule.getScheduleForUser(chatId);
+        const ics = schedule.generateScheduleIcs(schedRes);
+        if (!ics) {
+            return sendMessage(chatId, '⚠️ Не удалось сгенерировать iCal календарь (нет данных о парах).');
+        }
+        return sendMessage(chatId, `📅 <b>Календарь iCal (.ics) для группы ${schedRes.groupName || 'AITU'}:</b>\n\nВы можете сохранить текст ниже в файл <code>schedule.ics</code> для импорта в Apple/Google Calendar:\n\n<pre>${esc(ics.slice(0, 1500))}</pre>`, {
+            reply_markup: getScheduleKeyboard('today')
+        });
+    }
+
     if (data === 'user_quizzes_refresh') {
         const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
         const refreshText = isGauharUser
@@ -2243,6 +2314,63 @@ async function handleMessage(msg) {
         return executeSetLearnCookie(chatId, autoLearn, isGauharUser);
     }
 
+    // 0.2. Автоматическое обнаружение ссылки авторизации My DU или кода OAuth (например, https://my-du.astanait.edu.kz/login?code=... или 1.ATwA...)
+    let duCode = null;
+    const autoDuCodeMatch = text.match(/https?:\/\/my-du\.astanait\.edu\.kz\/login\?[^#\s]*code=([^&\s#]+)/i);
+    if (autoDuCodeMatch) {
+        duCode = autoDuCodeMatch[1];
+    } else if (/^\/(?:set_schedule|du|mydu)\s+([^\s]+)/i.test(text)) {
+        const m = text.match(/^\/(?:set_schedule|du|mydu)\s+([^\s]+)/i);
+        if (m[1].includes('code=')) {
+            const cm = m[1].match(/code=([^&\s#]+)/);
+            duCode = cm ? cm[1] : m[1];
+        } else {
+            duCode = m[1];
+        }
+    } else if (/^[0-9]\.ATwA[A-Za-z0-9._-]{20,}/.test(text.trim())) {
+        duCode = text.trim();
+    }
+
+    if (duCode) {
+        clearSession(chatId);
+        await sendMessage(chatId, '⏳ <i>Подключаю авторизацию My DU и загружаю ваше расписание...</i>');
+        const loginRes = await schedule.loginWithOAuthCode(chatId, duCode);
+        if (loginRes.ok) {
+            const schedRes = await schedule.getScheduleForUser(chatId);
+            const schedMsg = schedule.formatScheduleMessage(schedRes, 'today', { isGauhar: isGauharUser });
+            const replyText = '🎉 <b>Авторизация My DU успешно подключена!</b>\n\n' + schedMsg;
+            return sendMessage(chatId, replyText, {
+                reply_markup: getScheduleKeyboard('today'),
+                disable_web_page_preview: true
+            });
+        } else {
+            return sendMessage(chatId, `⚠️ <b>Не удалось авторизоваться:</b> ${esc(loginRes.error)}\n\nУбедитесь, что ссылка свежая (код действует 5-10 минут) или укажите вашу группу напрямую через <code>/set_group ВАША_ГРУППА</code>.`, {
+                reply_markup: getMainKeyboard(chatId)
+            });
+        }
+    }
+
+    // 0.3. Прямой токен My DU (access_token / refresh_token из куки браузера или eyJ...)
+    const isJwtToken = /^(?:(?:access_token|refresh_token)=)?eyJ[a-zA-Z0-9_-]{20,}/.test(text.trim());
+    if (isJwtToken) {
+        clearSession(chatId);
+        await sendMessage(chatId, '⏳ <i>Подключаю токен My DU и загружаю ваше расписание...</i>');
+        const loginRes = await schedule.loginWithToken(chatId, text.trim());
+        if (loginRes.ok) {
+            const schedRes = await schedule.getScheduleForUser(chatId);
+            const schedMsg = schedule.formatScheduleMessage(schedRes, 'today', { isGauhar: isGauharUser });
+            const replyText = '🎉 <b>Токен My DU успешно сохранён!</b>\n\n' + schedMsg;
+            return sendMessage(chatId, replyText, {
+                reply_markup: getScheduleKeyboard('today'),
+                disable_web_page_preview: true
+            });
+        } else {
+            return sendMessage(chatId, `⚠️ <b>Не удалось подключить токен:</b> ${esc(loginRes.error)}`, {
+                reply_markup: getMainKeyboard(chatId)
+            });
+        }
+    }
+
     // Обработка кнопки "Отмена / Главное меню" и любых вариантов отмены
     const isCancelText =
         text === 'Отмена / Главное меню' ||
@@ -2527,6 +2655,75 @@ async function handleMessage(msg) {
             ? '🚪 <b>Гаухар, напоминания LMS отключены.</b>\nАвтоматические сигналы по заданиям остановлены. Не забудь сдать лабы! 😅'
             : '🚪 <b>Сессия Moodle LMS отключена.</b>\nАвтоматические напоминания о дедлайнах заданий остановлены.';
         return sendMessage(chatId, logoutNote, {
+            reply_markup: getMainKeyboard(chatId)
+        });
+    }
+
+    // 1.9.1. Расписание пар My DU (/schedule, /today, /пары, /расписание, '📅 Расписание')
+    if (text === '📅 Расписание' || text === 'Расписание' || text === '/schedule' || text === '/today' || text === '/пары' || text === '/расписание') {
+        const schedRes = await schedule.getScheduleForUser(chatId);
+        if (!schedRes.ok && schedRes.notConfigured) {
+            session.step = 'schedule_group_input';
+            return sendMessage(chatId, schedule.formatScheduleMessage(schedRes, 'today', { isGauhar: isGauharUser }), {
+                reply_markup: getCancelKeyboard(),
+                disable_web_page_preview: true
+            });
+        }
+        const msgText = schedule.formatScheduleMessage(schedRes, 'today', { isGauhar: isGauharUser });
+        return sendMessage(chatId, msgText, {
+            reply_markup: getScheduleKeyboard('today'),
+            disable_web_page_preview: true
+        });
+    }
+
+    // 1.9.2. /tomorrow, /завтра
+    if (text === '/tomorrow' || text === '/завтра' || text === 'Завтра') {
+        const schedRes = await schedule.getScheduleForUser(chatId);
+        const msgText = schedule.formatScheduleMessage(schedRes, 'tomorrow', { isGauhar: isGauharUser });
+        return sendMessage(chatId, msgText, {
+            reply_markup: getScheduleKeyboard('tomorrow'),
+            disable_web_page_preview: true
+        });
+    }
+
+    // 1.9.3. /week_schedule, /week, /неделя
+    if (text === '/week_schedule' || text === '/week' || text === '/неделя') {
+        const schedRes = await schedule.getScheduleForUser(chatId);
+        const msgText = schedule.formatScheduleMessage(schedRes, 'week', { isGauhar: isGauharUser });
+        return sendMessage(chatId, msgText, {
+            reply_markup: getScheduleKeyboard('week'),
+            disable_web_page_preview: true
+        });
+    }
+
+    // 1.9.4. /set_group <группа>
+    if (text.startsWith('/set_group') || text.startsWith('/group ')) {
+        const grpVal = text.replace(/^\/(?:set_group|group)\s*/, '').trim();
+        if (!grpVal) {
+            session.step = 'schedule_group_input';
+            return sendMessage(chatId, '👥 <b>Укажите вашу учебную группу:</b>\n\nНапишите название вашей группы (например: <code>SE-2301</code> или <code>IT-2204</code>):', {
+                reply_markup: getCancelKeyboard()
+            });
+        }
+        const cleanGrp = schedule.normalizeGroupName(grpVal);
+        if (!cleanGrp) {
+            return sendMessage(chatId, '❌ <b>Некорректное название группы.</b>\nПример корректного формата: <code>SE-2301</code>, <code>IT-2204</code>, <code>CS-2405</code>.', {
+                reply_markup: getMainKeyboard(chatId)
+            });
+        }
+        await schedule.saveUserGroup(chatId, cleanGrp);
+        const schedRes = await schedule.getScheduleForUser(chatId, { groupName: cleanGrp });
+        const msgText = `✅ <b>Группа ${cleanGrp} успешно сохранена!</b>\n\n` + schedule.formatScheduleMessage(schedRes, 'today', { isGauhar: isGauharUser });
+        return sendMessage(chatId, msgText, {
+            reply_markup: getScheduleKeyboard('today'),
+            disable_web_page_preview: true
+        });
+    }
+
+    // 1.9.5. /del_schedule
+    if (text === '/del_schedule' || text === '/logout_schedule') {
+        await schedule.deleteUserDuSession(chatId);
+        return sendMessage(chatId, '🚪 Данные расписания удалены. Напоминания о парах отключены.', {
             reply_markup: getMainKeyboard(chatId)
         });
     }
@@ -2956,6 +3153,23 @@ async function handleMessage(msg) {
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
+    if (session.step === 'schedule_group_input') {
+        const cleanGrp = schedule.normalizeGroupName(text);
+        if (!cleanGrp) {
+            return sendMessage(chatId, '❌ Некорректный формат группы. Введите, например: <code>SE-2301</code> или нажмите «Отмена».', {
+                reply_markup: getCancelKeyboard()
+            });
+        }
+        clearSession(chatId);
+        await schedule.saveUserGroup(chatId, cleanGrp);
+        const schedRes = await schedule.getScheduleForUser(chatId, { groupName: cleanGrp });
+        const msgText = `✅ <b>Группа ${cleanGrp} успешно сохранена!</b>\n\n` + schedule.formatScheduleMessage(schedRes, 'today', { isGauhar: isGauharUser });
+        return sendMessage(chatId, msgText, {
+            reply_markup: getMainKeyboard(chatId),
+            disable_web_page_preview: true
+        });
+    }
+
     if (session.step === 'conv_input') {
         clearSession(chatId);
         const res = convertGradeReport(text);
@@ -3195,6 +3409,8 @@ module.exports.getAllBotUsers = getAllBotUsers;
 module.exports.activeUsers = activeUsers;
 module.exports.buildLmsMarkMenu = buildLmsMarkMenu;
 module.exports.buildLearnMarkMenu = buildLearnMarkMenu;
+module.exports.schedule = schedule;
+module.exports.getScheduleKeyboard = getScheduleKeyboard;
 module.exports.formatBroadcastContent = formatBroadcastContent;
 
 // ==========================================

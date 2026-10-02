@@ -7,6 +7,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const aitu = require('./bot/aitu.js');
 const lms = require('./bot/lms.js');
+const schedule = require('./bot/schedule.js');
 const statsEngine = require('./stats/engine.js');
 
 function getBotToken() {
@@ -295,7 +296,7 @@ async function processUserQuizzes(chatId, context) {
         const nowDate = (context && context.nowDate) ? context.nowDate : new Date();
         const tonightOrTomorrow = uncompletedQuizzes
             .map(q => ({ ...q, _urgency: checkDeadlineUrgency(q.dueDate, nowDate) }))
-            .filter(q => !q.isPast && q._urgency.isRelevantForEvening);
+            .filter(q => !q.isPast && !q.isCriticalHour && (q.diffMinutes === undefined || q.diffMinutes > 60) && q._urgency.isRelevantForEvening);
 
         if (tonightOrTomorrow.length > 0) {
             let alertMsg = isGauharUser
@@ -460,7 +461,7 @@ async function processUserLms(chatId, context) {
         const nowDate = (context && context.nowDate) ? context.nowDate : new Date();
         const tonightOrTomorrow = assignments
             .map(e => ({ ...e, _urgency: checkDeadlineUrgency(e.dueDate, nowDate) }))
-            .filter(e => !e.isPast && e._urgency.isRelevantForEvening);
+            .filter(e => !e.isPast && !e.isCriticalHour && (e.diffMinutes === undefined || e.diffMinutes > 60) && e._urgency.isRelevantForEvening);
 
         if (tonightOrTomorrow.length > 0) {
             let alertMsg = isGauharUser
@@ -515,6 +516,42 @@ async function processUserLms(chatId, context) {
     };
 }
 
+/**
+ * Утреннее напоминание о расписании пар на сегодня
+ */
+async function processUserSchedule(chatId, context) {
+    const { isMorningWindow, forceSend, todayStr } = context;
+    const strChatId = String(chatId).trim();
+    let dailySent = 0;
+
+    const schedKey = `daily:sched:${strChatId}:${todayStr}`;
+    const alreadySentDaily = await hasAlertBeenSent(schedKey);
+
+    if (!alreadySentDaily && (isMorningWindow || forceSend)) {
+        const isGauharUser = typeof schedule.isGauhar === 'function' && schedule.isGauhar(strChatId);
+        const schedRes = await schedule.getScheduleForUser(strChatId);
+
+        if (schedRes.ok && schedRes.days) {
+            const astana = schedule.getAstanaDateInfo ? schedule.getAstanaDateInfo() : { dayOfWeek: (new Date().getDay() === 0 ? 7 : new Date().getDay()) };
+            // По воскресеньям утреннее расписание не шлем
+            if (astana.dayOfWeek !== 7) {
+                const dayData = schedRes.days.find(d => d.dayOfWeek === astana.dayOfWeek);
+                const lessons = dayData?.lessons || [];
+
+                if (lessons.length > 0) {
+                    const msgText = `☀️ <b>Доброе утро! Расписание пар на сегодня:</b>\n\n` +
+                        schedule.formatScheduleMessage(schedRes, 'today', { isGauhar: isGauharUser });
+                    await sendTelegram(strChatId, msgText);
+                    await markAlertAsSent(schedKey);
+                    dailySent++;
+                }
+            }
+        }
+    }
+
+    return { chatId: strChatId, ok: true, type: 'schedule', dailySent };
+}
+
 module.exports = async function handler(req, res) {
     // Проверка CRON_SECRET от Vercel (если настроен)
     const authHeader = req ? req.headers?.['authorization'] : null;
@@ -525,6 +562,7 @@ module.exports = async function handler(req, res) {
     const adminChatIds = getAdminChatIds();
     let allRegisteredUsers = [];
     let allLmsUsers = [];
+    let allScheduleUsers = [];
     try {
         allRegisteredUsers = await aitu.getAllQuizUsers();
     } catch (err) {
@@ -535,13 +573,19 @@ module.exports = async function handler(req, res) {
     } catch (err) {
         console.warn('getAllLmsUsers warning in cron:', err.message);
     }
+    try {
+        allScheduleUsers = await schedule.getAllScheduleSubscribers();
+    } catch (err) {
+        console.warn('getAllScheduleSubscribers warning in cron:', err.message);
+    }
 
     const targetUsers = Array.from(new Set([...allRegisteredUsers, ...adminChatIds])).filter(Boolean);
     const targetLmsUsers = Array.from(new Set([...allLmsUsers, ...adminChatIds])).filter(chatId => {
         return allLmsUsers.includes(chatId) || process.env.AITU_LMS_SESSION_ID;
     });
+    const targetScheduleUsers = Array.from(new Set([...allScheduleUsers, ...adminChatIds])).filter(Boolean);
 
-    const allTargetUsers = Array.from(new Set([...targetUsers, ...targetLmsUsers]));
+    const allTargetUsers = Array.from(new Set([...targetUsers, ...targetLmsUsers, ...targetScheduleUsers]));
 
     if (allTargetUsers.length === 0) {
         return res.status(500).json({ error: 'No quiz users or TELEGRAM_CHAT_ID configured' });
@@ -571,6 +615,12 @@ module.exports = async function handler(req, res) {
         ...targetUsers.map(chatId => () => processUserQuizzes(chatId, context)),
         ...targetLmsUsers.map(chatId => () => processUserLms(chatId, context))
     ];
+
+    if (isMorningWindow || forceSend) {
+        targetScheduleUsers.forEach(chatId => {
+            allTasks.push(() => processUserSchedule(chatId, context));
+        });
+    }
 
     const userResults = [];
     const chunkSize = 6;
