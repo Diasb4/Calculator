@@ -420,18 +420,18 @@ function calculateGradeReport(regmid, regend, finalGrade = null, isGauharUser = 
     regend = parseFloat(regend);
 
     if (isNaN(regmid) || isNaN(regend) || regmid < 0 || regmid > 100 || regend < 0 || regend > 100) {
-        return '❌ <b>Ошибка ввода:</b> Оценки должны быть числами от 0 до 100.\n<i>Пример:</i> <code>80 85</code> или <code>80 85 90</code>';
+        return '❌ <b>Ошибка:</b> Оценки бывают от 0 до 100, а не от минус бесконечности до небес. Ты точно студент AITU?\n<i>Пример:</i> <code>80 85</code> или <code>80 85 90</code>';
     }
 
     if (regmid < 25) {
         return `❌ <b>Летник без вариантов!</b> 💀\n\n` +
             `• РегМид: <b>${regmid}</b> (порог — минимум 25 баллов).\n` +
-            `• Допуск к экзамену заблокирован. Предмет отправляется на летний семестр (Retake).`;
+            `• Допуск к экзамену заблокирован. Кажется, кто-то пропустил пару важных лекций. Или все. Предмет отправляется на летний семестр (Retake).`;
     }
     if (regend < 25) {
         return `❌ <b>Летник без вариантов!</b> 💀\n\n` +
             `• РегЭнд: <b>${regend}</b> (порог — минимум 25 баллов).\n` +
-            `• Допуск к экзамену заблокирован. Предмет отправляется на летний семестр (Retake).`;
+            `• Допуск к экзамену заблокирован. Увидимся на ретейке. Предмет отправляется на летний семестр (Retake).`;
     }
 
     const regterm = (regmid + regend) / 2;
@@ -439,7 +439,7 @@ function calculateGradeReport(regmid, regend, finalGrade = null, isGauharUser = 
     if (regterm < 50) {
         return `❌ <b>Летник!</b> 🚫\n\n` +
             `• РегТерм: <b>${regterm.toFixed(2)}</b> (нужно минимум 50.00 для допуска).\n` +
-            `• Вы не набрали допуск к файналу.`;
+            `• Допуска к экзамену нет. Даже идеальный файнал не спасёт ситуацию.`;
     }
 
     // Если введен файнал
@@ -454,17 +454,17 @@ function calculateGradeReport(regmid, regend, finalGrade = null, isGauharUser = 
 
         let verdict = '';
         if (finalVal < 25) {
-            verdict = `❌ <b>Летник!</b> Оценка за файнал (${finalVal}) ниже порога 25 баллов.`;
+            verdict = `❌ <b>Летник!</b> Оценка за файнал (${finalVal}) ниже порога 25 баллов. Это даже не FX, добро пожаловать на летний семестр.`;
         } else if (finalVal >= 25 && finalVal < 50) {
-            verdict = `⚠️ <b>Пересдача (FX / Retake)!</b> Файнал от 25 до 49 баллов. Готовьтесь к пересдаче экзамена.`;
+            verdict = `⚠️ <b>Пересдача (FX / Retake)!</b> Файнал от 25 до 49 баллов. Судьба дала второй шанс — не облажайся.`;
         } else if (total < 50) {
-            verdict = `❌ <b>Летник!</b> Итоговый балл ниже 50.00.`;
+            verdict = `❌ <b>Летник!</b> Итоговый балл ниже 50.00. Летний семестр гарантирован.`;
         } else if (total >= 90) {
-            verdict = `💎 <b>ПРЕВОСХОДНО! Повышенная стипендия гарантирована!</b> 🎉`;
+            verdict = `🏆 <b>Повышенная стипендия гарантирована!</b> Серьёзно? Ты точно не списывал?`;
         } else if (total >= 70) {
-            verdict = `✅ <b>ОТЛИЧНО! Обычная стипендия ваша!</b> 👏`;
+            verdict = `✅ <b>Обычная стипендия ваша!</b> Не спусти её на кофе в первый же день.`;
         } else {
-            verdict = `⚠️ <b>Курс успешно сдан</b> (без стипендии, итоговый балл ${total.toFixed(2)}).`;
+            verdict = `⚠️ <b>Курс успешно сдан</b> (без стипендии, итоговый балл ${total.toFixed(2)}). Выжил — и на том спасибо.`;
         }
 
         let gauharNote = '';
@@ -477,11 +477,10 @@ function calculateGradeReport(regmid, regend, finalGrade = null, isGauharUser = 
         }
 
         return `🎯 <b>ИТОГОВЫЙ РАСЧЁТ ОЦЕНКИ:</b>\n\n` +
-            `📊 <b>РегТерм (60%):</b> ${regterm.toFixed(2)} (РегМид: ${regmid}, РегЭнд: ${regend})\n` +
-            `📝 <b>Файнал (40%):</b> ${finalVal}\n` +
-            `🏆 <b>Итоговый балл:</b> <code>${total.toFixed(2)}</code> (${gradeInfo ? gradeInfo.letter + ', GPA ' + gradeInfo.gpa.toFixed(2) : ''})\n\n` +
-            `${verdict}\n\n` +
-            `<i>💡 Формула: (РегТерм × 0.6) + (Файнал × 0.4)</i>` +
+            `• РегТерм (60%): <b>${regterm.toFixed(2)}</b> (РМ: ${regmid}, РЭ: ${regend})\n` +
+            `• Файнал (40%): <b>${finalVal}</b>\n` +
+            `• Итоговый балл: <code>${total.toFixed(2)}</code> (${gradeInfo ? gradeInfo.letter + ', GPA ' + gradeInfo.gpa.toFixed(2) : ''})\n\n` +
+            `${verdict}` +
             gauharNote;
     }
 
@@ -491,8 +490,8 @@ function calculateGradeReport(regmid, regend, finalGrade = null, isGauharUser = 
     const minHigh = Math.ceil((90 - (regterm * 0.6)) / 0.4);
 
     let report = `🔮 <b>ПРОГНОЗ НА ЭКЗАМЕН (ФАЙНАЛ):</b>\n\n` +
-        `📊 <b>Ваш РегТерм:</b> <code>${regterm.toFixed(2)}</code> (РегМид: ${regmid} | РегЭнд: ${regend})\n` +
-        `🎯 <i>Сколько нужно набрать на экзамене:</i>\n\n`;
+        `• <b>Ваш РегТерм:</b> <code>${regterm.toFixed(2)}</code> (РМ: ${regmid} | РЭ: ${regend})\n\n` +
+        `🎯 <i>Сколько нужно набрать на экзамене:</i>\n`;
 
     if (minPass > 100) {
         report += `❌ <b>Для сдачи курса (50+):</b> Невозможно (требуется более 100 баллов)\n`;
@@ -501,19 +500,19 @@ function calculateGradeReport(regmid, regend, finalGrade = null, isGauharUser = 
     }
 
     if (minRegular > 100) {
-        report += `🟡 <b>Обычная стипендия (70+):</b> Невозможна при текущем РегТерме\n`;
+        report += `🟡 <b>Обычная стипендия (70+):</b> Нужно больше 100 баллов. Мечтать не вредно.\n`;
     } else if (minRegular <= 50) {
-        report += `🟡 <b>Обычная стипендия (70+):</b> Достаточно сдать экзамен (от <b>50</b> баллов)!\n`;
+        report += `🟡 <b>Обычная стипендия (70+):</b> Достаточно набрать <b>50</b> на экзамене. В этот раз тебе повезло.\n`;
     } else {
         report += `🟡 <b>Обычная стипендия (70+):</b> минимум <b>${minRegular}</b> баллов\n`;
     }
 
     if (minHigh > 100) {
-        report += `💎 <b>Повышенная стипендия (90+):</b> Невозможна\n`;
+        report += `💎 <b>Повышенная стипендия (90+):</b> Из области фантастики. Начинай молиться.\n`;
     } else if (minHigh <= 50) {
         report += `💎 <b>Повышенная стипендия (90+):</b> Достаточно сдать экзамен на <b>50+</b>!\n`;
     } else {
-        report += `💎 <b>Повышенная стипендия (90+):</b> минимум <b>${minHigh}</b> баллов\n`;
+        report += `💎 <b>Повышенная стипендия (90+):</b> минимум <b>${minHigh}</b> баллов. Придётся выложиться на максимум.\n`;
     }
 
     let gauharNote = '';
@@ -525,7 +524,7 @@ function calculateGradeReport(regmid, regend, finalGrade = null, isGauharUser = 
         }
     }
 
-    report += `\n<i>⚠️ Важно: на самом экзамене необходимо набрать не менее 50 баллов для сдачи без пересдачи.</i>` + gauharNote;
+    report += gauharNote;
     return report;
 }
 
@@ -624,20 +623,18 @@ function calculateGPAReport(inputStr, isGauharUser = false) {
     const finalGPA = totalQualityPoints / totalCredits;
 
     let verdict = '';
-    if (finalGPA >= 3.67) verdict = '💎 <b>Превосходно! Отличный результат на повышенную стипендию!</b>';
-    else if (finalGPA >= 3.00) verdict = '✅ <b>Отличный GPA! Стипендия в кармане!</b>';
-    else if (finalGPA >= 2.00) verdict = '👍 <b>Хороший средний балл.</b>';
-    else verdict = '⚠️ <b>Низкий GPA. Обратите внимание на академическую успеваемость.</b>';
+    if (finalGPA >= 3.67) verdict = '🏆 <b>Отличный результат на повышенную стипендию. Ты точно не списывал?</b>';
+    else if (finalGPA >= 3.00) verdict = '✅ <b>Стипендия твоя. Не спусти её на кофе в первый же день.</b>';
+    else if (finalGPA >= 2.00) verdict = '👍 <b>Курс закрыт. Выжил — и ладно.</b>';
+    else verdict = '⚠️ <b>Низкий GPA. Пора браться за ум, а не листать мемы.</b>';
 
     let msg = `📊 <b>РАСЧЁТ GPA ЗА ТРИМЕСТР:</b>\n\n`;
     rows.forEach(r => {
-        msg += `${r.emoji} <b>Предмет ${r.num}:</b> ${r.grade}% ➔ <b>${r.letter}</b> (${r.gpa.toFixed(2)}) | <b>${r.credits} кр.</b>\n`;
+        msg += `${r.emoji} <b>Предмет ${r.num}:</b> ${r.grade}% → <b>${r.letter}</b> (${r.gpa.toFixed(2)}) | <b>${r.credits} кр.</b>\n`;
     });
 
-    msg += `\n━━━━━━━━━━━━━━━━━━━━\n` +
-        `📚 <b>Всего кредитов:</b> <b>${totalCredits}</b>\n` +
-        `🎓 <b>Итоговый GPA:</b> <code>${finalGPA.toFixed(2)}</code> / 4.00\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+    msg += `\n• <b>Всего кредитов:</b> <b>${totalCredits}</b>\n` +
+        `• <b>Итоговый GPA:</b> <code>${finalGPA.toFixed(2)}</code> / 4.00\n\n` +
         `${verdict}`;
 
     if (isGauharUser) {
@@ -688,14 +685,11 @@ function calculateCumulativeGPAReport(inputStr, isGauharUser = false) {
 
     let msg = `📈 <b>КУМУЛЯТИВНЫЙ (ОБЩИЙ) GPA:</b>\n\n`;
     rows.forEach(r => {
-        msg += `🗓 <b>Триместр ${r.num}:</b> GPA <b>${r.gpa.toFixed(2)}</b> × <b>${r.credits} кр.</b>\n`;
+        msg += `• <b>Триместр ${r.num}:</b> GPA <b>${r.gpa.toFixed(2)}</b> × <b>${r.credits} кр.</b>\n`;
     });
 
-    msg += `\n━━━━━━━━━━━━━━━━━━━━\n` +
-        `📚 <b>Сумма кредитов за все периоды:</b> <b>${totalCredits}</b>\n` +
-        `🎓 <b>Итоговый Cumulative GPA:</b> <code>${cumGPA.toFixed(2)}</code> / 4.00\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n\n` +
-        `<i>💡 Рассчитывается как средневзвешенное значение по кредитам всех триместров.</i>`;
+    msg += `\n• <b>Сумма кредитов за все периоды:</b> <b>${totalCredits}</b>\n` +
+        `• <b>Итоговый Cumulative GPA:</b> <code>${cumGPA.toFixed(2)}</code> / 4.00`;
 
     if (isGauharUser) {
         msg += `\n\n📸 <i>Гаухар, сделай скриншот и запиши куда-нибудь, а то через 10 минут опять забудешь и будешь заново считать 😉</i>`;
@@ -736,11 +730,11 @@ function calculateAttendanceReport(lessonsPerWeek, alreadyMissed = 0, isGauharUs
 
     let statusHeader = '';
     if (missed > allowedAbsences || currentPercent >= 30) {
-        statusHeader = '🚨 <b>КРИТИЧЕСКИЙ ЛИМИТ ПРЕВЫШЕН! НЕДОПУСК К ЭКЗАМЕНУ!</b> 💀';
+        statusHeader = '🚨 <b>КРИТИЧЕСКИЙ ЛИМИТ ПРЕВЫШЕН! НЕДОПУСК К ЭКЗАМЕНУ!</b>\nМеньше надо было листать мемы — автоматический летник.';
     } else if (currentPercent > 15 || remaining <= 1) {
-        statusHeader = '⚠️ <b>ВНИМАНИЕ! Вы близко к лимиту пропусков!</b>';
+        statusHeader = '⚠️ <b>ВНИМАНИЕ! Вы близко к лимиту пропусков!</b>\nОстался край — ходи на пары даже при апокалипсисе.';
     } else {
-        statusHeader = '🟢 <b>ВСЁ В ПОРЯДКЕ! Безопасная зона посещаемости.</b>';
+        statusHeader = '🟢 <b>Безопасная зона посещаемости.</b> Пока всё под контролем, но не наглей.';
     }
 
     let gauharNote = '';
@@ -755,9 +749,7 @@ function calculateAttendanceReport(lessonsPerWeek, alreadyMissed = 0, isGauharUs
         `• Порог недопуска (30%): <b>${allowedAbsences} пар максимум</b>\n` +
         `• Уже пропущено: <b>${missed} пар (${currentPercent.toFixed(1)}%)</b>\n\n` +
         `📊 <b>Шкала риска:</b>\n[${bar}]\n\n` +
-        `🚪 <b>Осталось безопасных пропусков:</b> <b>${remaining >= 0 ? remaining : 0} пар</b>\n\n` +
-        `💡 <i><b>Что считается за пару:</b> 1 занятие = 1 академический час (50 минут). Если у вас сдвоенная пара (100 минут) — это <b>2 занятия</b> в электронном журнале AITU!</i>\n\n` +
-        `<i>⚠️ Важно: При пропуске ${allowedAbsences + 1} пар и более студент автоматически отправляется на летник без права сдачи экзамена.</i>` +
+        `🚪 <b>Осталось безопасных пропусков:</b> <b>${remaining >= 0 ? remaining : 0} пар</b>` +
         gauharNote;
 }
 
@@ -785,10 +777,11 @@ function parseNaturalLanguageAcademicQuery(rawText, isGauharUser = false) {
     const text = rawText.toLowerCase().replace(/,/g, ' ').replace(/\s+/g, ' ');
 
     // Проверяем, похож ли запрос на академический вопрос
-    const hasAcademicKeywords = /(?:файнал|экзамен|экз\b|final|exam|регмид|регенд|рм\b|рэ\b|rk1|rk2|midterm|endterm|стипенди|стипух|балл|оценк)/i.test(text);
-    const hasQuestionIntent = /(?:сколько|хватит|нужно|надо|можно|выйдет|получится|допуск|сдам|сдать)/i.test(text);
+    const hasAcademicKeywords = /(?:файнал|экзамен|экз\b|final|exam|регмид|рег\s*мид|мидк[а-я]*|мидтерм|мид\b|регенд|рег\s*энд|эндк[а-я]*|эндтерм|энд\b|рм\b|рэ\b|rk1|rk2|midterm|endterm|стипенди|стипух|балл|оценк)/i.test(text);
+    const hasQuestionIntent = /(?:сколько|хватит|нужн[а-я]*|надо|можно|выйдет|получится|допуск|сдам|сдать|какой|какая|какие|каком|какому|что|че|чо|как|нужен[а-я]*)/i.test(text);
+    const hasTwoScores = (text.match(/\b\d{1,3}(?:\.\d+)?\b/g) || []).length >= 2;
 
-    if (!hasAcademicKeywords || !hasQuestionIntent) {
+    if (!hasAcademicKeywords || (!hasQuestionIntent && !hasTwoScores)) {
         return null;
     }
 
@@ -796,21 +789,21 @@ function parseNaturalLanguageAcademicQuery(rawText, isGauharUser = false) {
     let rm = null;
     let re = null;
 
-    // Регмид
-    const rmPattern1 = /(?:регмид|рег\s*мид|рм|midterm|mid|rk1|рк1)\s*[:=-]?\s*(\d{1,3}(?:\.\d+)?)/i;
-    const rmPattern2 = /(\d{1,3}(?:\.\d+)?)\s*(?:за\s*)?(?:регмид|рег\s*мид|рм|midterm|mid|rk1|рк1)/i;
+    // Регмид (включая сленг: мидка, мидки, мид, рм)
+    const rmPattern1 = /(?:регмид|рег\s*мид|мидк[а-я]*|мидтерм|мид(?![а-яёa-z0-9])|рм(?![а-яёa-z0-9])|midterm|mid\b|rk1\b|рк1(?![а-яёa-z0-9]))\s*[:=-]?\s*(\d{1,3}(?:\.\d+)?)/i;
+    const rmPattern2 = /(\d{1,3}(?:\.\d+)?)\s*(?:за\s*)?(?:регмид|рег\s*мид|мидк[а-я]*|мидтерм|мид(?![а-яёa-z0-9])|рм(?![а-яёa-z0-9])|midterm|mid\b|rk1\b|рк1(?![а-яёa-z0-9]))/i;
     let m = text.match(rmPattern1) || text.match(rmPattern2);
     if (m) rm = parseFloat(m[1]);
 
-    // Регэнд
-    const rePattern1 = /(?:регенд|рег\s*энд|рэ|endterm|end|rk2|рк2)\s*[:=-]?\s*(\d{1,3}(?:\.\d+)?)/i;
-    const rePattern2 = /(\d{1,3}(?:\.\d+)?)\s*(?:за\s*)?(?:регенд|рег\s*энд|рэ|endterm|end|rk2|рк2)/i;
+    // Регэнд (включая сленг: эндка, эндки, энд, рэ)
+    const rePattern1 = /(?:регенд|рег\s*энд|эндк[а-я]*|эндтерм|энд(?![а-яёa-z0-9])|рэ(?![а-яёa-z0-9])|endterm|end\b|rk2\b|рк2(?![а-яёa-z0-9]))\s*[:=-]?\s*(\d{1,3}(?:\.\d+)?)/i;
+    const rePattern2 = /(\d{1,3}(?:\.\d+)?)\s*(?:за\s*)?(?:регенд|рег\s*энд|эндк[а-я]*|эндтерм|энд(?![а-яёa-z0-9])|рэ(?![а-яёa-z0-9])|endterm|end\b|rk2\b|рк2(?![а-яёa-z0-9]))/i;
     m = text.match(rePattern1) || text.match(rePattern2);
     if (m) re = parseFloat(m[1]);
 
-    // Если rm и re не найдены по отдельным меткам, пробуем паттерны типа "если 80 и 70" или "при 80 70"
+    // Если rm и re не найдены по отдельным меткам, пробуем паттерны типа "если 80 и 70", "при 80 70", "80 70"
     if (rm === null || re === null) {
-        const pairMatch = text.match(/(?:если|при|у меня)\s+(?:балл[ыа]?\s+)?(\d{1,3})\s+(?:и|\s+)\s*(\d{1,3})/i);
+        const pairMatch = text.match(/(?:если|при|у меня)?\s*(?:балл[ыа]?\s+)?(\d{1,3}(?:\.\d+)?)\s*(?:и\s*|\s+)\s*(\d{1,3}(?:\.\d+)?)/i);
         if (pairMatch) {
             rm = parseFloat(pairMatch[1]);
             re = parseFloat(pairMatch[2]);
@@ -975,42 +968,25 @@ function parseNaturalLanguageAcademicQuery(rawText, isGauharUser = false) {
 
 function getFoolproofHelpText(isGauharUser = false) {
     const gauharHeader = isGauharUser
-        ? `📖 <b>Специальная версия инструкции для Гаухар:</b>\n<i>Читать медленно, сохранить в закладки, перед сном перечитывать три раза, чтобы не забыть! 😉</i>\n\n━━━━━━━━━━━━━━━━━━━━\n`
+        ? `📖 <b>Специальная версия инструкции для Гаухар:</b>\n<i>Читать медленно, сохранить в закладки, перед сном перечитывать три раза, чтобы не забыть! 😉</i>\n\n`
         : '';
     return gauharHeader + `📖 <b>ИНСТРУКЦИЯ ПО ИСПОЛЬЗОВАНИЮ БОТА:</b>\n\n` +
-        `Бот заменяет весь сайт <b>GradeMaster</b> прямо в Telegram. Все калькуляторы работают по кнопкам внизу или через команды.\n\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `🚀 <b>1. Калькулятор итоговой оценки</b>\n` +
-        `Помогает узнать, сдадите ли вы предмет и сколько нужно на экзамене для стипендии.\n` +
-        `👉 <i>Как пользоваться:</i>\n` +
-        `• Нажмите кнопку <b>«🚀 Итоговая оценка»</b> и отвечайте на вопросы бота.\n` +
-        `• Или отправьте: <code>/calc 80 85</code> (РегМид РегЭнд для прогноза).\n` +
-        `• Или отправьте: <code>/calc 80 85 90</code> (РегМид РегЭнд Файнал для точного итога).\n\n` +
-        `📊 <b>2. Калькулятор GPA за триместр</b>\n` +
-        `Считает общий балл GPA с учётом веса кредитов каждого предмета.\n` +
-        `👉 <i>Как пользоваться:</i>\n` +
-        `• Нажмите <b>«📊 Калькулятор GPA»</b>.\n` +
-        `• Отправьте оценки и кредиты: <code>/gpa 90 3, 85 4, 95 2</code>\n` +
-        `  <i>(90% с 3 кредитами, 85% с 4 кредитами и т.д.)</i>\n\n` +
-        `📈 <b>3. Кумулятивный GPA (CGPA)</b>\n` +
-        `Считает общий балл за несколько триместров/семестров.\n` +
-        `👉 <i>Как пользоваться:</i>\n` +
-        `• Нажмите <b>«📈 Кумулятивный GPA»</b>.\n` +
-        `• Отправьте: <code>/cgpa 3.5 15, 3.8 20</code> (GPA_1 Кредиты_1, GPA_2 Кредиты_2).\n\n` +
-        `📋 <b>4. Калькулятор посещаемости</b>\n` +
-        `Показывает, сколько пар можно прогулять за 10 недель без риска отчисления.\n` +
-        `💡 <i>1 занятие = 50 мин (академ. час). Сдвоенная пара на 100 мин = 2 занятия.</i>\n` +
-        `👉 <i>Как пользоваться:</i>\n` +
-        `• Нажмите <b>«📋 Посещаемость»</b>.\n` +
-        `• Отправьте: <code>/att 3</code> (3 занятия в неделю) или <code>/att 3 2</code> (если 2 уже пропустили).\n\n` +
-        `🔄 <b>5. Конвертер баллов в GPA</b>\n` +
-        `Мгновенно переводит проценты (например 87) в букву B+ и балл 3.33.\n` +
-        `👉 Отправьте: <code>/convert 87</code>\n\n` +
-        `💬 <b>6. Поддержка и отзывы</b>\n` +
-        `Нажмите <b>«💬 Отзыв / Поддержка»</b> и напишите любое сообщение — администратор получит его и ответит вам!\n\n` +
-        `🍪 <b>7. Напоминания о квизах и дедлайнах (Learn & LMS)</b>\n` +
-        `Бот может будить вас каждое утро в 08:00 и присылать сигнал тревоги за 1 час до сдачи работ.\n` +
-        `👉 Отправьте команду <code>/cookie</code> для пошаговой инструкции подключения!`;
+        `🚀 <b>Калькулятор итоговой оценки:</b>\n` +
+        `• <code>/calc 80 85</code> — прогноз на экзамен по РегМиду и РегЭнду\n` +
+        `• <code>/calc 80 85 90</code> — точный итоговый расчёт (РМ, РЭ, Файнал)\n\n` +
+        `📊 <b>Калькулятор GPA (триместр):</b>\n` +
+        `• <code>/gpa 90 3, 85 4, 95 2</code> (Оценка Кредиты)\n\n` +
+        `📈 <b>Кумулятивный GPA:</b>\n` +
+        `• <code>/cgpa 3.5 15, 3.8 20</code> (GPA Кредиты)\n\n` +
+        `📋 <b>Посещаемость (лимит 30%):</b>\n` +
+        `• <code>/att 3</code> (пар в неделю) или <code>/att 3 2</code> (2 уже пропущено)\n\n` +
+        `🔄 <b>Конвертер оценок:</b>\n` +
+        `• <code>/convert 87</code> — перевод процента в букву и GPA\n\n` +
+        `🍪 <b>Дедлайны и квизы:</b>\n` +
+        `• <code>/lms</code> — дедлайны Moodle LMS\n` +
+        `• <code>/quizzes</code> — тесты AITU Learn\n` +
+        `• <code>/cookie</code> — как подключить напоминания\n\n` +
+        `💬 <b>Поддержка:</b> кнопка «Отзыв / Поддержка» в меню.`;
 }
 
 function getCookieGuideText(isGauharUser = false) {
@@ -2269,16 +2245,14 @@ async function handleMessage(msg) {
     if (isGreeting) {
         const greetingText = isGauharUser
             ? `👋 <b>Привет, Гаухар!</b> Рады тебя видеть 🧠⚡️\n\nТы точно помнишь, какой калькулятор тебе нужен, или подсказать? 😉\nВыбирай кнопки внизу или пиши <code>/help</code>!`
-            : `👋 <b>Привет!</b> Я академический бот-помощник <b>GradeMaster</b> для студентов AITU.\n\n` +
-              `Я умею рассчитывать допуски, итоговые оценки, GPA, посещаемость и отслеживать дедлайны LMS/Learn.\n\n` +
-              `👇 <i>Выберите нужный калькулятор на кнопках меню или напишите <code>/help</code>:</i>`;
+            : `👋 <b>Привет!</b> Что считаем — шансы на стипендию или сколько пар осталось до отчисления?\n\nВыбирай нужный калькулятор на клавиатуре внизу или пиши <code>/help</code>:`;
         return sendMessage(chatId, greetingText, { reply_markup: getMainKeyboard(chatId) });
     }
 
     // Благодарности
     const isGratitude = /^(?:спасибо|благодарю|рахмет|спасиб|спасибочки|thx|thanks|thank\s*you)(?![а-яёa-z0-9])/i.test(text);
     if (isGratitude) {
-        return sendMessage(chatId, '😊 <b>Пожалуйста!</b> Успешной учебы и высоких баллов на экзаменах! 🎓✨', { reply_markup: getMainKeyboard(chatId) });
+        return sendMessage(chatId, 'Пожалуйста. Главное — на экзамене не облажайся 🎓', { reply_markup: getMainKeyboard(chatId) });
     }
 
     // 1. /start
@@ -2305,24 +2279,15 @@ async function handleMessage(msg) {
                 `━━━━━━━━━━━━━━━━━━━━\n\n` +
                 `👇 <i>Выбирай нужный калькулятор на кнопках ниже:</i>`;
         } else {
-            welcome = `👋 <b>Добро пожаловать в GradeMaster Bot!</b> 🎓\n\n` +
-                `Этот бот — ваш академический помощник и <b>полная замена сайту</b> в AITU:\n\n` +
-                `🚀 <b>Итоговая оценка</b> — расчет РегТерма и прогноз баллов на экзамен (стипендия)\n` +
-                `📊 <b>Калькулятор GPA</b> — средний балл за триместр с учетом кредитов\n` +
-                `📈 <b>Кумулятивный GPA</b> — общий балл за всё время учебы\n` +
-                `📋 <b>Посещаемость</b> — лимит 30% пропусков и безопасный остаток пар\n` +
-                `🔄 <b>Конвертер баллов</b> — перевод % в буквенную оценку ECTS и GPA\n` +
-                `⏰ <b>Дедлайны Learn & LMS</b> — авто-напоминания о квизах и лабах в 08:00 и за 1 час!\n\n` +
-                `━━━━━━━━━━━━━━━━━━━━\n` +
-                `🍪 <b>Как подключить напоминания по дедлайнам:</b>\n` +
-                `1️⃣ <b>Квизы Learn:</b> войдите на <a href="https://learn.astanait.edu.kz/">learn.astanait.edu.kz</a> ➔ скопируйте <code>sessionid</code> из Cookies (F12 ➔ Application) ➔ отправьте боту:\n` +
-                `👉 <code>/set_cookie ВАШ_SESSIONID</code>\n` +
-                `2️⃣ <b>Лабы и задания LMS:</b> отправьте ссылку на экспорт календаря или куку <code>MoodleSession</code>:\n` +
-                `👉 <code>/set_lms ВАША_КУКА_ИЛИ_ССЫЛКА</code>\n` +
-                `<i>(💡 Бот сам создаст вечный токен, повторно вводить куки не придется)</i>\n\n` +
-                `📖 <i>Полный пошаговый гайд с инструкцией для телефона: команда <code>/cookie</code></i>\n` +
-                `━━━━━━━━━━━━━━━━━━━━\n\n` +
-                `👇 <i>Выберите нужный калькулятор на кнопках ниже:</i>`;
+            welcome = `<b>GradeMaster Bot</b> — калькулятор выживания в AITU.\n\n` +
+                `Считаю оценки, шансы на стипендию, лимиты пропусков и держу дедлайны:\n\n` +
+                `• <b>Быстрый расчёт:</b> <code>/calc 80 85</code> (или жми кнопки ниже)\n` +
+                `• <b>GPA за триместр:</b> <code>/gpa 90 3, 85 4</code>\n` +
+                `• <b>Посещаемость:</b> <code>/att 3</code>\n` +
+                `• <b>Дедлайны LMS:</b> <code>/lms</code>\n` +
+                `• <b>Квизы Learn:</b> <code>/quizzes</code> (подключение: <code>/cookie</code>)\n` +
+                `• <b>Все команды:</b> <code>/help</code>\n\n` +
+                `Выбирай калькулятор на клавиатуре внизу 👇`;
         }
 
         return sendMessage(chatId, welcome, {
@@ -2960,7 +2925,7 @@ async function handleMessage(msg) {
         }
         session.data.lessons = lessons;
         session.step = 'att_missed';
-        return sendMessage(chatId, `✅ <b>Занятий в неделю: ${lessons}</b>\n\n<b>Шаг 2 из 2:</b> Сколько занятий вы <b>уже пропустили</b>?\n<i>(💡 Напоминаем: сдвоенная пара на 100 мин = 2 пропущенных занятия)\nЕсли ещё не пропускали, введите <code>0</code>:</i>`);
+        return sendMessage(chatId, `✅ <b>Занятий в неделю: ${lessons}</b>\n\n<b>Шаг 2 из 2:</b> Сколько занятий уже <b>пропущено</b>?\n<i>(Если ещё не пропускал, введи <code>0</code>)</i>`);
     }
 
     if (session.step === 'att_missed') {
@@ -3048,44 +3013,29 @@ async function handleMessage(msg) {
         return sendMessage(chatId, `❓ Не удалось распознать сообщение.\n\nНажмите <b>«Инструкция»</b> или напишите <code>/help</code>, чтобы посмотреть возможности бота.`, { reply_markup: getMainKeyboard(chatId) });
     }
 
-    // 11. Нераспознанное содержательное сообщение — пересылка админу как вопрос/отзыв
-    const targetAdmin = getPrimaryAdminId();
-    if (targetAdmin && String(chatId) !== String(targetAdmin)) {
-        const rl = checkRateLimit(chatId);
-        if (!rl.allowed) {
-            return sendMessage(chatId, rl.message, { reply_markup: getMainKeyboard(chatId) });
-        }
-        recordRateLimit(chatId);
-
-        const secAnalysis = analyzeMessageSecurity(text);
-        let secWarningBlock = '';
-        if (secAnalysis.warnings.length > 0) {
-            secWarningBlock = `\n\n🛡️ <b>Безопасность:</b>\n` + secAnalysis.warnings.join('\n');
-        }
-
-        try {
+    // 10.7. Проверка на фишинг и вредоносные ссылки BotFather
+    const secAnalysis = analyzeMessageSecurity(text);
+    if (secAnalysis.isBotFatherLink || secAnalysis.warnings.length > 0) {
+        const targetAdmin = getPrimaryAdminId();
+        if (targetAdmin && String(chatId) !== String(targetAdmin)) {
+            const secWarningBlock = '\n\n🛡️ <b>Безопасность:</b>\n' + secAnalysis.warnings.join('\n');
             const notify = `📨 <b>Сообщение от студента:</b>\n\n` +
                 `👤 <b>От:</b> ${esc(userName)} (ID: <code>${chatId}</code>)\n` +
                 `💬 <b>Текст:</b>\n${esc(text)}` +
                 secWarningBlock + `\n\n` +
                 `<i>💡 Чтобы ответить:</i> просто ответьте на это сообщение (Reply) или <code>/reply ${chatId} Ваш ответ</code>`;
-            await sendMessage(targetAdmin, notify, { disable_web_page_preview: true });
-        } catch (e) {
-            console.error('Admin forward error:', e);
+            await sendMessage(targetAdmin, notify, { disable_web_page_preview: true }).catch(() => {});
         }
-
         if (secAnalysis.isBotFatherLink) {
             return sendMessage(chatId, `ℹ️ <b>Обратите внимание:</b> ссылки на <b>@BotFather</b> не требуются для работы бота GradeMaster.\n\n` +
                 `• Для квизов AITU Learn: отправьте <code>/cookie</code>\n` +
                 `• Для дедлайнов Moodle LMS: отправьте <code>/set_lms</code>\n` +
-                `• Для списка калькуляторов: нажмите кнопки в меню ниже или <code>/help</code>\n\n` +
-                `Ваше сообщение также передано разработчику!`, { reply_markup: getMainKeyboard(chatId), disable_web_page_preview: true });
+                `• Для списка калькуляторов: нажмите кнопки в меню ниже или <code>/help</code>`, { reply_markup: getMainKeyboard(chatId), disable_web_page_preview: true });
         }
-
-        return sendMessage(chatId, `📨 <b>Ваше сообщение получено и передано разработчику!</b>\n\nДля выбора калькулятора используйте кнопки внизу меню или напишите <code>/help</code>.`, { reply_markup: getMainKeyboard(chatId) });
     }
 
-    return sendMessage(chatId, `❓ Неизвестная команда.\nНажмите <b>«❓ Понятная инструкция»</b> или напишите <code>/help</code>.`, { reply_markup: getMainKeyboard(chatId) });
+    // 11. Нераспознанное сообщение — не спамим админа расчётами, пишем что команда неизвестна
+    return sendMessage(chatId, `❓ Неизвестная команда или некорректный запрос.\n\nНажмите <b>«Инструкция»</b> или напишите <code>/help</code>, чтобы посмотреть список команд.`, { reply_markup: getMainKeyboard(chatId) });
 }
 
 // ==========================================
