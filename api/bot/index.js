@@ -260,9 +260,7 @@ function analyzeMessageSecurity(text) {
     };
 }
 
-// ==========================================
-// TELEGRAM API CLIENT
-// ==========================================
+// Telegram API клиент
 
 async function apiCall(method, payload = {}) {
     const token = getBotToken();
@@ -370,9 +368,7 @@ function isAdmin(chatId) {
     return getAdminChatIds().includes(strId);
 }
 
-// ==========================================
-// КЛАВИАТУРЫ И МЕНЮ
-// ==========================================
+// Клавиатуры и меню
 
 function getMainKeyboard(chatId) {
     const isUserAdmin = isAdmin(chatId);
@@ -437,9 +433,7 @@ function getCalculatorsInlineKeyboard() {
     };
 }
 
-// ==========================================
-// МАТЕМАТИЧЕСКАЯ И АКАДЕМИЧЕСКАЯ ЛОГИКА
-// ==========================================
+// Расчёт оценок и GPA
 
 // Конвертация процента в GPA (0 - 4.00) и буквенную оценку
 function percentageToGradeInfo(percentage) {
@@ -560,7 +554,7 @@ function calculateGradeReport(regmid, regend, finalGrade = null, isGauharUser = 
             }
         }
 
-        return `🎯 <b>ИТОГОВЫЙ РАСЧЁТ ОЦЕНКИ:</b>\n\n` +
+        return `🎯 <b>Итоговый расчёт оценки:</b>\n\n` +
             `• РегТерм (60%): <b>${regterm.toFixed(2)}</b> (РМ: ${regmid}, РЭ: ${regend})\n` +
             `• Файнал (40%): <b>${finalVal}</b>\n` +
             `• Итоговый балл: <code>${total.toFixed(2)}</code> (${gradeInfo ? gradeInfo.letter + ', GPA ' + gradeInfo.gpa.toFixed(2) : ''})\n\n` +
@@ -573,7 +567,7 @@ function calculateGradeReport(regmid, regend, finalGrade = null, isGauharUser = 
     const minRegular = Math.ceil((70 - (regterm * 0.6)) / 0.4);
     const minHigh = Math.ceil((90 - (regterm * 0.6)) / 0.4);
 
-    let report = `🔮 <b>ПРОГНОЗ НА ЭКЗАМЕН (ФАЙНАЛ):</b>\n\n` +
+    let report = `🔮 <b>Прогноз на экзамен:</b>\n\n` +
         `• <b>Ваш РегТерм:</b> <code>${regterm.toFixed(2)}</code> (РМ: ${regmid} | РЭ: ${regend})\n\n` +
         `🎯 <i>Сколько нужно набрать на экзамене:</i>\n`;
 
@@ -742,7 +736,7 @@ function calculateGPAReport(inputStr, isGauharUser = false) {
         ]);
     }
 
-    let msg = `📊 <b>РАСЧЁТ GPA ЗА ТРИМЕСТР:</b>\n\n`;
+    let msg = `📊 <b>Расчёт GPA за триместр:</b>\n\n`;
     rows.forEach(r => {
         msg += `${r.emoji} <b>Предмет ${r.num}:</b> ${r.grade}% → <b>${r.letter}</b> (${r.gpa.toFixed(2)}) | <b>${r.credits} кр.</b>\n`;
     });
@@ -797,7 +791,7 @@ function calculateCumulativeGPAReport(inputStr, isGauharUser = false) {
 
     const cumGPA = totalCredits > 0 ? totalQP / totalCredits : 0;
 
-    let msg = `📈 <b>КУМУЛЯТИВНЫЙ (ОБЩИЙ) GPA:</b>\n\n`;
+    let msg = `📈 <b>Кумулятивный (общий) GPA:</b>\n\n`;
     rows.forEach(r => {
         msg += `• <b>Триместр ${r.num}:</b> GPA <b>${r.gpa.toFixed(2)}</b> × <b>${r.credits} кр.</b>\n`;
     });
@@ -845,15 +839,15 @@ function calculateAttendanceReport(lessonsPerWeek, alreadyMissed = 0, isGauharUs
     let statusHeader = '';
     if (missed > allowedAbsences || currentPercent >= 30) {
         statusHeader = pickEvil('att_danger', [
-            '🚨 <b>КРИТИЧЕСКИЙ ЛИМИТ ПРЕВЫШЕН! НЕДОПУСК К ЭКЗАМЕНУ!</b>\nМеньше надо было листать мемы — автоматический летник.',
-            '🚨 <b>КРИТИЧЕСКИЙ ЛИМИТ ПРЕВЫШЕН! НЕДОПУСК К ЭКЗАМЕНУ!</b>\nСиллабус стоило хотя бы открыть. Увидимся на ретейке!',
-            '🚨 <b>КРИТИЧЕСКИЙ ЛИМИТ ПРЕВЫШЕН! НЕДОПУСК К ЭКЗАМЕНУ!</b>\nДаже 100 на файнале не спасёт. Летник неизбежен.'
+            '🚨 <b>Критический лимит превышен (недопуск к экзамену).</b>\nМеньше надо было листать мемы — автоматический летник.',
+            '🚨 <b>Критический лимит превышен (недопуск к экзамену).</b>\nСиллабус стоило хотя бы открыть. Увидимся на ретейке!',
+            '🚨 <b>Критический лимит превышен (недопуск к экзамену).</b>\nДаже 100 на файнале не спасёт. Летник неизбежен.'
         ]);
     } else if (currentPercent > 15 || remaining <= 1) {
         statusHeader = pickEvil('att_warning', [
-            '⚠️ <b>ВНИМАНИЕ! Вы близко к лимиту пропусков!</b>\nОстался край — ходи на пары даже при апокалипсисе.',
-            '⚠️ <b>ВНИМАНИЕ! Вы близко к лимиту пропусков!</b>\nЕщё один пропуск — и ретейк гарантирован. Не рискуй.',
-            '⚠️ <b>ВНИМАНИЕ! Вы близко к лимиту пропусков!</b>\nНа грани возможного! Потребуются невероятные усилия.'
+            '⚠️ <b>Внимание: близко к лимиту пропусков.</b>\nОстался край — ходи на пары даже при апокалипсисе.',
+            '⚠️ <b>Внимание: близко к лимиту пропусков.</b>\nЕщё один пропуск — и ретейк гарантирован. Не рискуй.',
+            '⚠️ <b>Внимание: близко к лимиту пропусков.</b>\nНа грани возможного! Потребуются невероятные усилия.'
         ]);
     } else {
         statusHeader = pickEvil('att_safe', [
@@ -868,7 +862,7 @@ function calculateAttendanceReport(lessonsPerWeek, alreadyMissed = 0, isGauharUs
         gauharNote = `\n\n🧠 <i>Гаухар, зная твою забывчивость, ты случайно прогуляешь на две пары больше, перепутаешь корпус и скажешь: «Ой, а я забыла, что сегодня вторник...» 📅😅 Не рискуй!</i>`;
     }
 
-    return `📋 <b>РАСЧЁТ ПОСЕЩАЕМОСТИ (10 недель семестра):</b>\n\n` +
+    return `📋 <b>Расчёт посещаемости (10 недель семестра):</b>\n\n` +
         `${statusHeader}\n\n` +
         `• Пар в неделю: <b>${lessons}</b>\n` +
         `• Всего занятий за семестр: <b>${totalLessons}</b>\n` +
@@ -889,7 +883,7 @@ function convertGradeReport(scoreInput) {
     const info = percentageToGradeInfo(score);
     if (!info) return '❌ Некорректный балл.';
 
-    return `🔄 <b>КОНВЕРТЕР ОЦЕНКИ:</b>\n\n` +
+    return `🔄 <b>Конвертер оценки:</b>\n\n` +
         `💯 <b>Балл:</b> <code>${score}%</code>\n` +
         `🎓 <b>GPA:</b> <code>${info.gpa.toFixed(2)}</code> / 4.00\n` +
         `🔤 <b>Буквенная оценка:</b> <b>${info.letter}</b> (ECTS: <b>${info.ects}</b>)\n` +
@@ -1020,7 +1014,7 @@ function parseNaturalLanguageAcademicQuery(rawText, isGauharUser = false) {
         // Порог сдачи файнала в AITU: минимум 50 баллов
         if (givenFinal < 50) {
             return `⚠️ <b>Хватит ли ${givenFinal} на экзамене?</b>\n\n` +
-                `❌ <b>НЕТ, НЕ ХВАТИТ!</b>\n` +
+                `❌ <b>Нет, не хватит!</b>\n` +
                 `По регламенту AITU на самом файнале необходимо набрать <b>минимум 50 баллов</b>.\n` +
                 `При оценке ${givenFinal} студент направляется на пересдачу (FX / Retake), даже если суммарный балл выше 50!`;
         }
@@ -1030,8 +1024,8 @@ function parseNaturalLanguageAcademicQuery(rawText, isGauharUser = false) {
         const isEnough = total >= effectiveTarget;
 
         let verdict = isEnough
-            ? `✅ <b>ДА, ХВАТИТ С ЗАПАСОМ!</b> 🎉`
-            : `❌ <b>НЕТ, НЕ ХВАТИТ!</b> ⚠️`;
+            ? `✅ <b>Да, хватит с запасом!</b> 🎉`
+            : `❌ <b>Нет, не хватит!</b> ⚠️`;
 
         let gauharTroll = '';
         if (isGauharUser) {
@@ -1040,7 +1034,7 @@ function parseNaturalLanguageAcademicQuery(rawText, isGauharUser = false) {
                 : `\n\n😅 <i>Гаухар, нужно поднажать! Отложи соцсети и учи конспекты прямо сейчас! ☕</i>`;
         }
 
-        return `💡 <b>АНАЛИЗ ВАШЕГО ЗАПРОСА:</b>\n\n` +
+        return `💡 <b>Анализ запроса:</b>\n\n` +
             `${verdict}\n\n` +
             `• РегТерм (60%): <b>${regterm.toFixed(2)}</b> (РМ: ${rm}, РЭ: ${re})\n` +
             `• Проверяемый Файнал: <b>${givenFinal}</b>\n` +
@@ -1088,15 +1082,13 @@ function parseNaturalLanguageAcademicQuery(rawText, isGauharUser = false) {
     return `💡 <i>Распознан запрос: РегМид = ${rm}, РегЭнд = ${re}</i>\n\n` + calculateGradeReport(rm, re, null, isGauharUser);
 }
 
-// ==========================================
-// ПОШАГОВЫЙ ИНСТРУКЦИОННЫЙ ГИД ("КАК ДЛЯ ДЕБИЛОВ")
-// ==========================================
+// Инструкция по использованию бота
 
 function getFoolproofHelpText(isGauharUser = false) {
     const gauharHeader = isGauharUser
         ? `📖 <b>Специальная версия инструкции для Гаухар:</b>\n<i>Читать медленно, сохранить в закладки, перед сном перечитывать три раза, чтобы не забыть! 😉</i>\n\n`
         : '';
-    return gauharHeader + `📖 <b>ИНСТРУКЦИЯ ПО ИСПОЛЬЗОВАНИЮ БОТА:</b>\n\n` +
+    return gauharHeader + `📖 <b>Инструкция по использованию бота:</b>\n\n` +
         `🚀 <b>Калькулятор итоговой оценки:</b>\n` +
         `• <code>/calc 80 85</code> — прогноз на экзамен по РегМиду и РегЭнду\n` +
         `• <code>/calc 80 85 90</code> — точный итоговый расчёт (РМ, РЭ, Файнал)\n\n` +
@@ -1119,14 +1111,14 @@ function getCookieGuideText(isGauharUser = false) {
     const gauharHeader = isGauharUser
         ? `🍪 <b>Пошаговый гайд по кукам специально для Гаухар:</b> 🧠✨\n` +
           `<i>(Гаухар, сохрани этот пост в «Избранное», чтобы не спрашивать разработчика через 5 минут!)</i> 😉\n\n`
-        : `🍪 <b>КАК ПОДКЛЮЧИТЬ КУКИ И НАПОМИНАНИЯ (С ТЕЛЕФОНА И ПК):</b>\n\n`;
+        : `🍪 <b>Как подключить куки и напоминания (с телефона и ПК):</b>\n\n`;
 
     return gauharHeader +
         `Бот GradeMaster собирает дедлайны из двух платформ AITU:\n` +
         `1️⃣ <b>Moodle LMS</b> (все лабы, домашки, проекты — 90% всех заданий!)\n` +
         `2️⃣ <b>AITU Learn</b> (еженедельные онлайн-квизы и тесты курсов)\n\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
-        `📱 <b>ИНСТРУКЦИЯ С ТЕЛЕФОНА (БЕЗ ПК И БЕЗ F12):</b>\n\n` +
+        `📱 <b>Инструкция с телефона (без ПК и F12):</b>\n\n` +
         `🟢 <b>1. Moodle LMS (лабы и задания — делается за 15 секунд):</b>\n` +
         `<i>(Работает на iPhone и Android в обычном браузере Safari/Chrome/Яндекс)</i>\n` +
         `1. Перейдите по прямой ссылке: <a href="https://lms.astanait.edu.kz/calendar/export.php">Экспорт календаря Moodle</a> (войдите, если потребуется).\n` +
@@ -1145,7 +1137,7 @@ function getCookieGuideText(isGauharUser = false) {
         `• Отправьте скопированный ключ боту:\n` +
         `👉 <code>/set_cookie ВАШ_SESSIONID</code>\n\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
-        `💻 <b>ИНСТРУКЦИЯ С КОМПЬЮТЕРА (ЧЕРЕЗ F12):</b>\n` +
+        `💻 <b>Инструкция с компьютера (через F12):</b>\n` +
         `1. <b>AITU Learn:</b> войдите на <a href="https://learn.astanait.edu.kz/">learn.astanait.edu.kz</a> → нажмите <b>F12</b> → вкладка <b>Application</b> (в Firefox: <b>«Память» / «Storage»</b>) → слева <b>Cookies</b> → <code>https://learn.astanait.edu.kz</code> → скопируйте значение строки <code>sessionid</code> → отправьте: <code>/set_cookie ВАШ_SESSIONID</code>\n` +
         `2. <b>Moodle LMS:</b> войдите на <a href="https://lms.astanait.edu.kz/">lms.astanait.edu.kz</a> → <b>F12</b> → <b>Application</b> → <b>Cookies</b> → скопируйте <code>MoodleSession</code> → отправьте: <code>/set_lms ВАШ_MOODLESESSION</code> (или используйте экспорт календаря выше).\n\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -1156,9 +1148,7 @@ function getCookieGuideText(isGauharUser = false) {
         `🔒 <i>Ваши данные изолированы и хранятся в защищённом виде. Отключить напоминания можно в любой момент командами <code>/logout</code> (для Learn) и <code>/del_lms</code> (для LMS).</i>`;
 }
 
-// ==========================================
-// АДМИН-ПАНЕЛЬ (ТОЛЬКО ДЛЯ ADMIN_CHAT_ID)
-// ==========================================
+// Админ-панель (только для ADMIN_CHAT_ID)
 
 async function handleAdminPanel(chatId, messageId = null) {
     if (!isAdmin(chatId)) {
@@ -1201,7 +1191,7 @@ async function handleAdminPanel(chatId, messageId = null) {
         allBotUsersCount = allU.length;
     } catch {}
 
-    const adminMsg = `⚙️ <b>ПАНЕЛЬ АДМИНИСТРАТОРА GRADEMASTER:</b>\n\n` +
+    const adminMsg = `⚙️ <b>Панель администратора GradeMaster:</b>\n\n` +
         `👤 <b>Ваш Admin Chat ID:</b> <code>${chatId}</code>\n` +
         `🌐 <b>Web App URL:</b> ${WEBAPP_URL}\n` +
         `👥 <b>Всего пользователей в базе:</b> <b>${allBotUsersCount}</b> чел. (в памяти: ${activeUsers.size})\n` +
@@ -1460,9 +1450,7 @@ function buildLearnMarkMenu(result, isGauharUser = false) {
     return { text, reply_markup: { inline_keyboard: buttons } };
 }
 
-// ==========================================
-// ОБРАБОТКА CALLBACK_QUERY (INLINE КНОПКИ)
-// ==========================================
+// Обработка callback_query (inline-кнопки)
 
 async function handleCallbackQuery(cq) {
     if (!cq || !cq.data) return;
@@ -2092,7 +2080,7 @@ async function handleCallbackQuery(cq) {
         }
     }
 
-    // Отметка ВСЕГО (и LMS, и Learn)
+    // Отметка всего (и LMS, и Learn)
     if (data === 'mark_all_everything') {
         let totalCount = 0;
         const [lmsRes, aituRes] = await Promise.all([
@@ -2139,9 +2127,7 @@ async function handleCallbackQuery(cq) {
     }
 }
 
-// ==========================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ПОДКЛЮЧЕНИЯ LMS И LEARN
-// ==========================================
+// Вспомогательные функции подключения LMS и Learn
 
 function extractLmsCalendarOrCookie(input) {
     if (!input || typeof input !== 'string') return null;
@@ -2300,9 +2286,7 @@ async function executeSetLearnCookie(chatId, cookieVal, isGauharUser) {
     }
 }
 
-// ==========================================
-// ОБРАБОТКА ВХОДЯЩИХ ТЕКСТОВЫХ СООБЩЕНИЙ
-// ==========================================
+// Обработка входящих текстовых сообщений
 
 async function handleMessage(msg) {
     if (!msg || !msg.text) return;
@@ -2923,7 +2907,7 @@ async function handleMessage(msg) {
         }
     }
 
-    // 3. /admin или "Панель Администратора" (ТОЛЬКО ДЛЯ АДМИНА)
+    // 3. /admin или "Панель Администратора" (только для админа)
     if (text === '/admin' || text === 'Панель Администратора' || text === '⚙️ Панель Администратора') {
         if (!isAdmin(chatId)) {
             return sendMessage(chatId, 'Команда не найдена. Напишите <code>/help</code> для просмотра доступных функций.', { reply_markup: getMainKeyboard(chatId) });
@@ -2931,7 +2915,7 @@ async function handleMessage(msg) {
         return handleAdminPanel(chatId);
     }
 
-    // 3.1. /stats (ТОЛЬКО ДЛЯ АДМИНА)
+    // 3.1. /stats (только для админа)
     if (text === '/stats' || text === '📊 Статистика') {
         if (!isAdmin(chatId)) {
             return sendMessage(chatId, 'Команда не найдена. Напишите <code>/help</code> для просмотра доступных функций.', { reply_markup: getMainKeyboard(chatId) });
@@ -2945,7 +2929,7 @@ async function handleMessage(msg) {
         return sendMessage(chatId, `Ваш Telegram Chat ID: <code>${chatId}</code>\nИмя: <b>${esc(userName)}</b>\nПрава: <b>${isAdmin(chatId) ? 'Администратор' : 'Студент'}</b>`);
     }
 
-    // 5. /broadcast <текст> (ТОЛЬКО ДЛЯ АДМИНА)
+    // 5. /broadcast <текст> (только для админа)
     if (text.startsWith('/broadcast')) {
         if (!isAdmin(chatId)) {
             return sendMessage(chatId, 'Доступ запрещен.');
@@ -2987,7 +2971,7 @@ async function handleMessage(msg) {
         return sendMessage(chatId, report);
     }
 
-    // 6. /reply <chat_id> <текст> (ТОЛЬКО ДЛЯ АДМИНА)
+    // 6. /reply <chat_id> <текст> (только для админа)
     if (text.startsWith('/reply')) {
         if (!isAdmin(chatId)) {
             return sendMessage(chatId, 'Доступ запрещен.');
@@ -3275,9 +3259,7 @@ async function handleMessage(msg) {
     return sendMessage(chatId, `❓ Неизвестная команда или некорректный запрос.\n\nНажмите <b>«Инструкция»</b> или напишите <code>/help</code>, чтобы посмотреть список команд.`, { reply_markup: getMainKeyboard(chatId) });
 }
 
-// ==========================================
-// VERCEL SERVERLESS HANDLER
-// ==========================================
+// Vercel serverless handler
 
 module.exports = async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -3407,9 +3389,7 @@ module.exports.handleMessage = handleMessage;
 module.exports.getBotInfo = getBotInfo;
 module.exports._setBotInfoForTesting = _setBotInfoForTesting;
 
-// ==========================================
-// ЛОКАЛЬНЫЙ LONG-POLLING (ДЛЯ РАЗРАБОТКИ)
-// ==========================================
+// Локальный long-polling (для разработки)
 if (require.main === module) {
     let offset = 0;
     async function poll() {

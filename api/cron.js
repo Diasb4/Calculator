@@ -204,9 +204,7 @@ async function processUserQuizzes(chatId, context) {
         return { chatId: strChatId, ok: false, error: result.error, criticalSent, dailySent };
     }
 
-    // =========================================================================
-    // 1. ЭКСТРЕННЫЕ ОПОВЕЩЕНИЯ ЗА 1 ЧАС ДО ДЕДЛАЙНА (🔥 САМАЯ ГОРЯЧАЯ НАПОМИНАЛКА)
-    // =========================================================================
+    // 1. Оповещения за 1 час до дедлайна
     const uncompletedQuizzes = result.activeQuizzes || (result.quizzes || []).filter(q => !q.isCompleted);
     const criticalQuizzes = uncompletedQuizzes.filter(q => !q.isPast && q.isCriticalHour);
     for (const item of criticalQuizzes) {
@@ -217,16 +215,14 @@ async function processUserQuizzes(chatId, context) {
             const { text: alertText, replyMarkup } = aitu.formatCriticalHourAlert(item, isGauharUser);
             await sendTelegram(strChatId, alertText, {
                 reply_markup: replyMarkup,
-                disable_notification: false // Максимальный приоритет: громкий звук и вибрация!
+                disable_notification: false
             });
             await markAlertAsSent(quizKey);
             criticalSent++;
         }
     }
 
-    // =========================================================================
-    // 2. РЕГУЛЯРНАЯ УТРЕННЯЯ СВОДКА (Квизы на 3 дня + статистика для админа)
-    // =========================================================================
+    // 2. Утренняя сводка квизов
     const dailyKey = `daily:${strChatId}:${todayStr}`;
     const alreadySentDaily = await hasAlertBeenSent(dailyKey);
 
@@ -235,8 +231,8 @@ async function processUserQuizzes(chatId, context) {
 
         if (urgentQuizzes.length > 0) {
             let alertMsg = isGauharUser
-                ? `🔔 <b>Напоминание о квизах для Гаухар!</b> 🧠\n\n`
-                : `🔔 <b>Напоминание о квизах AITU!</b>\n\n`;
+                ? `🔔 <b>Напоминание о квизах для Гаухар:</b>\n\n`
+                : `🔔 <b>Напоминание о квизах AITU:</b>\n\n`;
             for (const item of urgentQuizzes) {
                 const dateObj = new Date(item.dueDate);
                 const astanaTime = new Intl.DateTimeFormat('ru-RU', {
@@ -249,11 +245,11 @@ async function processUserQuizzes(chatId, context) {
 
                 let badge = '';
                 if (item.diffMinutes !== undefined && item.diffMinutes <= 60 && item.diffMinutes > 0) {
-                    badge = `🚨 <b>ОСТАЛОСЬ ${item.diffMinutes} МИН.!</b>`;
+                    badge = `⏰ <b>Осталось ${item.diffMinutes} мин.</b>`;
                 } else if (item.diffDays <= 0) {
-                    badge = '🚨 <b>СЕГОДНЯ!</b>';
+                    badge = '⚠️ <b>Сегодня</b>';
                 } else if (item.diffDays === 1) {
-                    badge = '🔥 <b>ЗАВТРА!</b>';
+                    badge = '📌 <b>Завтра</b>';
                 } else {
                     badge = `⏳ через ${item.diffDays} дн.`;
                 }
@@ -294,9 +290,7 @@ async function processUserQuizzes(chatId, context) {
         }
     }
 
-    // =========================================================================
-    // 3. ВЕЧЕРНИЙ ЧЕК-ЛИСТ КВИЗОВ LEARN (за 4-5 часов до 23:59 и на завтра)
-    // =========================================================================
+    // 3. Вечерний чек-лист квизов Learn
     const eveningKey = `evening:${strChatId}:${todayStr}`;
     const alreadySentEvening = await hasAlertBeenSent(eveningKey);
 
@@ -308,7 +302,7 @@ async function processUserQuizzes(chatId, context) {
 
         if (tonightOrTomorrow.length > 0) {
             let alertMsg = isGauharUser
-                ? `🌆 <b>Гаухар, вечерний чек-лист квизов AITU!</b> 🧠✨\n<i>(Что нужно закрыть до сна или завтра):</i>\n\n`
+                ? `🌆 <b>Гаухар, вечерний чек-лист квизов AITU:</b>\n<i>(Что нужно закрыть до сна или завтра):</i>\n\n`
                 : `🌆 <b>Вечерний чек-лист квизов AITU Learn:</b>\n<i>(Дедлайны на сегодня и завтра):</i>\n\n`;
 
             for (const item of tonightOrTomorrow) {
@@ -324,11 +318,11 @@ async function processUserQuizzes(chatId, context) {
                 const u = item._urgency;
                 let badge = '';
                 if (u.diffMinutes <= 60 && u.diffMinutes > 0) {
-                    badge = `🚨 <b>ОСТАЛОСЬ ${u.diffMinutes} МИН.!</b>`;
+                    badge = `⏰ <b>Осталось ${u.diffMinutes} мин.</b>`;
                 } else if (u.isTonight) {
-                    badge = `⏳ <b>СЕГОДНЯ: осталось ${u.diffHours} ч.!</b>`;
+                    badge = `⏳ <b>Сегодня: осталось ${u.diffHours} ч.</b>`;
                 } else {
-                    badge = `🔥 <b>ЗАВТРА</b>`;
+                    badge = `📌 <b>Завтра</b>`;
                 }
 
                 alertMsg += `📚 <b>${item.courseName}</b>\n` +
@@ -435,11 +429,11 @@ async function processUserLms(chatId, context) {
 
                 let badge = '';
                 if (item.diffMinutes !== undefined && item.diffMinutes <= 60 && item.diffMinutes > 0) {
-                    badge = `🚨 <b>ОСТАЛОСЬ ${item.diffMinutes} МИН.!</b>`;
+                    badge = `⏰ <b>Осталось ${item.diffMinutes} мин.</b>`;
                 } else if (item.diffDays <= 0) {
-                    badge = '🚨 <b>СЕГОДНЯ!</b>';
+                    badge = '⚠️ <b>Сегодня</b>';
                 } else if (item.diffDays === 1) {
-                    badge = '🔥 <b>ЗАВТРА!</b>';
+                    badge = '📌 <b>Завтра</b>';
                 } else {
                     badge = `⏳ через ${item.diffDays} дн.`;
                 }
@@ -459,9 +453,7 @@ async function processUserLms(chatId, context) {
         }
     }
 
-    // =========================================================================
-    // 3. ВЕЧЕРНИЙ ЧЕК-ЛИСТ ДЕДЛАЙНОВ LMS (за 4-5 часов до 23:59 и на завтра)
-    // =========================================================================
+    // 3. Вечерний чек-лист дедлайнов LMS
     const eveningKey = `evening:lms:${strChatId}:${todayStr}`;
     const alreadySentEvening = await hasAlertBeenSent(eveningKey);
 
@@ -473,7 +465,7 @@ async function processUserLms(chatId, context) {
 
         if (tonightOrTomorrow.length > 0) {
             let alertMsg = isGauharUser
-                ? `🌆 <b>Гаухар, вечерний чек-лист дедлайнов LMS!</b> 🧠✨\n<i>(Что нужно сдать сегодня до ночи или завтра):</i>\n\n`
+                ? `🌆 <b>Гаухар, вечерний чек-лист дедлайнов LMS:</b>\n<i>(Что нужно сдать сегодня до ночи или завтра):</i>\n\n`
                 : `🌆 <b>Вечерний чек-лист Moodle LMS (AITU):</b>\n<i>(Дедлайны на сегодня и завтра):</i>\n\n`;
 
             for (const item of tonightOrTomorrow) {
@@ -489,11 +481,11 @@ async function processUserLms(chatId, context) {
                 const u = item._urgency;
                 let badge = '';
                 if (u.diffMinutes <= 60 && u.diffMinutes > 0) {
-                    badge = `🚨 <b>ОСТАЛОСЬ ${u.diffMinutes} МИН.!</b>`;
+                    badge = `⏰ <b>Осталось ${u.diffMinutes} мин.</b>`;
                 } else if (u.isTonight) {
-                    badge = `⏳ <b>СЕГОДНЯ: осталось ${u.diffHours} ч.!</b>`;
+                    badge = `⏳ <b>Сегодня: осталось ${u.diffHours} ч.</b>`;
                 } else {
-                    badge = `🔥 <b>ЗАВТРА</b>`;
+                    badge = `📌 <b>Завтра</b>`;
                 }
 
                 alertMsg += `📌 <b>${item.courseName}</b>\n` +

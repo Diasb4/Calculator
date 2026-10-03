@@ -325,7 +325,7 @@ async function formatStatsTelegram() {
 
     const storageBadge = stats.storage === 'kv' ? '🟢 Vercel KV / Upstash Active' : '🟡 In-Memory (KV connecting...)';
 
-    return `📊 <b>СТАТИСТИКА ИСПОЛЬЗОВАНИЯ GRADEMASTER:</b>\n\n` +
+    return `📊 <b>Статистика использования GradeMaster:</b>\n\n` +
         `👥 <b>Уникальные пользователи:</b>\n` +
         `• <b>Сегодня (DAU):</b> <code>${stats.dau}</code> (🤖 Бот: <b>${stats.dauBot}</b> | 🌐 Сайт: <b>${stats.dauWeb}</b>)\n` +
         `• <b>Вчера:</b> <code>${stats.dauYesterday}</code>\n` +

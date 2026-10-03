@@ -456,7 +456,7 @@ test('Telegram bot: calculateGPAReport processes lines with percentages and lett
 Физика 80 4
 История 70 3`;
     const report = bot.calculateGPAReport(input);
-    assert.match(report, /РАСЧЁТ GPA ЗА ТРИМЕСТР/);
+    assert.match(report, /Расчёт GPA за триместр/i);
     assert.match(report, /Итоговый GPA/);
     assert.match(report, /Всего кредитов:.*10/);
 
@@ -483,7 +483,7 @@ test('Telegram bot: calculateAttendanceReport calculates 10-week limit and visua
     assert.match(reportSafe, /Безопасная зона посещаемости/);
 
     const reportDanger = bot.calculateAttendanceReport(3, 10);
-    assert.match(reportDanger, /КРИТИЧЕСКИЙ ЛИМИТ ПРЕВЫШЕН/);
+    assert.match(reportDanger, /Критический лимит превышен/i);
 });
 
 test('Telegram bot: convertGradeReport outputs complete conversion table', () => {
@@ -506,7 +506,7 @@ test('Telegram bot: admin security and main keyboard isolation', () => {
 
     // Help text check
     const help = bot.getFoolproofHelpText();
-    assert.match(help, /ИНСТРУКЦИЯ ПО ИСПОЛЬЗОВАНИЮ БОТА/);
+    assert.match(help, /Инструкция по использованию бота/i);
     assert.match(help, /Калькулятор итоговой оценки/);
     assert.match(help, /Калькулятор GPA/);
 });
@@ -564,7 +564,7 @@ test('Telegram bot: admin panel and setup handler execute without ReferenceError
 
         const lastMsg = sentMessages[sentMessages.length - 1];
         assert.ok(lastMsg);
-        assert.match(lastMsg.text, /ПАНЕЛЬ АДМИНИСТРАТОРА GRADEMASTER/);
+        assert.match(lastMsg.text, /Панель администратора GradeMaster/i);
         assert.match(lastMsg.text, /TELEGRAM_BOT_TOKEN.*Настроен/);
 
         // 2. Calling GET /api/bot?setup=1
@@ -669,7 +669,7 @@ test('AITU: formatCriticalHourAlert produces loud siren warning and direct inlin
     };
 
     const alert = aitu.formatCriticalHourAlert(mockQuiz);
-    assert.match(alert.text, /ГОРЯЩИЙ ДЕДЛАЙН: ОСТАЛСЯ 1 ЧАС!/);
+    assert.match(alert.text, /Горящий дедлайн: остался 1 час/i);
     assert.match(alert.text, /45 мин\./);
     assert.match(alert.text, /Philosophy/);
     assert.match(alert.text, /Quiz 2\. Epistemology/);
@@ -739,7 +739,7 @@ test('Cron: sends critical 1-hour alert with sound and deduplicates repeated inv
         assert.equal(sentTelegrams.length, 1);
         assert.equal(sentTelegrams[0].chat_id, '999888');
         assert.equal(sentTelegrams[0].disable_notification, false, 'Notification sound/vibrate must be active');
-        assert.match(sentTelegrams[0].text, /ГОРЯЩИЙ ДЕДЛАЙН: ОСТАЛСЯ 1 ЧАС!/);
+        assert.match(sentTelegrams[0].text, /Горящий дедлайн: остался 1 час/i);
         assert.ok(sentTelegrams[0].reply_markup?.inline_keyboard?.[0]?.[0]?.text.includes('Сдать квиз'));
 
         // 2. Second invocation: must NOT re-send duplicate alert
@@ -1281,7 +1281,7 @@ test('LMS & Cron: critical 1-hour alert and morning digest with authtoken suppor
 
         assert.equal(sentMessages.length, 2);
         const criticalMsg = sentMessages[0];
-        assert.match(criticalMsg.text, /ГОРЯЩИЙ ДЕДЛАЙН В LMS: 1 ЧАС!/);
+        assert.match(criticalMsg.text, /Горящий дедлайн в LMS: 1 час/i);
         assert.match(criticalMsg.text, /Final Project Submission/);
         assert.match(criticalMsg.text, /Web Technologies/);
         assert.ok(criticalMsg.reply_markup);
@@ -1403,7 +1403,7 @@ test('Telegram Bot: LMS commands (/lms, /set_lms, /del_lms) and keyboard updates
 test('Telegram Bot: Cookie guide text and commands (/cookie, /cookies, /гайд, wiz_cookie_guide)', async () => {
     const bot = require('../api/bot/index.js');
     const guideRegular = bot.getCookieGuideText(false);
-    assert.match(guideRegular, /КАК ПОДКЛЮЧИТЬ КУКИ И НАПОМИНАНИЯ/);
+    assert.match(guideRegular, /Как подключить куки и напоминания/i);
     assert.match(guideRegular, /learn\.astanait\.edu\.kz/);
     assert.match(guideRegular, /sessionid/);
     assert.match(guideRegular, /MoodleSession/);
@@ -1449,22 +1449,22 @@ test('Telegram Bot: Cookie guide text and commands (/cookie, /cookies, /гайд
         // 1. /cookie
         await bot(createReq('/cookie'), mockRes);
         assert.ok(sentMessages.length > 0);
-        assert.match(sentMessages[sentMessages.length - 1].text, /КАК ПОДКЛЮЧИТЬ КУКИ И НАПОМИНАНИЯ/);
+        assert.match(sentMessages[sentMessages.length - 1].text, /Как подключить куки и напоминания/i);
 
         // 2. /гайд
         await bot(createReq('/гайд'), mockRes);
-        assert.match(sentMessages[sentMessages.length - 1].text, /КАК ПОДКЛЮЧИТЬ КУКИ И НАПОМИНАНИЯ/);
+        assert.match(sentMessages[sentMessages.length - 1].text, /Как подключить куки и напоминания/i);
 
         // 3. /set_lms without params
         await bot(createReq('/set_lms'), mockRes);
-        assert.match(sentMessages[sentMessages.length - 1].text, /КАК ПОДКЛЮЧИТЬ КУКИ И НАПОМИНАНИЯ/);
+        assert.match(sentMessages[sentMessages.length - 1].text, /Как подключить куки и напоминания/i);
 
         // 4. /телефон and /mobile
         await bot(createReq('/телефон'), mockRes);
-        assert.match(sentMessages[sentMessages.length - 1].text, /ИНСТРУКЦИЯ С ТЕЛЕФОНА/);
+        assert.match(sentMessages[sentMessages.length - 1].text, /Инструкция с телефона/i);
 
         await bot(createReq('гайд как с телефона'), mockRes);
-        assert.match(sentMessages[sentMessages.length - 1].text, /ИНСТРУКЦИЯ С ТЕЛЕФОНА/);
+        assert.match(sentMessages[sentMessages.length - 1].text, /Инструкция с телефона/i);
 
         // 5. Callback query wiz_cookie_guide
         const callbackReq = {
@@ -1479,7 +1479,7 @@ test('Telegram Bot: Cookie guide text and commands (/cookie, /cookies, /гайд
             }
         };
         await bot(callbackReq, mockRes);
-        assert.match(sentMessages[sentMessages.length - 1].text, /КАК ПОДКЛЮЧИТЬ КУКИ И НАПОМИНАНИЯ/);
+        assert.match(sentMessages[sentMessages.length - 1].text, /Как подключить куки и напоминания/i);
 
     } finally {
         global.fetch = originalFetch;
@@ -2011,7 +2011,7 @@ test('Top-6: Natural language academic query parser and AITU rules verification'
     // 1. Standard question for final score needed
     const q1 = bot.parseNaturalLanguageAcademicQuery('сколько надо на файнале если регмид 80 регенд 70');
     assert.ok(q1);
-    assert.match(q1, /ПРОГНОЗ НА ЭКЗАМЕН/);
+    assert.match(q1, /Прогноз на экзамен/i);
     assert.match(q1, /75\.00/);
 
     // 2. Question for specific target grade B+ (85)
@@ -2023,19 +2023,19 @@ test('Top-6: Natural language academic query parser and AITU rules verification'
     // 3. Question verifying given final score: "хватит ли 75 на экзамене на B+ если рм 85 рэ 80"
     const q3 = bot.parseNaturalLanguageAcademicQuery('хватит ли 75 на экзамене на B+ если рм 85 рэ 80');
     assert.ok(q3);
-    assert.match(q3, /НЕТ, НЕ ХВАТИТ/);
+    assert.match(q3, /Нет, не хватит/i);
     assert.match(q3, /79.50/);
 
     // 4. Question verifying given final score: "хватит ли 90 на экзамене на стипендию если рм 80 рэ 80"
     const q4 = bot.parseNaturalLanguageAcademicQuery('хватит ли 90 на экзамене на стипендию если рм 80 рэ 80');
     assert.ok(q4);
-    assert.match(q4, /ДА, ХВАТИТ С ЗАПАСОМ/);
+    assert.match(q4, /Да, хватит с запасом/i);
     assert.match(q4, /84.00/);
 
     // 5. AITU final exam passing threshold: score < 50 on final is rejected regardless of high midterm
     const q5 = bot.parseNaturalLanguageAcademicQuery('хватит ли 45 на файнале если регмид 95 регенд 95');
     assert.ok(q5);
-    assert.match(q5, /НЕТ, НЕ ХВАТИТ/);
+    assert.match(q5, /Нет, не хватит/i);
     assert.match(q5, /минимум 50 баллов/);
 
     // 6. AITU admission threshold: midterm < 25 rejects admission

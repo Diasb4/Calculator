@@ -895,11 +895,11 @@ function formatQuizzesMessage(result, isGauharUser = false, showCompletedOnly = 
 
                 let badge = '';
                 if (item.diffMinutes !== undefined && item.diffMinutes <= 60 && item.diffMinutes > 0) {
-                    badge = `🚨 <b>ОСТАЛОСЬ ${item.diffMinutes} МИН.!</b>`;
+                    badge = `⏰ <b>Осталось ${item.diffMinutes} мин.</b>`;
                 } else if (item.diffDays <= 0) {
-                    badge = '🚨 <b>СЕГОДНЯ!</b>';
+                    badge = '⚠️ <b>Сегодня</b>';
                 } else if (item.diffDays === 1) {
-                    badge = '🔥 <b>ЗАВТРА!</b>';
+                    badge = '📌 <b>Завтра</b>';
                 } else {
                     badge = `⏳ через ${item.diffDays} дн.`;
                 }
@@ -941,13 +941,13 @@ function formatQuizzesMessage(result, isGauharUser = false, showCompletedOnly = 
 
             let remainingText = '';
             if (item.diffMinutes !== undefined && item.diffMinutes <= 60 && item.diffMinutes > 0) {
-                remainingText = `🚨 <b>ОСТАЛОСЬ ${item.diffMinutes} МИН.!</b>`;
+                remainingText = `⏰ <b>Осталось ${item.diffMinutes} мин.</b>`;
             } else if (item.diffDays > 1) {
                 remainingText = `⏳ осталось ${item.diffDays} дн.`;
             } else if (item.diffHours > 0) {
-                remainingText = `🔥 <b>осталось ${item.diffHours} ч.!</b>`;
+                remainingText = `⚠️ <b>осталось ${item.diffHours} ч.</b>`;
             } else {
-                remainingText = `🚨 <b>дедлайн сегодня!</b>`;
+                remainingText = `⚠️ <b>дедлайн сегодня</b>`;
             }
 
             msg += `\n📚 <b>${item.courseName}</b>\n` +
@@ -1012,23 +1012,22 @@ function formatCriticalHourAlert(quiz, isGauharUser = false) {
     let buttonText = '🚀 Сдать квиз прямо сейчас';
 
     if (isGauharUser) {
-        text = `🚨🚨🚨 <b>ГОРЯЩИЙ ДЕДЛАЙН: ОСТАЛСЯ 1 ЧАС!</b> 🚨🚨🚨\n\n` +
-            `👩‍🎓 <b>Гаухар, мы знаем, что ты забыла!</b>\n` +
-            `Но этот квиз сам себя не решит, а память тебя опять подводит... До закрытия осталось всего ${remainingStr}!\n` +
-            `Бросай всё и иди сдавать прямо сейчас, пока не поздно! 🏃‍♀️💨\n\n` +
+        text = `⏰ <b>Горящий дедлайн: остался 1 час</b>\n\n` +
+            `👩‍🎓 <b>Гаухар, мы знаем, что ты забыла!</b> 🚨\n` +
+            `Если твоя память тебя опять подводит — до закрытия квиза осталось всего ${remainingStr}!\n\n` +
             `📚 <b>Курс:</b> ${quiz.courseName}\n` +
             `📝 <b>Квиз:</b> <a href="${quiz.link}">${quiz.title}</a>\n` +
             `⏰ <b>Точный дедлайн:</b> <b>${astanaTime}</b> (Алматы)\n\n` +
-            `⚡️ <i>После окончания времени сдать работу будет невозможно!</i>`;
+            `⚡️ <i>После окончания времени сдать работу будет невозможно.</i>`;
         buttonText = '🚀 Спасти оценку прямо сейчас';
     } else {
-        text = `🚨🚨🚨 <b>ГОРЯЩИЙ ДЕДЛАЙН: ОСТАЛСЯ 1 ЧАС!</b> 🚨🚨🚨\n\n` +
-            `⚠️ <b>Внимание!</b> До закрытия квиза на <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> осталось ${remainingStr}!\n` +
+        text = `⏰ <b>Горящий дедлайн: остался 1 час</b>\n\n` +
+            `⚠️ <b>Внимание:</b> до закрытия квиза на <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> осталось ${remainingStr}.\n` +
             `После окончания времени попытка сгорит, сдать квиз позже будет невозможно.\n\n` +
             `📚 <b>Курс:</b> ${quiz.courseName}\n` +
             `📝 <b>Квиз:</b> <a href="${quiz.link}">${quiz.title}</a>\n` +
             `⏰ <b>Точный дедлайн:</b> <b>${astanaTime}</b> (Алматы)\n\n` +
-            `⚡️ <i>Срочно перейдите по ссылке ниже и сдайте работу вовремя!</i>`;
+            `⚡️ <i>Перейдите по ссылке ниже и сдайте работу вовремя.</i>`;
     }
 
     const replyMarkup = {

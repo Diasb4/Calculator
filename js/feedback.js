@@ -121,7 +121,7 @@ if (restoreBtn) {
     });
 }
 
-// Форматирование сообщения ВСЕГДА на русском языке для бота в Telegram
+// Форматирование сообщения для Telegram-бота
 function formatMessage(userName, type, message, contact) {
     const typeTitles = {
         suggestion: '💡 Предложение',

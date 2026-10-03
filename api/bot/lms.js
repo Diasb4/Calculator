@@ -813,11 +813,11 @@ function formatLmsDeadlinesMessage(result, isGauharUser = false, showCompletedOn
 
                 let badge = '';
                 if (item.diffMinutes <= 60 && item.diffMinutes > 0) {
-                    badge = `🚨 <b>ОСТАЛОСЬ ${item.diffMinutes} МИН.!</b>`;
+                    badge = `⏰ <b>Осталось ${item.diffMinutes} мин.</b>`;
                 } else if (item.diffDays <= 0) {
-                    badge = '🚨 <b>СЕГОДНЯ!</b>';
+                    badge = '⚠️ <b>Сегодня</b>';
                 } else if (item.diffDays === 1) {
-                    badge = '🔥 <b>ЗАВТРА!</b>';
+                    badge = '📌 <b>Завтра</b>';
                 } else {
                     badge = `⏳ через ${item.diffDays} дн.`;
                 }
@@ -856,11 +856,11 @@ function formatLmsDeadlinesMessage(result, isGauharUser = false, showCompletedOn
 
         let badge = '';
         if (item.diffMinutes <= 60 && item.diffMinutes > 0) {
-            badge = `🚨 <b>ОСТАЛОСЬ ${item.diffMinutes} МИН.!</b>`;
+            badge = `⏰ <b>Осталось ${item.diffMinutes} мин.</b>`;
         } else if (item.diffDays <= 0) {
-            badge = '🚨 <b>СЕГОДНЯ!</b>';
+            badge = '⚠️ <b>Сегодня</b>';
         } else if (item.diffDays === 1) {
-            badge = '🔥 <b>ЗАВТРА!</b>';
+            badge = '📌 <b>Завтра</b>';
         } else {
             badge = `⏳ через ${item.diffDays} дн.`;
         }
@@ -895,18 +895,18 @@ function formatCriticalHourLmsAlert(event, isGauharUser = false) {
 
     let text = '';
     if (isGauharUser) {
-        text = `🚨🚨🚨 <b>ГАУХАР! СРОЧНЫЙ ДЕДЛАЙН В LMS: ${minsLeft} МИНУТ!</b> 🚨🚨🚨\n\n` +
-            `🧠 <b>Мы знали, что ты забыла! Срочно бросай всё и открывай:</b>\n` +
+        text = `⏰ <b>Гаухар, дедлайн в LMS: ${minsLeft} мин.</b>\n\n` +
+            `🧠 <b>Напоминаем о сдаче задания:</b>\n` +
             `📚 <b>Предмет:</b> ${esc(event.courseName)}\n` +
             `📌 <b>Задание:</b> <code>${esc(event.title)}</code>\n` +
-            `⏰ <b>Срок сдачи:</b> <b>${astanaTime}</b> (ровно через ${minsLeft} мин.!)\n\n` +
-            `🚀 <i>Нажми кнопку ниже прямо сейчас, пока портал не закрыл прием работ!</i> 👇`;
+            `⏰ <b>Срок сдачи:</b> <b>${astanaTime}</b> (через ${minsLeft} мин.)\n\n` +
+            `🚀 <i>Перейдите по кнопке ниже и отправьте работу вовремя.</i> 👇`;
     } else {
-        text = `🚨🚨🚨 <b>ВНИМАНИЕ! ГОРЯЩИЙ ДЕДЛАЙН В LMS: 1 ЧАС!</b> 🚨🚨🚨\n\n` +
+        text = `⏰ <b>Горящий дедлайн в LMS: 1 час</b>\n\n` +
             `📚 <b>Курс:</b> ${esc(event.courseName)}\n` +
             `📌 <b>Задание:</b> <code>${esc(event.title)}</code>\n` +
-            `⏰ <b>Окончание приёма:</b> <b>${astanaTime}</b> (осталось всего <b>${minsLeft} мин.</b>)\n\n` +
-            `⚡️ Не откладывай на последние 5 минут — сдай работу прямо сейчас!`;
+            `⏰ <b>Окончание приёма:</b> <b>${astanaTime}</b> (осталось <b>${minsLeft} мин.</b>)\n\n` +
+            `⚡️ Не откладывайте на последние минуты — сдайте работу вовремя.`;
     }
 
     const replyMarkup = {

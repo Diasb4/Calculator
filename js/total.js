@@ -364,7 +364,7 @@ function calculate() {
         return;
     }
 
-    // РЕЖИМ ПРОГНОЗА
+    // Режим прогноза
     if (finalInput === '') {
         let predictionHTML = `<h2>🔮 ${pick(commentTexts[mode].prediction)}</h2>`;
         predictionHTML += `<p style="margin-bottom: 15px;"><strong>${translationHTML('regterm_display', {value: regterm.toFixed(2), source: ''})}${translationHTML(regtermDirect !== null ? 'regterm_direct_input' : 'regterm_calculated')}</strong></p>`;
@@ -529,7 +529,7 @@ function calculate() {
         return;
     }
 
-    // ОБЫЧНЫЙ РАСЧЁТ С РЕАЛЬНЫМ ФАЙНАЛОМ
+    // Обычный расчёт с реальным файналом
     let total;
     if (regtermDirect !== null) {
         // Если РегТерм введён напрямую

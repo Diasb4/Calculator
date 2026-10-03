@@ -71,7 +71,7 @@ test('statsEngine: records calculations by category', async () => {
 test('statsEngine: formatStatsTelegram outputs rich anonymous dashboard', async () => {
     const formatted = await statsEngine.formatStatsTelegram();
 
-    assert.match(formatted, /СТАТИСТИКА ИСПОЛЬЗОВАНИЯ GRADEMASTER/);
+    assert.match(formatted, /Статистика использования GradeMaster/i);
     assert.match(formatted, /Уникальные пользователи/);
     assert.match(formatted, /Сегодня \(DAU\):/);
     assert.match(formatted, /За 7 дней \(WAU\):/);

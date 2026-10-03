@@ -136,9 +136,7 @@ if (typeof window !== 'undefined') {
     }
 }
 
-// ==========================================
-// EASTER EGG, DEV HUD & KEYBOARD SHORTCUTS
-// ==========================================
+// Easter egg, Dev HUD & keyboard shortcuts
 
 function showSpecialToast(message) {
     const existing = document.getElementById('gm-glass-toast');
@@ -298,18 +296,9 @@ function initEasterEggEngine() {
         footer.appendChild(egg);
     }
 
-    // Console Dev Banner (logged once)
+    // Easter egg init flag
     if (!window.__gmDevEngineInit) {
         window.__gmDevEngineInit = true;
-        try {
-            console.log(
-                '%c GradeMaster %c Academic Utility Engine %c',
-                'background: #0f172a; color: #38bdf8; font-weight: bold; padding: 4px 8px; border-radius: 4px 0 0 4px;',
-                'background: #2563eb; color: #ffffff; font-weight: 600; padding: 4px 8px; border-radius: 0 4px 4px 0;',
-                'background: transparent;'
-            );
-            console.log('Tip: Press ? for keyboard shortcuts or enter Konami Code (↑ ↑ ↓ ↓ ← → ← → B A) for Dev HUD.');
-        } catch { /* Ignore console errors */ }
     }
 
     // Konami Code sequence: Up Up Down Down Left Right Left Right B A
