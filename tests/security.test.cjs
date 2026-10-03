@@ -377,7 +377,7 @@ test('Security: iCal title and courseName with HTML/XSS injection are safely esc
             id: '123',
             title: '<script>alert(1)</script> & <b>bold</b>',
             courseName: 'Hacking <img src=x onerror=alert(2)>',
-            dueDate: new Date(Date.now() + 86400000).toISOString(),
+            dueDate: new Date(Date.now() + 3600000).toISOString(),
             diffMinutes: 1440,
             diffHours: 24,
             diffDays: 1,
@@ -456,6 +456,150 @@ test('Security: /set_lms rejects third-party URLs immediately without falsely cl
         if (origToken !== undefined) process.env.TELEGRAM_BOT_TOKEN = origToken;
         else delete process.env.TELEGRAM_BOT_TOKEN;
     }
+});
+
+test('Security: Webhook POST enforces timing-safe TELEGRAM_SECRET_TOKEN verification', async () => {
+    const origSecret = process.env.TELEGRAM_SECRET_TOKEN;
+    const origToken = process.env.TELEGRAM_BOT_TOKEN;
+    const origFetch = global.fetch;
+
+    process.env.TELEGRAM_SECRET_TOKEN = 'secret_token_guard_777';
+    process.env.TELEGRAM_BOT_TOKEN = '123456:mock_token_for_test';
+
+    global.fetch = async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, result: { message_id: 1 } })
+    });
+
+    function createMockRes() {
+        return {
+            statusCode: 200,
+            headers: {},
+            setHeader(k, v) { this.headers[k] = v; },
+            status(code) { this.statusCode = code; return this; },
+            json(data) { this.body = data; return this; },
+            end() { this.ended = true; return this; }
+        };
+    }
+
+    try {
+        // 1. Missing secret token on POST -> 401
+        const resMissing = createMockRes();
+        await bot({
+            method: 'POST',
+            headers: {},
+            body: { message: { chat: { id: 123 }, text: '/start' } }
+        }, resMissing);
+        assert.strictEqual(resMissing.statusCode, 401);
+        assert.deepStrictEqual(resMissing.body, { error: 'Unauthorized' });
+
+        // 2. Wrong token on POST -> 401
+        const resWrong = createMockRes();
+        await bot({
+            method: 'POST',
+            headers: { 'x-telegram-bot-api-secret-token': 'wrong_attacker_token' },
+            body: { message: { chat: { id: 123 }, text: '/start' } }
+        }, resWrong);
+        assert.strictEqual(resWrong.statusCode, 401);
+
+        // 3. Different length token -> 401
+        const resDiffLen = createMockRes();
+        await bot({
+            method: 'POST',
+            headers: { 'x-telegram-bot-api-secret-token': 'secret_token' },
+            body: { message: { chat: { id: 123 }, text: '/start' } }
+        }, resDiffLen);
+        assert.strictEqual(resDiffLen.statusCode, 401);
+
+        // 4. Correct token on POST -> 200
+        const resValid = createMockRes();
+        await bot({
+            method: 'POST',
+            headers: { 'x-telegram-bot-api-secret-token': 'secret_token_guard_777' },
+            body: { message: { chat: { id: 123 }, text: '/start' } }
+        }, resValid);
+        assert.strictEqual(resValid.statusCode, 200);
+        assert.strictEqual(resValid.body.ok, true);
+    } finally {
+        global.fetch = origFetch;
+        if (origSecret !== undefined) process.env.TELEGRAM_SECRET_TOKEN = origSecret;
+        else delete process.env.TELEGRAM_SECRET_TOKEN;
+        if (origToken !== undefined) process.env.TELEGRAM_BOT_TOKEN = origToken;
+        else delete process.env.TELEGRAM_BOT_TOKEN;
+    }
+});
+
+test('Security: api/cron enforces timing-safe CRON_SECRET verification', async () => {
+    const cronHandler = require('../api/cron.js');
+    const origSecret = process.env.CRON_SECRET;
+    process.env.CRON_SECRET = 'cron_secret_high_security_999';
+
+    function createMockRes() {
+        return {
+            statusCode: 200,
+            headers: {},
+            setHeader(k, v) { this.headers[k] = v; },
+            status(code) { this.statusCode = code; return this; },
+            json(data) { this.body = data; return this; }
+        };
+    }
+
+    try {
+        // Missing auth header -> 401
+        const res1 = createMockRes();
+        await cronHandler({ headers: {} }, res1);
+        assert.strictEqual(res1.statusCode, 401);
+
+        // Incorrect token -> 401
+        const res2 = createMockRes();
+        await cronHandler({ headers: { authorization: 'Bearer wrong_cron_key' } }, res2);
+        assert.strictEqual(res2.statusCode, 401);
+
+        // Incorrect prefix -> 401
+        const res3 = createMockRes();
+        await cronHandler({ headers: { authorization: 'cron_secret_high_security_999' } }, res3);
+        assert.strictEqual(res3.statusCode, 401);
+    } finally {
+        if (origSecret !== undefined) process.env.CRON_SECRET = origSecret;
+        else delete process.env.CRON_SECRET;
+    }
+});
+
+test('Security: api/stats enforces IP rate-limiting to prevent Redis storage flooding', async () => {
+    const statsEndpoint = require('../api/stats.js');
+
+    function createMockRes() {
+        return {
+            statusCode: 200,
+            headers: {},
+            setHeader(k, v) { this.headers[k] = v; },
+            status(code) { this.statusCode = code; return this; },
+            json(data) { this.body = data; return this; }
+        };
+    }
+
+    const testIp = '198.51.100.42';
+    let hit429 = false;
+
+    // Send 70 rapid telemetry visits from the same IP (limit is 60/min)
+    for (let i = 0; i < 70; i++) {
+        const res = createMockRes();
+        await statsEndpoint({
+            method: 'POST',
+            headers: { 'x-forwarded-for': testIp },
+            body: { anonId: `test_ip_flood_${i % 5}`, type: 'visit' }
+        }, res);
+
+        if (res.statusCode === 429) {
+            hit429 = true;
+            assert.strictEqual(res.body.ok, false);
+            assert.match(res.body.error, /Rate limit exceeded/);
+            break;
+        }
+    }
+
+    assert.strictEqual(hit429, true, 'api/stats must rate limit aggressive IP after threshold');
 });
 
 

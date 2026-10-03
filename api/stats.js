@@ -1,8 +1,29 @@
-// api/stats.js
-// Vercel Serverless Endpoint: POST /api/stats
-// Receives anonymous telemetry (visits & calculation events) from GradeMaster web clients.
-
+const crypto = require('crypto');
 const statsEngine = require('./stats/engine.js');
+
+function safeCompare(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+}
+
+const statsIpRateLimit = new Map();
+const STATS_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const STATS_RATE_LIMIT_MAX_COUNT = 60;
+
+function isRateLimited(ip) {
+    if (!ip || ip === 'unknown') return false;
+    const now = Date.now();
+    const timestamps = (statsIpRateLimit.get(ip) || []).filter(ts => now - ts < STATS_RATE_LIMIT_WINDOW_MS);
+    if (timestamps.length >= STATS_RATE_LIMIT_MAX_COUNT) {
+        return true;
+    }
+    timestamps.push(now);
+    statsIpRateLimit.set(ip, timestamps);
+    return false;
+}
 
 module.exports = async function handler(req, res) {
     // CORS Headers
@@ -14,12 +35,14 @@ module.exports = async function handler(req, res) {
         return res.status(200).end();
     }
 
-    // Admin GET endpoint to inspect stats JSON
+    // Admin GET endpoint to inspect stats JSON (timing-safe authentication)
     if (req.method === 'GET') {
-        const authHeader = req.headers['authorization'];
+        const authHeader = req.headers ? req.headers['authorization'] : null;
         const secret = process.env.CRON_SECRET || process.env.TELEGRAM_SECRET_TOKEN;
-        if (secret && authHeader !== `Bearer ${secret}`) {
-            return res.status(401).json({ ok: false, error: 'Unauthorized' });
+        if (secret) {
+            if (!authHeader || !safeCompare(authHeader, `Bearer ${secret}`)) {
+                return res.status(401).json({ ok: false, error: 'Unauthorized' });
+            }
         }
         const summary = await statsEngine.getStatsSummary();
         return res.status(200).json(summary);
@@ -27,6 +50,17 @@ module.exports = async function handler(req, res) {
 
     if (req.method !== 'POST') {
         return res.status(405).json({ ok: false, error: 'Method not allowed' });
+    }
+
+    // Rate limit per client IP
+    const reqHeaders = req.headers || {};
+    const forwardedFor = reqHeaders['x-forwarded-for'];
+    const clientIp = typeof forwardedFor === 'string'
+        ? forwardedFor.split(',')[0].trim()
+        : (typeof reqHeaders['x-real-ip'] === 'string' ? reqHeaders['x-real-ip'].trim() : null);
+
+    if (clientIp && isRateLimited(clientIp)) {
+        return res.status(429).json({ ok: false, error: 'Rate limit exceeded' });
     }
 
     try {

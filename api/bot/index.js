@@ -3,9 +3,18 @@
 // Полноценная замена веб-сайта GradeMaster прямо в Telegram.
 // Работает и как Vercel Serverless Webhook (/api/bot), и как локальный Long-Polling скрипт.
 
+const crypto = require('crypto');
 const aitu = require('./aitu.js');
 const lms = require('./lms.js');
 const statsEngine = require('../stats/engine.js');
+
+function safeCompare(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+}
 function getBotToken() {
     return (process.env.TELEGRAM_BOT_TOKEN || '').trim();
 }
@@ -20,6 +29,33 @@ const ADMIN_CHAT_IDS = RAW_ADMIN_IDS
     : [];
 const ADMIN_CHAT_ID = ADMIN_CHAT_IDS[0] || '';
 const WEBAPP_URL = process.env.WEBAPP_URL || 'https://calculator-not-404.vercel.app';
+
+let botUsernameCache = (process.env.TELEGRAM_BOT_USERNAME || '').replace(/^@/, '');
+let botIdCache = null;
+
+async function getBotInfo() {
+    const token = getBotToken();
+    if (token && !botIdCache) {
+        const p = token.split(':')[0];
+        if (p && /^\d+$/.test(p)) botIdCache = p;
+    }
+    if (botUsernameCache && botIdCache) {
+        return { username: botUsernameCache, id: botIdCache };
+    }
+    try {
+        const me = await apiCall('getMe');
+        if (me) {
+            if (me.username) botUsernameCache = me.username;
+            if (me.id) botIdCache = String(me.id);
+        }
+    } catch (_) {}
+    return { username: botUsernameCache, id: botIdCache };
+}
+
+function _setBotInfoForTesting(info) {
+    if (info && info.username !== undefined) botUsernameCache = (info.username || '').replace(/^@/, '');
+    if (info && info.id !== undefined) botIdCache = info.id ? String(info.id) : null;
+}
 
 function getAdminChatIds() {
     const raw = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
@@ -246,14 +282,23 @@ async function apiCall(method, payload = {}) {
     return data.result;
 }
 
-async function sendMessage(chatId, text, options = {}) {
+async function rawSendMessage(chatId, text, options = {}) {
+    const opts = { ...options };
+    // In group chats (negative chatId), never send huge persistent reply keyboards
+    if (Number(chatId) < 0 && opts.reply_markup && opts.reply_markup.keyboard) {
+        delete opts.reply_markup;
+    }
     return apiCall('sendMessage', {
         chat_id: chatId,
         text,
         parse_mode: 'HTML',
         disable_web_page_preview: true,
-        ...options
+        ...opts
     });
+}
+
+async function sendMessage(chatId, text, options = {}) {
+    return rawSendMessage(chatId, text, options);
 }
 
 async function answerCallbackQuery(callbackQueryId, text = '', showAlert = false) {
@@ -2263,15 +2308,126 @@ async function handleMessage(msg) {
     if (!msg || !msg.text) return;
 
     const chatId = msg.chat.id;
-    const text = msg.text.trim();
-    const userName = msg.from.username ? `@${msg.from.username}` : `${msg.from.first_name || ''} ${msg.from.last_name || ''}`.trim();
-    recordBotUser(chatId).catch(() => {});
+    const chatType = msg.chat?.type;
+    const isGroup = chatType === 'group' || chatType === 'supergroup';
+    const senderId = msg.from?.id ? String(msg.from.id) : String(chatId);
+    const sessionKey = isGroup ? `${chatId}:${senderId}` : String(chatId);
 
-    const anonId = statsEngine.anonymizeUserId(chatId);
+    // Group-aware local sendMessage: automatically attaches reply_to_message_id in groups
+    async function sendMessage(targetChatId, textToSend, options = {}) {
+        const mergedOpts = { ...options };
+        if (isGroup && targetChatId === chatId && msg.message_id && !mergedOpts.reply_to_message_id) {
+            mergedOpts.reply_to_message_id = msg.message_id;
+        }
+        return rawSendMessage(targetChatId, textToSend, mergedOpts);
+    }
+
+    function clearSession(id = sessionKey) {
+        userSessions.delete(String(id === chatId ? sessionKey : id));
+    }
+
+    if (!isGroup) {
+        recordBotUser(chatId).catch(() => {});
+    }
+    if (msg.from?.id) {
+        recordBotUser(msg.from.id).catch(() => {});
+    }
+
+    const anonId = statsEngine.anonymizeUserId(msg.from?.id || chatId);
     await statsEngine.recordVisit({ anonId, platform: 'bot' }).catch(() => {});
 
-    const session = getSession(chatId);
-    const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(chatId);
+    let isAddressedToBot = !isGroup;
+    let isReplyToBot = false;
+    let isMentioned = false;
+
+    let text = String(msg.text).trim().slice(0, 4096);
+
+    if (isGroup) {
+        const botInfo = await getBotInfo();
+        const botUserLower = (botInfo.username || '').toLowerCase();
+        const botId = botInfo.id ? String(botInfo.id) : null;
+
+        // 1. Reply to our bot's message
+        if (msg.reply_to_message && msg.reply_to_message.from) {
+            const rFrom = msg.reply_to_message.from;
+            if (
+                (botId && String(rFrom.id) === botId) ||
+                (botUserLower && rFrom.username && rFrom.username.toLowerCase() === botUserLower) ||
+                (rFrom.is_bot && !botUserLower)
+            ) {
+                isReplyToBot = true;
+                isAddressedToBot = true;
+            }
+        }
+
+        // 2. Mention / Tag in message
+        if (!isAddressedToBot && botUserLower) {
+            const tagRegex = new RegExp(`@${botUserLower}\\b`, 'i');
+            if (tagRegex.test(text)) {
+                isMentioned = true;
+                isAddressedToBot = true;
+            }
+        }
+        if (!isAddressedToBot && Array.isArray(msg.entities)) {
+            for (const ent of msg.entities) {
+                if (ent.type === 'mention') {
+                    const mention = text.substring(ent.offset, ent.offset + ent.length).replace(/^@/, '').toLowerCase();
+                    if (mention === botUserLower || (!botUserLower && (mention.includes('grademaster') || mention.includes('aitu')))) {
+                        isMentioned = true;
+                        isAddressedToBot = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 3. Slash command in group
+        if (!isAddressedToBot && text.startsWith('/')) {
+            const firstToken = text.split(/\s+/)[0];
+            if (firstToken.includes('@')) {
+                const targetBot = firstToken.split('@')[1].toLowerCase();
+                if (targetBot === botUserLower || (!botUserLower && (targetBot.includes('grademaster') || targetBot.includes('aitu')))) {
+                    isAddressedToBot = true;
+                }
+            } else {
+                // General command without @ in group (e.g. /help, /calc, /total, /gpa, /att)
+                isAddressedToBot = true;
+            }
+        }
+
+        // In groups, silently ignore messages not addressed to the bot
+        if (!isAddressedToBot) {
+            return;
+        }
+
+        // Strip bot username mention from text
+        if (botUserLower) {
+            text = text.replace(new RegExp(`@${botUserLower}\\b`, 'gi'), '').trim();
+        } else {
+            text = text.replace(/^@\w+bot\b\s*/i, '').trim();
+        }
+
+        // Strip bot username from slash commands: /calc@aitugrademaster_bot -> /calc
+        if (text.startsWith('/')) {
+            text = text.replace(/^(\/[a-zA-Z0-9_]+)@\w+bot/i, '$1').trim();
+        }
+
+        // If the user only tagged the bot with no other text
+        if (!text) {
+            const botTag = botInfo.username ? `@${botInfo.username}` : 'бота';
+            return sendMessage(chatId, `👋 <b>На связи GradeMaster!</b>\n\n` +
+                `Я помогу быстро посчитать оценки прямо в чате группы:\n\n` +
+                `• <b>Нужный балл на экзамене:</b> <code>${botTag} 25 25</code>\n` +
+                `• <b>Итоговая оценка:</b> <code>${botTag} 85 90 70</code>\n` +
+                `• <b>GPA за триместр:</b> <code>/gpa 90 3, 85 4</code>\n` +
+                `• <b>Лимит пропусков:</b> <code>/att 3</code>\n` +
+                `• <b>Все команды:</b> <code>/help</code>`);
+        }
+    }
+
+    const userName = msg.from?.username ? `@${msg.from.username}` : `${msg.from?.first_name || ''} ${msg.from?.last_name || ''}`.trim();
+    const session = getSession(sessionKey);
+    const isGauharUser = typeof aitu.isGauhar === 'function' && aitu.isGauhar(msg.from?.id || chatId);
 
     // Быстрый ответ администратора свайпом (Reply) на сообщение-уведомление от студента
     if (isAdmin(chatId) && msg.reply_to_message && msg.reply_to_message.text) {
@@ -3189,11 +3345,11 @@ module.exports = async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    // Проверка секретного токена вебхука Telegram (если задан)
+    // Проверка секретного токена вебхука Telegram (если задан, timing-safe)
     const secretToken = process.env.TELEGRAM_SECRET_TOKEN;
     if (secretToken) {
         const headerToken = req.headers['x-telegram-bot-api-secret-token'];
-        if (headerToken !== secretToken) {
+        if (!headerToken || !safeCompare(headerToken, secretToken)) {
             console.warn('Unauthorized webhook request: secret token mismatch');
             return res.status(401).json({ error: 'Unauthorized' });
         }
@@ -3247,6 +3403,9 @@ module.exports.activeUsers = activeUsers;
 module.exports.buildLmsMarkMenu = buildLmsMarkMenu;
 module.exports.buildLearnMarkMenu = buildLearnMarkMenu;
 module.exports.formatBroadcastContent = formatBroadcastContent;
+module.exports.handleMessage = handleMessage;
+module.exports.getBotInfo = getBotInfo;
+module.exports._setBotInfoForTesting = _setBotInfoForTesting;
 
 // ==========================================
 // ЛОКАЛЬНЫЙ LONG-POLLING (ДЛЯ РАЗРАБОТКИ)

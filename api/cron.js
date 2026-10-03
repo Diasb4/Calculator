@@ -5,9 +5,18 @@
 const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const aitu = require('./bot/aitu.js');
 const lms = require('./bot/lms.js');
 const statsEngine = require('./stats/engine.js');
+
+function safeCompare(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+}
 
 function getBotToken() {
     return (process.env.TELEGRAM_BOT_TOKEN || '').trim();
@@ -516,10 +525,12 @@ async function processUserLms(chatId, context) {
 }
 
 module.exports = async function handler(req, res) {
-    // Проверка CRON_SECRET от Vercel (если настроен)
+    // Проверка CRON_SECRET от Vercel (timing-safe)
     const authHeader = req ? req.headers?.['authorization'] : null;
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return res.status(401).json({ error: 'Unauthorized' });
+    if (process.env.CRON_SECRET) {
+        if (!authHeader || !safeCompare(authHeader, `Bearer ${process.env.CRON_SECRET}`)) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
     }
 
     const adminChatIds = getAdminChatIds();

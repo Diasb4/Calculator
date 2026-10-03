@@ -2874,6 +2874,135 @@ test('Telegram Bot: clicking stale schedule button resets keyboard cleanly', asy
     }
 });
 
+test('Telegram Bot: Group chat interaction via tag/mention, reply-to-bot, and slash commands', async () => {
+    const bot = require('../api/bot/index.js');
+    const originalFetch = global.fetch;
+    const sentMessages = [];
+
+    process.env.TELEGRAM_BOT_TOKEN = '123456789:mock_group_test_token';
+    process.env.TELEGRAM_BOT_USERNAME = 'aitugrademaster_bot';
+
+    bot._setBotInfoForTesting({ username: 'aitugrademaster_bot', id: '123456789' });
+
+    global.fetch = async (url, opts) => {
+        if (url && url.includes('/sendMessage')) {
+            const body = JSON.parse(opts.body);
+            sentMessages.push(body);
+            return {
+                ok: true,
+                json: async () => ({ ok: true, result: { message_id: 9999 } })
+            };
+        }
+        if (url && url.includes('/getMe')) {
+            return {
+                ok: true,
+                json: async () => ({ ok: true, result: { id: 123456789, username: 'aitugrademaster_bot' } })
+            };
+        }
+        return { ok: true, json: async () => ({ ok: true, result: true }) };
+    };
+
+    try {
+        const groupChat = { id: -1001234567890, type: 'supergroup', title: 'AITU CS-2401' };
+
+        // 1. Casual message between group members without mentioning bot -> MUST IGNORE
+        sentMessages.length = 0;
+        await bot.handleMessage({
+            message_id: 101,
+            chat: groupChat,
+            from: { id: 555001, first_name: 'Alikhan' },
+            text: 'Ребята, кто сделал 2 лабу?'
+        });
+        assert.strictEqual(sentMessages.length, 0, 'Must ignore messages not addressed to bot in groups');
+
+        // 2. Message targeting ANOTHER bot -> MUST IGNORE
+        sentMessages.length = 0;
+        await bot.handleMessage({
+            message_id: 102,
+            chat: groupChat,
+            from: { id: 555001, first_name: 'Alikhan' },
+            text: '/play@music_bot track_name'
+        });
+        assert.strictEqual(sentMessages.length, 0, 'Must ignore commands addressed to other bots');
+
+        // 3. User tags bot without text -> MUST send helpful group guidance
+        sentMessages.length = 0;
+        await bot.handleMessage({
+            message_id: 103,
+            chat: groupChat,
+            from: { id: 555001, first_name: 'Alikhan' },
+            text: '@aitugrademaster_bot'
+        });
+        assert.strictEqual(sentMessages.length, 1);
+        assert.strictEqual(sentMessages[0].chat_id, -1001234567890);
+        assert.strictEqual(sentMessages[0].reply_to_message_id, 103, 'Must reply to user message in group');
+        assert.match(sentMessages[0].text, /На связи GradeMaster/);
+        assert.strictEqual(sentMessages[0].reply_markup, undefined, 'Must not send persistent reply keyboard in group');
+
+        // 4. User tags bot with calculation query -> MUST calculate and reply with report
+        sentMessages.length = 0;
+        await bot.handleMessage({
+            message_id: 104,
+            chat: groupChat,
+            from: { id: 555002, first_name: 'Dana' },
+            text: '@aitugrademaster_bot 75 80'
+        });
+        assert.strictEqual(sentMessages.length, 1);
+        assert.strictEqual(sentMessages[0].chat_id, -1001234567890);
+        assert.strictEqual(sentMessages[0].reply_to_message_id, 104);
+        assert.match(sentMessages[0].text, /РегМид = 75, РегЭнд = 80/);
+        assert.match(sentMessages[0].text, /ПРОГНОЗ НА ЭКЗАМЕН/i);
+
+        // 5. User replies to bot's message in group -> MUST process reply and answer
+        sentMessages.length = 0;
+        await bot.handleMessage({
+            message_id: 105,
+            chat: groupChat,
+            from: { id: 555002, first_name: 'Dana' },
+            reply_to_message: {
+                message_id: 9999,
+                from: { id: 123456789, is_bot: true, username: 'aitugrademaster_bot' },
+                text: 'Прогноз нужного балла на Файнале'
+            },
+            text: '28 28 85'
+        });
+        assert.strictEqual(sentMessages.length, 1);
+        assert.strictEqual(sentMessages[0].reply_to_message_id, 105);
+        assert.match(sentMessages[0].text, /Файнал = 85/);
+
+        // 6. User sends slash command with bot suffix in group -> MUST process
+        sentMessages.length = 0;
+        await bot.handleMessage({
+            message_id: 106,
+            chat: groupChat,
+            from: { id: 555003, first_name: 'Arman' },
+            text: '/help@aitugrademaster_bot'
+        });
+        assert.strictEqual(sentMessages.length, 1);
+        assert.strictEqual(sentMessages[0].reply_to_message_id, 106);
+        assert.match(sentMessages[0].text, /Калькулятор итоговой оценки/);
+        // Inline keyboard is allowed and preserved, but persistent reply keyboard is stripped
+        assert.ok(sentMessages[0].reply_markup?.inline_keyboard);
+        assert.strictEqual(sentMessages[0].reply_markup?.keyboard, undefined);
+
+        // 7. General slash command in group -> MUST process
+        sentMessages.length = 0;
+        await bot.handleMessage({
+            message_id: 107,
+            chat: groupChat,
+            from: { id: 555003, first_name: 'Arman' },
+            text: '/calc 80 85'
+        });
+        assert.strictEqual(sentMessages.length, 1);
+        assert.strictEqual(sentMessages[0].reply_to_message_id, 107);
+        assert.match(sentMessages[0].text, /РМ: 80 \| РЭ: 85/);
+    } finally {
+        global.fetch = originalFetch;
+        delete process.env.TELEGRAM_BOT_TOKEN;
+        delete process.env.TELEGRAM_BOT_USERNAME;
+    }
+});
+
 
 
 
