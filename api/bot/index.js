@@ -2151,7 +2151,20 @@ function extractLmsCalendarOrCookie(input) {
     }
 
     // 2. Кука MoodleSession (MoodleSession=... или moodlesession: ...)
-    const moodleMatch = str.match(/(?:moodlesession)\s*[:=]\s*([a-zA-Z0-9_\-]+)/i);
+    if ((str.startsWith('[') && str.endsWith(']')) || (str.startsWith('{') && str.endsWith('}'))) {
+        try {
+            const parsed = JSON.parse(str);
+            if (Array.isArray(parsed)) {
+                const item = parsed.find(c => c && typeof c.name === 'string' && c.name.toLowerCase() === 'moodlesession');
+                if (item && item.value) {
+                    let v = String(item.value).replace(/^["']+|["']+$/g, '').trim();
+                    if (/^[a-zA-Z0-9_\-]{16,128}$/.test(v)) return v;
+                }
+            }
+        } catch {}
+    }
+
+    const moodleMatch = str.match(/(?:moodlesession)\s*[:=]\s*["']?([a-zA-Z0-9_\-]+)["']?/i);
     if (moodleMatch && moodleMatch[1]) {
         return moodleMatch[1];
     }
@@ -2159,14 +2172,85 @@ function extractLmsCalendarOrCookie(input) {
     return null;
 }
 
+/**
+ * Извлечение и санитайзинг cookie sessionid для AITU Learn
+ * Поддерживает:
+ * - Прямой ввод токена со спецсимволами (пайпы ||, двоеточия, точки, base64, тильды, проценты)
+ * - Форматы: sessionid=..., sessionid: ..., Cookie: sessionid=...
+ * - Значения в одинарных или двойных кавычках: "..."
+ * - JSON-экспорт из расширения Cookie-Editor (массив объектов или объект)
+ * - Отсечение хвостовых атрибутов cookies (; Path=/...)
+ * - Проверка на отсутствие пробелов, CRLF (\r, \n), точек с запятой (;) и опасных символов (<, >)
+ */
+function parseAndSanitizeSessionId(input) {
+    if (!input || typeof input !== 'string') return null;
+    let str = input.trim();
+
+    // 1. Проверяем JSON-экспорт из расширения Cookie-Editor
+    if ((str.startsWith('[') && str.endsWith(']')) || (str.startsWith('{') && str.endsWith('}'))) {
+        try {
+            const parsed = JSON.parse(str);
+            if (Array.isArray(parsed)) {
+                const item = parsed.find(c => c && typeof c.name === 'string' && c.name.toLowerCase() === 'sessionid');
+                if (item && item.value) {
+                    str = String(item.value).trim();
+                }
+            } else if (parsed && typeof parsed === 'object') {
+                if (parsed.name && String(parsed.name).toLowerCase() === 'sessionid' && parsed.value) {
+                    str = String(parsed.value).trim();
+                } else if (parsed.sessionid) {
+                    str = String(parsed.sessionid).trim();
+                }
+            }
+        } catch {
+            // Не является валидным JSON, продолжаем как обычный текст
+        }
+    }
+
+    // 2. Извлечение значения из формата sessionid=... или sessionid: ... или Cookie: sessionid=...
+    const headerMatch = str.match(/(?:^|;\s*|\b)sessionid\s*[:=]\s*([^;]+)/i);
+    if (headerMatch && headerMatch[1]) {
+        str = headerMatch[1].trim();
+    } else {
+        // Удаляем ведущий префикс sessionid= или sessionid: если остался
+        str = str.replace(/^(?:sessionid\s*[:=]\s*)/i, '').trim();
+    }
+
+    // 3. Снятие обрамляющих одинарных и двойных кавычек
+    str = str.replace(/^["']+|["']+$/g, '').trim();
+
+    // 4. Отрезаем хвостовые параметры cookie, если они попали в строку (например ; Path=/...)
+    if (str.includes(';')) {
+        str = str.split(';')[0].trim();
+    }
+
+    // 5. Повторное снятие кавычек на случай sessionid="value";
+    str = str.replace(/^["']+|["']+$/g, '').trim();
+
+    // 6. Валидация по безопасности и длине
+    // Запрещаем пробелы, табуляции, переводы строк (\r, \n) и опасные разделители (;, <, >)
+    // Разрешаем буквы, цифры и безопасные символы токенов/подписей/base64/pipes:
+    // a-zA-Z0-9 _ - . : | = + / ~ % @ $ ! ^
+    if (!/^[a-zA-Z0-9_\-.:|=+/~%@$!^]{16,4096}$/.test(str)) {
+        return null;
+    }
+
+    return str;
+}
+
 function extractLearnSessionId(input) {
     if (!input || typeof input !== 'string') return null;
     const str = input.trim();
 
-    // 1. Явное указание sessionid=... или sessionid: ...
-    const sidMatch = str.match(/(?:sessionid)\s*[:=]\s*([a-zA-Z0-9_\-]{16,64})/i);
-    if (sidMatch && sidMatch[1]) {
-        return sidMatch[1];
+    // 1. Если это JSON от Cookie-Editor
+    if ((str.startsWith('[') && str.endsWith(']')) || (str.startsWith('{') && str.endsWith('}'))) {
+        const clean = parseAndSanitizeSessionId(str);
+        if (clean) return clean;
+    }
+
+    // 2. Явное указание sessionid=... или sessionid: ...
+    if (/(?:^|;\s*|\b)sessionid\s*[:=]/i.test(str)) {
+        return parseAndSanitizeSessionId(str);
     }
 
     return null;
@@ -2201,7 +2285,7 @@ async function executeSetLms(chatId, val, isGauharUser) {
         }
     } else {
         // Если это не URL, проверяем формат cookie MoodleSession
-        let cleanCookie = cleanVal.replace(/^MoodleSession=/i, '').trim();
+        let cleanCookie = cleanVal.replace(/^MoodleSession\s*[:=]\s*/i, '').replace(/^["']+|["']+$/g, '').trim();
         if (!/^[a-zA-Z0-9_\-]{16,128}$/.test(cleanCookie)) {
             return sendMessage(chatId, '⚠️ <b>Некорректный формат:</b>\nОтправьте официальную ссылку экспорта календаря (<code>https://lms.astanait.edu.kz/calendar/export_execute.php?...</code>) или актуальное значение <code>MoodleSession</code> из браузера.', {
                 reply_markup: getMainKeyboard(chatId)
@@ -2255,12 +2339,9 @@ async function executeSetLearnCookie(chatId, cookieVal, isGauharUser) {
         return sendMessage(chatId, limitCheck.message, { reply_markup: getMainKeyboard(chatId) });
     }
 
-    let cleanSid = String(cookieVal).trim();
-    const match = cleanSid.match(/sessionid=([^;\s]+)/i);
-    if (match) cleanSid = match[1].trim();
-
-    if (!/^[a-zA-Z0-9_\-]{16,128}$/.test(cleanSid)) {
-        return sendMessage(chatId, '⚠️ <b>Некорректный формат sessionid:</b>\nЗначение должно содержать только буквы, цифры, дефис или подчёркивание (длина 16-128 символов).\n\nНапишите <code>/cookie</code> для инструкции.', {
+    const cleanSid = parseAndSanitizeSessionId(cookieVal);
+    if (!cleanSid) {
+        return sendMessage(chatId, '⚠️ <b>Некорректный формат sessionid:</b>\nЗначение должно содержать актуальный токен сессии (длина от 16 символов без пробелов и точек с запятой).\n\nВы можете скопировать значение строки <code>sessionid</code> из браузера или отправить JSON из расширения <b>Cookie-Editor</b>.\nНапишите <code>/cookie</code> для пошаговой инструкции.', {
             reply_markup: getMainKeyboard(chatId)
         });
     }
@@ -3376,6 +3457,7 @@ module.exports._userRateLimits = userRateLimits;
 module.exports._userCourseListMemory = userCourseListMemory;
 module.exports.extractLmsCalendarOrCookie = extractLmsCalendarOrCookie;
 module.exports.extractLearnSessionId = extractLearnSessionId;
+module.exports.parseAndSanitizeSessionId = parseAndSanitizeSessionId;
 module.exports.executeSetLms = executeSetLms;
 module.exports.executeSetLearnCookie = executeSetLearnCookie;
 module.exports.recordBotUser = recordBotUser;

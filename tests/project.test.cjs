@@ -722,6 +722,13 @@ test('Cron: sends critical 1-hour alert with sound and deduplicates repeated inv
         process.env.TELEGRAM_BOT_TOKEN = 'test_token_123';
         process.env.ADMIN_CHAT_ID = '999888';
 
+        // Isolate 1-hour critical test from daily digest / evening checklist windows
+        const statsEngine = require('../api/stats/engine.js');
+        const todayStr = statsEngine.getTodayDateStr ? statsEngine.getTodayDateStr() : new Date().toISOString().slice(0, 10);
+        await cron.markAlertAsSent(`daily:aitu:999888:${todayStr}`);
+        await cron.markAlertAsSent(`daily:lms:999888:${todayStr}`);
+        await cron.markAlertAsSent(`evening:999888:${todayStr}`);
+
         // 1. First invocation: should send critical alert with disable_notification: false
         let mockResJson = null;
         let mockResStatus = 200;
@@ -2212,6 +2219,7 @@ test('Auto-detection: Calendar export URL and Learn cookie automatically connect
     assert.strictEqual(bot.extractLmsCalendarOrCookie('webcal://lms.astanait.edu.kz/calendar/export_execute.php?userid=123&authtoken=abc'), 'https://lms.astanait.edu.kz/calendar/export_execute.php?userid=123&authtoken=abc');
     assert.strictEqual(bot.extractLmsCalendarOrCookie('MoodleSession=test_moodle_session_123'), 'test_moodle_session_123');
     assert.strictEqual(bot.extractLearnSessionId('sessionid=learn_session_token_xyz123'), 'learn_session_token_xyz123');
+    assert.strictEqual(bot.extractLearnSessionId('sessionid=learn_session||part2_xyz123'), 'learn_session||part2_xyz123');
 
     // 2. Test bot webhook behavior: student pastes ONLY the raw calendar URL into chat
     const originalFetch = global.fetch;
@@ -3000,6 +3008,106 @@ test('Telegram Bot: Group chat interaction via tag/mention, reply-to-bot, and sl
         global.fetch = originalFetch;
         delete process.env.TELEGRAM_BOT_TOKEN;
         delete process.env.TELEGRAM_BOT_USERNAME;
+    }
+});
+
+test('SessionID validation: handles pipes ||, quotes, Cookie-Editor JSON, special chars and rejects dangerous input', async () => {
+    const bot = require('../api/bot/index.js');
+    const aitu = require('../api/bot/aitu.js');
+
+    // 1. Direct parseAndSanitizeSessionId tests
+    // A) Standard token with pipes (reported by ALmas)
+    const tokenWithPipes = 'learn_token_part1||part2_xyz12345';
+    assert.strictEqual(bot.parseAndSanitizeSessionId(tokenWithPipes), tokenWithPipes);
+    assert.strictEqual(bot.parseAndSanitizeSessionId(`sessionid=${tokenWithPipes}`), tokenWithPipes);
+    assert.strictEqual(bot.parseAndSanitizeSessionId(`sessionid: ${tokenWithPipes}`), tokenWithPipes);
+
+    // B) Quoted values (e.g. copied from browser DevTools / Cookie-Editor)
+    assert.strictEqual(bot.parseAndSanitizeSessionId(`"${tokenWithPipes}"`), tokenWithPipes);
+    assert.strictEqual(bot.parseAndSanitizeSessionId(`'${tokenWithPipes}'`), tokenWithPipes);
+    assert.strictEqual(bot.parseAndSanitizeSessionId(`sessionid="${tokenWithPipes}"`), tokenWithPipes);
+    assert.strictEqual(bot.parseAndSanitizeSessionId(`sessionid="${tokenWithPipes}"; Path=/; Domain=learn.astanait.edu.kz; Secure`), tokenWithPipes);
+
+    // C) Cookie-Editor JSON export format (array or object)
+    const jsonArray = JSON.stringify([
+        { domain: 'learn.astanait.edu.kz', name: 'sessionid', value: tokenWithPipes },
+        { domain: 'learn.astanait.edu.kz', name: 'csrftoken', value: 'csrf_test_123456789' }
+    ]);
+    assert.strictEqual(bot.parseAndSanitizeSessionId(jsonArray), tokenWithPipes);
+    assert.strictEqual(bot.extractLearnSessionId(jsonArray), tokenWithPipes);
+
+    const jsonObject = JSON.stringify({ name: 'sessionid', value: tokenWithPipes });
+    assert.strictEqual(bot.parseAndSanitizeSessionId(jsonObject), tokenWithPipes);
+
+    // D) Open edX / Django signed session tokens with colons, dots, base64, tildes, percentages
+    const complexToken = 't:2026-10-05.abc~def+ghi/jkl==%7C%7Cspecial_sig_12345';
+    assert.strictEqual(bot.parseAndSanitizeSessionId(complexToken), complexToken);
+
+    // E) Long tokens (> 128 characters)
+    const longToken = 'a'.repeat(256) + '||' + 'b'.repeat(50);
+    assert.strictEqual(bot.parseAndSanitizeSessionId(longToken), longToken);
+
+    // F) extractLearnSessionId auto-detection
+    assert.strictEqual(bot.extractLearnSessionId(`sessionid=${tokenWithPipes}`), tokenWithPipes);
+    assert.strictEqual(bot.extractLearnSessionId(`Вот моя кука: sessionid=${tokenWithPipes}`), tokenWithPipes);
+    assert.strictEqual(bot.extractLearnSessionId('Обычное сообщение без куки'), null);
+
+    // G) Security validations: rejects dangerous input
+    assert.strictEqual(bot.parseAndSanitizeSessionId(null), null);
+    assert.strictEqual(bot.parseAndSanitizeSessionId(''), null);
+    assert.strictEqual(bot.parseAndSanitizeSessionId('short_123'), null); // < 16 chars
+    assert.strictEqual(bot.parseAndSanitizeSessionId('token with whitespace inside 12345'), null);
+    assert.strictEqual(bot.parseAndSanitizeSessionId('token_123456789012\r\nSet-Cookie: evil=1'), null); // CRLF injection
+    assert.strictEqual(bot.parseAndSanitizeSessionId('<script>alert("xss")</script>12345'), null); // XSS / angle brackets
+
+    // H) Integration test with executeSetLearnCookie
+    const originalGetUpcomingQuizzes = aitu.getUpcomingQuizzes;
+    const originalSaveUserSession = aitu.saveUserSession;
+    let savedSession = null;
+    let passedSession = null;
+
+    try {
+        aitu.getUpcomingQuizzes = async (sid) => {
+            passedSession = sid;
+            return { ok: true, quizzes: [] };
+        };
+        aitu.saveUserSession = async (chatId, sid) => {
+            savedSession = sid;
+            return true;
+        };
+
+        const originalFetch = global.fetch;
+        const sentReplies = [];
+        global.fetch = async (url, opts) => {
+            if (url && url.includes('/sendMessage')) {
+                sentReplies.push(JSON.parse(opts.body));
+                return { ok: true, json: async () => ({ ok: true, result: {} }) };
+            }
+            return { ok: true, json: async () => ({}) };
+        };
+
+        process.env.TELEGRAM_BOT_TOKEN = 'test_token_validation';
+
+        // Execute /set_cookie with pipes
+        await bot.executeSetLearnCookie('test_chat_pipes', `sessionid=${tokenWithPipes}`, false);
+
+        assert.strictEqual(passedSession, tokenWithPipes, 'getUpcomingQuizzes received token with pipes');
+        assert.strictEqual(savedSession, tokenWithPipes, 'saveUserSession saved token with pipes');
+        assert.strictEqual(sentReplies.length, 2); // 1. "Проверяю подключение...", 2. "Успешно подключено к AITU!"
+        assert.match(sentReplies[1].text, /Успешно подключено к AITU/);
+
+        // Execute /set_cookie with invalid short value -> returns user-friendly error
+        sentReplies.length = 0;
+        await bot.executeSetLearnCookie('test_chat_pipes', 'bad_token', false);
+        assert.strictEqual(sentReplies.length, 1);
+        assert.match(sentReplies[0].text, /Некорректный формат sessionid/);
+        assert.match(sentReplies[0].text, /Cookie-Editor/);
+
+        global.fetch = originalFetch;
+    } finally {
+        aitu.getUpcomingQuizzes = originalGetUpcomingQuizzes;
+        aitu.saveUserSession = originalSaveUserSession;
+        delete process.env.TELEGRAM_BOT_TOKEN;
     }
 });
 
