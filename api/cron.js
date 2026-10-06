@@ -1,57 +1,18 @@
 // api/cron.js
-// Vercel Cron handler для ежедневных и экстренных напоминаний о квизах AITU
-// Поддерживает полностью изолированные персональные проверки для каждого студента
+// Ежедневные и экстренные напоминания о квизах AITU Learn и дедлайнах Moodle LMS.
+// Вызывается фоновым планировщиком server.js (VPS) или по HTTP /api/cron.
 
-const os = require('node:os');
-const path = require('node:path');
-const fs = require('node:fs');
 const aitu = require('./bot/aitu.js');
 const lms = require('./bot/lms.js');
 const statsEngine = require('./stats/engine.js');
-const { safeCompare, getBotToken, getAdminChatIds } = require('./_lib/util.js');
+const { safeCompare, getAdminChatIds, BoundedSet } = require('./_lib/util.js');
+const { sendText, isChatGoneError } = require('./_lib/telegram.js');
 
-const sentAlertsMemory = new Set();
-
-function getAlertsCacheFilePath() {
-    try {
-        return path.join(os.tmpdir(), 'gm_sent_alerts.json');
-    } catch {
-        return null;
-    }
-}
-
-function readSentAlertsFile() {
-    const p = getAlertsCacheFilePath();
-    if (!p) return new Set();
-    try {
-        if (fs.existsSync(p)) {
-            const arr = JSON.parse(fs.readFileSync(p, 'utf8'));
-            return new Set(Array.isArray(arr) ? arr : []);
-        }
-    } catch {
-        // Ignore file read errors
-    }
-    return new Set();
-}
-
-function writeSentAlertsFile(set) {
-    const p = getAlertsCacheFilePath();
-    if (!p) return;
-    try {
-        fs.writeFileSync(p, JSON.stringify(Array.from(set)), 'utf8');
-    } catch {
-        // Ignore file write errors
-    }
-}
+// Быстрый кэш отметок об отправке; источник истины — KV (gm:alert:<key>, 3 дня).
+const sentAlertsMemory = new BoundedSet(20000);
 
 async function hasAlertBeenSent(alertKey) {
     if (sentAlertsMemory.has(alertKey)) return true;
-
-    const fileSet = readSentAlertsFile();
-    if (fileSet.has(alertKey)) {
-        sentAlertsMemory.add(alertKey);
-        return true;
-    }
 
     if (typeof statsEngine.kvCommand === 'function') {
         try {
@@ -71,10 +32,6 @@ async function hasAlertBeenSent(alertKey) {
 async function markAlertAsSent(alertKey) {
     sentAlertsMemory.add(alertKey);
 
-    const fileSet = readSentAlertsFile();
-    fileSet.add(alertKey);
-    writeSentAlertsFile(fileSet);
-
     if (typeof statsEngine.kvCommand === 'function') {
         try {
             // Храним отметку об отправке 3 дня (259200 сек)
@@ -87,29 +44,42 @@ async function markAlertAsSent(alertKey) {
 
 function clearSentAlertsMemory() {
     sentAlertsMemory.clear();
-    const p = getAlertsCacheFilePath();
-    if (p && fs.existsSync(p)) {
-        try {
-            fs.unlinkSync(p);
-        } catch {}
+}
+
+/**
+ * Отправляет сообщение. { ok: true } только при подтверждённой доставке;
+ * gone: true — чат больше недоступен (бот заблокирован, аккаунт удалён).
+ */
+async function sendTelegram(chatId, text, options = {}) {
+    try {
+        await sendText(chatId, text, options);
+        return { ok: true };
+    } catch (err) {
+        console.warn(`Cron send to ${chatId} failed: ${err.message}`);
+        return { ok: false, gone: isChatGoneError(err), error: err.message };
     }
 }
 
-async function sendTelegram(chatId, text, options = {}) {
-    const token = getBotToken();
-    if (!token || !chatId) return;
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            chat_id: chatId,
-            text,
-            parse_mode: 'HTML',
-            disable_web_page_preview: true,
-            ...options
-        })
-    });
-    return res.json();
+/** Отписывает чат, который заблокировал бота, чтобы cron больше его не опрашивал. */
+async function dropGoneChat(chatId) {
+    if (getAdminChatIds().includes(chatId)) return;
+    await Promise.all([
+        aitu.deleteUserSession(chatId).catch(() => { }),
+        lms.deleteUserLmsSession(chatId).catch(() => { }),
+        Promise.resolve(statsEngine.kvCommand(['SREM', 'gm:all_users', chatId])).catch(() => { })
+    ]);
+    console.log(`Removed chat that blocked the bot: ${chatId}`);
+}
+
+/** Отправляет алерт и помечает его отправленным только после успешной доставки. */
+async function deliverAlert(chatId, alertKey, text, options) {
+    const sendRes = await sendTelegram(chatId, text, options);
+    if (sendRes.ok) {
+        await markAlertAsSent(alertKey);
+    } else if (sendRes.gone) {
+        await dropGoneChat(chatId);
+    }
+    return sendRes;
 }
 
 /**
@@ -180,8 +150,8 @@ async function processUserQuizzes(chatId, context) {
                       `Бот не может проверить дедлайны по твоим квизам. Пожалуйста, войди на платформу через Microsoft SSO, скопируй <code>sessionid</code> и отправь боту:\n\n` +
                       `<code>/set_cookie ВАШ_SESSION_ID</code>\n\n` +
                       `💡 <i>Сессия обновится, и автоматические напоминания сразу продолжат работать.</i>`;
-                await sendTelegram(strChatId, expiredMsg);
-                await markAlertAsSent(expKey);
+                const sendRes = await deliverAlert(strChatId, expKey, expiredMsg);
+                if (sendRes.gone) return { chatId: strChatId, ok: false, type: 'quiz', gone: true };
             }
         }
         return { chatId: strChatId, ok: false, error: result.error, criticalSent, dailySent };
@@ -196,12 +166,12 @@ async function processUserQuizzes(chatId, context) {
 
         if (!alreadySent) {
             const { text: alertText, replyMarkup } = aitu.formatCriticalHourAlert(item, isGauharUser);
-            await sendTelegram(strChatId, alertText, {
+            const sendRes = await deliverAlert(strChatId, quizKey, alertText, {
                 reply_markup: replyMarkup,
                 disable_notification: false
             });
-            await markAlertAsSent(quizKey);
-            criticalSent++;
+            if (sendRes.gone) return { chatId: strChatId, ok: false, type: 'quiz', gone: true };
+            if (sendRes.ok) criticalSent++;
         }
     }
 
@@ -254,9 +224,9 @@ async function processUserQuizzes(chatId, context) {
                 } catch { /* Optional */ }
             }
 
-            await sendTelegram(strChatId, alertMsg);
-            await markAlertAsSent(dailyKey);
-            dailySent++;
+            const sendRes = await deliverAlert(strChatId, dailyKey, alertMsg);
+            if (sendRes.gone) return { chatId: strChatId, ok: false, type: 'quiz', gone: true };
+            if (sendRes.ok) dailySent++;
         } else if (adminChatIds.includes(strChatId)) {
             // Утренняя сводка админу при отсутствии дедлайнов
             try {
@@ -265,9 +235,8 @@ async function processUserQuizzes(chatId, context) {
                     const morningNote = `☀️ <b>Доброе утро! GradeMaster:</b>\n` +
                         `Срочных дедлайнов на ближайшие 3 дня нет (активных квизов: ${result.quizzes.length}).\n\n` +
                         `📊 <i>Вчера сервисом воспользовались <b>${stats.dauYesterday}</b> студентов (сделано <b>${stats.calcsYesterday}</b> расчётов).</i>`;
-                    await sendTelegram(strChatId, morningNote);
-                    await markAlertAsSent(dailyKey);
-                    dailySent++;
+                    const sendRes = await deliverAlert(strChatId, dailyKey, morningNote);
+                    if (sendRes.ok) dailySent++;
                 }
             } catch { /* Optional */ }
         }
@@ -318,9 +287,9 @@ async function processUserQuizzes(chatId, context) {
                   `<i>(Сдала? Напиши /done, чтобы бот не шумел перед сном)</i>`
                 : `💡 <i>Сдавайте заранее, чтобы серверы не зависли перед полуночью!\n(Сдали работу? Отметьте через /done)</i>`;
 
-            await sendTelegram(strChatId, alertMsg);
-            await markAlertAsSent(eveningKey);
-            eveningSent++;
+            const sendRes = await deliverAlert(strChatId, eveningKey, alertMsg);
+            if (sendRes.gone) return { chatId: strChatId, ok: false, type: 'quiz', gone: true };
+            if (sendRes.ok) eveningSent++;
         }
     }
 
@@ -362,8 +331,8 @@ async function processUserLms(chatId, context) {
                       `Бот не может проверить актуальные дедлайны по заданиям.\n` +
                       `Пожалуйста, войдите в <a href="https://lms.astanait.edu.kz/">lms.astanait.edu.kz</a>, скопируйте <code>MoodleSession</code> и отправьте боту:\n\n` +
                       `<code>/set_lms ВАШ_MOODLESESSION</code>`;
-                await sendTelegram(strChatId, expiredMsg);
-                await markAlertAsSent(expKey);
+                const sendRes = await deliverAlert(strChatId, expKey, expiredMsg);
+                if (sendRes.gone) return { chatId: strChatId, ok: false, type: 'lms', gone: true };
             }
         }
         return { chatId: strChatId, ok: false, type: 'lms', error: result.error, criticalSent, dailySent, eveningSent };
@@ -379,12 +348,12 @@ async function processUserLms(chatId, context) {
 
         if (!alreadySent) {
             const { text: alertText, replyMarkup } = lms.formatCriticalHourLmsAlert(item, isGauharUser);
-            await sendTelegram(strChatId, alertText, {
+            const sendRes = await deliverAlert(strChatId, itemKey, alertText, {
                 reply_markup: replyMarkup,
                 disable_notification: false
             });
-            await markAlertAsSent(itemKey);
-            criticalSent++;
+            if (sendRes.gone) return { chatId: strChatId, ok: false, type: 'lms', gone: true };
+            if (sendRes.ok) criticalSent++;
         }
     }
 
@@ -430,9 +399,9 @@ async function processUserLms(chatId, context) {
                 ? `Гаухар, не откладывай лабы на вечер! ☕️⚡️`
                 : `Сдавайте работы заранее, чтобы избежать перегрузки портала! 🚀`;
 
-            await sendTelegram(strChatId, alertMsg);
-            await markAlertAsSent(dailyKey);
-            dailySent++;
+            const sendRes = await deliverAlert(strChatId, dailyKey, alertMsg);
+            if (sendRes.gone) return { chatId: strChatId, ok: false, type: 'lms', gone: true };
+            if (sendRes.ok) dailySent++;
         }
     }
 
@@ -481,9 +450,9 @@ async function processUserLms(chatId, context) {
                   `<i>(Сдала? Напиши /done, чтобы вычеркнуть)</i>`
                 : `💡 <i>Лучше сдать сейчас, чем в 23:58 бороться с ошибками портала!\n(Сдали задание? Отметьте через /done)</i>`;
 
-            await sendTelegram(strChatId, alertMsg);
-            await markAlertAsSent(eveningKey);
-            eveningSent++;
+            const sendRes = await deliverAlert(strChatId, eveningKey, alertMsg);
+            if (sendRes.gone) return { chatId: strChatId, ok: false, type: 'lms', gone: true };
+            if (sendRes.ok) eveningSent++;
         }
     }
 
@@ -541,8 +510,10 @@ async function runCron({ now = new Date(), force = false } = {}) {
         hourCycle: 'h23'
     }).format(now));
 
-    const isMorningWindow = astanaHour >= 6 && astanaHour <= 11;
-    const isEveningWindow = astanaHour >= 19 && astanaHour <= 22;
+    // Утренняя сводка обещана на 08:00, вечерний чек-лист — на 20:00 (Астана); повторные
+    // тики внутри окна идемпотентны благодаря ключам дедупликации.
+    const isMorningWindow = astanaHour >= 8 && astanaHour <= 11;
+    const isEveningWindow = astanaHour >= 20 && astanaHour <= 22;
     const forceSend = force;
 
     const context = {
@@ -550,7 +521,8 @@ async function runCron({ now = new Date(), force = false } = {}) {
         isEveningWindow,
         forceSend,
         todayStr,
-        adminChatIds
+        adminChatIds,
+        nowDate: now
     };
 
     // Пакетная параллельная проверка (пачками по 6 пользователей) для предотвращения 429/502 и перегрузки серверов AITU

@@ -795,7 +795,7 @@ test('Cron: sends critical 1-hour alert with sound and deduplicates repeated inv
         // Isolate 1-hour critical test from daily digest / evening checklist windows
         const statsEngine = require('../api/stats/engine.js');
         const todayStr = statsEngine.getTodayDateStr ? statsEngine.getTodayDateStr() : new Date().toISOString().slice(0, 10);
-        await cron.markAlertAsSent(`daily:aitu:999888:${todayStr}`);
+        await cron.markAlertAsSent(`daily:999888:${todayStr}`);
         await cron.markAlertAsSent(`daily:lms:999888:${todayStr}`);
         await cron.markAlertAsSent(`evening:999888:${todayStr}`);
 
