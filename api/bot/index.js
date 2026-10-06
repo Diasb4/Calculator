@@ -3,32 +3,14 @@
 // Полноценная замена веб-сайта GradeMaster прямо в Telegram.
 // Работает и как Vercel Serverless Webhook (/api/bot), и как локальный Long-Polling скрипт.
 
-const crypto = require('crypto');
 const aitu = require('./aitu.js');
 const lms = require('./lms.js');
 const lmsGrades = require('./lms_grades.js');
 const statsEngine = require('../stats/engine.js');
+const { setTimeout: delay } = require('node:timers/promises');
+const { safeCompare, getBotToken, getAdminChatIds, isProduction, esc, BoundedMap } = require('../_lib/util.js');
+const { callTelegram, sendText, TelegramError } = require('../_lib/telegram.js');
 
-function safeCompare(a, b) {
-    if (typeof a !== 'string' || typeof b !== 'string') return false;
-    const bufA = Buffer.from(a);
-    const bufB = Buffer.from(b);
-    if (bufA.length !== bufB.length) return false;
-    return crypto.timingSafeEqual(bufA, bufB);
-}
-function getBotToken() {
-    return (process.env.TELEGRAM_BOT_TOKEN || '').trim();
-}
-
-function getApiBase() {
-    return `https://api.telegram.org/bot${getBotToken()}`;
-}
-
-const RAW_ADMIN_IDS = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
-const ADMIN_CHAT_IDS = RAW_ADMIN_IDS
-    ? RAW_ADMIN_IDS.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean)
-    : [];
-const ADMIN_CHAT_ID = ADMIN_CHAT_IDS[0] || '';
 const WEBAPP_URL = process.env.WEBAPP_URL || 'https://calculator-not-404.vercel.app';
 
 let botUsernameCache = (process.env.TELEGRAM_BOT_USERNAME || '').replace(/^@/, '');
@@ -58,17 +40,8 @@ function _setBotInfoForTesting(info) {
     if (info && info.id !== undefined) botIdCache = info.id ? String(info.id) : null;
 }
 
-function getAdminChatIds() {
-    const raw = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
-    if (raw) {
-        return raw.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean);
-    }
-    return ADMIN_CHAT_IDS;
-}
-
 function getPrimaryAdminId() {
-    const ids = getAdminChatIds();
-    return ids[0] || ADMIN_CHAT_ID || '';
+    return getAdminChatIds()[0] || '';
 }
 
 const ATTENDANCE_WEEKS = 10;
@@ -76,10 +49,10 @@ const ATTENDANCE_LIMIT_PERCENT = 0.30;
 
 // Хранилище сессий пользователей (для пошаговых диалогов)
 // В serverless сохраняется в памяти инстанса с TTL
-const userSessions = new Map();
+const userSessions = new BoundedMap(5000);
 // Хранилище списка пользователей для рассылки админа
 const activeUsers = new Set();
-for (const id of ADMIN_CHAT_IDS) {
+for (const id of getAdminChatIds()) {
     activeUsers.add(id);
 }
 
@@ -177,8 +150,8 @@ async function getAllBotUsers() {
 }
 
 // Хранилище таймаута на сообщения пользователей (1 сообщение в 5 минут для NLP и фидбека)
-const userRateLimits = new Map(); // chatId -> timestamp
-const userCourseListMemory = new Map(); // chatId + '_lms' / '_learn' -> Array<courseName>
+const userRateLimits = new BoundedMap(10000); // chatId -> timestamp
+const userCourseListMemory = new BoundedMap(5000); // chatId + '_lms' / '_learn' -> Array<courseName>
 const RATE_LIMIT_COOLDOWN_MS = 5 * 60 * 1000; // 5 минут
 
 function checkRateLimit(chatId) {
@@ -264,21 +237,7 @@ function analyzeMessageSecurity(text) {
 // Telegram API клиент
 
 async function apiCall(method, payload = {}) {
-    const token = getBotToken();
-    if (!token) {
-        throw new Error('TELEGRAM_BOT_TOKEN environment variable is not configured');
-    }
-    const response = await fetch(`${getApiBase()}/${method}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-    const data = await response.json();
-    if (!data.ok) {
-        console.error(`Telegram API [${method}] Error:`, data);
-        throw new Error(data.description || 'Unknown Telegram API error');
-    }
-    return data.result;
+    return callTelegram(method, payload);
 }
 
 async function rawSendMessage(chatId, text, options = {}) {
@@ -287,33 +246,7 @@ async function rawSendMessage(chatId, text, options = {}) {
     if (Number(chatId) < 0 && opts.reply_markup && opts.reply_markup.keyboard) {
         delete opts.reply_markup;
     }
-    let safeText = String(text ?? '');
-    if (safeText.length > 4000) {
-        const lastNl = safeText.lastIndexOf('\n', 3900);
-        safeText = (lastNl > 2000 ? safeText.slice(0, lastNl) : safeText.slice(0, 3900)) + '\n\n...(сокращено)';
-    }
-    try {
-        return await apiCall('sendMessage', {
-            chat_id: chatId,
-            text: safeText,
-            parse_mode: 'HTML',
-            disable_web_page_preview: true,
-            ...opts
-        });
-    } catch (err) {
-        if (err.message && (err.message.includes('parse') || err.message.includes('entity') || err.message.includes('tag'))) {
-            const plainText = safeText.replace(/<[^>]*>/g, '');
-            const fallbackOpts = { ...opts };
-            delete fallbackOpts.parse_mode;
-            return await apiCall('sendMessage', {
-                chat_id: chatId,
-                text: plainText,
-                disable_web_page_preview: true,
-                ...fallbackOpts
-            });
-        }
-        throw err;
-    }
+    return sendText(chatId, text, opts);
 }
 
 async function sendMessage(chatId, text, options = {}) {
@@ -337,13 +270,6 @@ async function editMessageText(chatId, messageId, text, options = {}) {
         disable_web_page_preview: true,
         ...options
     }).catch(() => { });
-}
-
-function esc(str) {
-    return String(str ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
 }
 
 function formatBroadcastContent(rawText) {
@@ -3400,16 +3326,12 @@ async function handleMessage(msg) {
 
     if (/^\/sync_lms(?:\s|$)/i.test(text) || /^\/(?:tracker|stipend)\s+sync/i.test(text)) {
         const rawArg = text.replace(/^\/sync_lms\s*/i, '').replace(/^\/(?:tracker|stipend)\s+sync\s*/i, '').trim();
-        let targetSession = rawArg;
-        if (!targetSession) {
-            const userLms = await lms.getUserLmsSession(chatId);
-            if (userLms && userLms.startsWith('MoodleSession=')) {
-                targetSession = userLms;
-            }
-        }
+        // Only an explicit MoodleSession works here: /set_lms stores a calendar export URL,
+        // which cannot open the grade report.
+        const targetSession = rawArg;
 
         if (!targetSession) {
-            return sendMessage(chatId, `🔄 <b>Автономная синхронизация оценок из Moodle LMS:</b>\n\nДля прямого скачивания журнала оценок нужна сессия <code>MoodleSession</code>:\n\n1. Открой <a href="https://lms.astanait.edu.kz">lms.astanait.edu.kz</a> в браузере.\n2. Скопируй cookie <code>MoodleSession</code>.\n3. Отправь команду:\n<code>/sync_lms ВАША_КУКА</code> (или <code>/set_lms ВАША_КУКА</code>)\n\n<i>Также ты можешь просто переслать сообщение с оценками из LMS-бота прямо сюда!</i>`, { reply_markup: getMainKeyboard(chatId) });
+            return sendMessage(chatId, `🔄 <b>Автономная синхронизация оценок из Moodle LMS:</b>\n\nДля прямого скачивания журнала оценок нужна сессия <code>MoodleSession</code>:\n\n1. Открой <a href="https://lms.astanait.edu.kz">lms.astanait.edu.kz</a> в браузере.\n2. Скопируй cookie <code>MoodleSession</code>.\n3. Отправь команду:\n<code>/sync_lms ВАША_КУКА</code>\n\n<i>Также ты можешь просто переслать сообщение с оценками из LMS-бота прямо сюда!</i>`, { reply_markup: getMainKeyboard(chatId) });
         }
 
         await sendMessage(chatId, '⏳ <i>Подключаюсь к Moodle LMS и скачиваю табели по всем курсам...</i>');
@@ -3650,11 +3572,20 @@ module.exports = async function handler(req, res) {
         const setupParam = query.setup || query.action || (urlObj ? urlObj.searchParams.get('setup') || urlObj.searchParams.get('action') : null);
 
         if (setupParam === '1' || setupParam === 'setWebhook') {
+            if (process.env.BOT_POLLING === 'true') {
+                return res.status(409).json({ ok: false, error: 'Polling mode active; webhook setup disabled' });
+            }
             const secret = process.env.TELEGRAM_SECRET_TOKEN;
+            if (!secret && isProduction()) {
+                return res.status(503).json({ ok: false, error: 'TELEGRAM_SECRET_TOKEN is not configured' });
+            }
             if (secret) {
-                const authHeader = req.headers ? (req.headers['authorization'] || req.headers['x-telegram-bot-api-secret-token']) : null;
-                const secretParam = query.secret || (urlObj ? urlObj.searchParams.get('secret') : null);
-                if (authHeader !== `Bearer ${secret}` && authHeader !== secret && secretParam !== secret) {
+                const headers = req.headers || {};
+                const authorization = headers['authorization'];
+                const bearer = typeof authorization === 'string' && authorization.startsWith('Bearer ')
+                    ? authorization.slice('Bearer '.length)
+                    : null;
+                if (!safeCompare(headers['x-telegram-bot-api-secret-token'], secret) && !safeCompare(bearer, secret)) {
                     return res.status(401).json({
                         ok: false,
                         error: 'Unauthorized: TELEGRAM_SECRET_TOKEN обязателен для настройки Webhook'
@@ -3701,8 +3632,15 @@ module.exports = async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    // Проверка секретного токена вебхука Telegram (если задан, timing-safe)
+    if (process.env.BOT_POLLING === 'true') {
+        return res.status(403).json({ error: 'Webhook disabled: bot runs in long-polling mode' });
+    }
+
+    // Проверка секретного токена вебхука Telegram (timing-safe); в production без секрета — отказ
     const secretToken = process.env.TELEGRAM_SECRET_TOKEN;
+    if (!secretToken && isProduction()) {
+        return res.status(503).json({ error: 'TELEGRAM_SECRET_TOKEN is not configured' });
+    }
     if (secretToken) {
         const headerToken = req.headers['x-telegram-bot-api-secret-token'];
         if (!headerToken || !safeCompare(headerToken, secretToken)) {
@@ -3766,29 +3704,104 @@ module.exports.rawSendMessage = rawSendMessage;
 module.exports.handleMessage = handleMessage;
 module.exports.getBotInfo = getBotInfo;
 module.exports._setBotInfoForTesting = _setBotInfoForTesting;
+module.exports.startPolling = startPolling;
+module.exports.stopPolling = stopPolling;
 
-// Локальный long-polling (для разработки)
-if (require.main === module) {
+// Long polling (VPS): getUpdates instead of the webhook. Updates of one chat run
+// in order; different chats run concurrently, so a slow or hung handler never
+// stalls polling for everyone else.
+
+let polling = null;
+
+function getUpdateChatId(update) {
+    return update.message?.chat?.id ?? update.callback_query?.message?.chat?.id ?? update.callback_query?.from?.id;
+}
+
+function dispatchUpdate(state, update) {
+    const key = String(getUpdateChatId(update) ?? `update:${update.update_id}`);
+    const previous = state.chats.get(key) || Promise.resolve();
+    const next = previous
+        .then(() => {
+            if (update.message) return handleMessage(update.message);
+            if (update.callback_query) return handleCallbackQuery(update.callback_query);
+            return undefined;
+        })
+        .catch(err => console.error('Update handling error:', err));
+    state.chats.set(key, next);
+    next.then(() => {
+        if (state.chats.get(key) === next) state.chats.delete(key);
+    });
+}
+
+async function pollUpdates(state) {
+    const { signal } = state.controller;
     let offset = 0;
-    async function poll() {
-        console.log(`🤖 GradeMaster Telegram Bot запущен в режиме Long-Polling...`);
-        while (true) {
-            try {
-                const updates = await apiCall('getUpdates', { offset, timeout: 30 });
-                for (const update of updates) {
-                    offset = update.update_id + 1;
-                    if (update.message) {
-                        await handleMessage(update.message).catch(console.error);
-                    } else if (update.callback_query) {
-                        await handleCallbackQuery(update.callback_query).catch(console.error);
-                    }
+    let backoff = 1000;
+    let webhookRemoved = false;
+    let conflicts = 0;
+
+    while (!state.stop) {
+        try {
+            if (!webhookRemoved) {
+                await callTelegram('deleteWebhook', { drop_pending_updates: false }, { signal });
+                webhookRemoved = true;
+                if (!state.announced) {
+                    state.announced = true;
+                    console.log('🤖 Long polling started (webhook removed)');
                 }
-            } catch (err) {
-                console.error('Polling error:', err.message);
-                await new Promise(r => setTimeout(r, 4000));
             }
+            const updates = await callTelegram('getUpdates', {
+                offset,
+                timeout: 30,
+                allowed_updates: ['message', 'callback_query']
+            }, { timeoutMs: 40000, signal });
+            backoff = 1000;
+            conflicts = 0;
+            for (const update of updates || []) {
+                offset = Math.max(offset, update.update_id + 1);
+                dispatchUpdate(state, update);
+            }
+        } catch (err) {
+            if (state.stop) break;
+            if (err instanceof TelegramError && err.code === 401) {
+                console.error('❌ Invalid TELEGRAM_BOT_TOKEN (401) — polling stopped');
+                process.exit(1);
+            }
+            if (err instanceof TelegramError && err.code === 409) {
+                console.warn('⚠️ 409 Conflict: another getUpdates consumer or webhook is active');
+                webhookRemoved = false;
+                conflicts += 1;
+                if (conflicts > 1) await delay(30000, undefined, { signal }).catch(() => { });
+                continue;
+            }
+            console.error(`Polling error: ${err.message}`);
+            await delay(backoff, undefined, { signal }).catch(() => { });
+            backoff = Math.min(backoff * 2, 60000);
         }
     }
-    poll();
 }
+
+function startPolling() {
+    if (polling) return polling.done;
+    const state = { stop: false, announced: false, controller: new AbortController(), chats: new Map(), done: null };
+    polling = state;
+    state.done = pollUpdates(state);
+    return state.done;
+}
+
+/** Stops polling and waits (up to 15 s) for updates that are already being handled. */
+async function stopPolling() {
+    if (!polling) return;
+    const state = polling;
+    state.stop = true;
+    state.controller.abort();
+    await state.done;
+    await Promise.race([
+        Promise.allSettled([...state.chats.values()]),
+        delay(15000, undefined, { ref: false })
+    ]);
+    polling = null;
+}
+
+if (require.main === module) startPolling();
 

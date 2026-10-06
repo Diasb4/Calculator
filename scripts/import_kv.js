@@ -1,131 +1,106 @@
 // scripts/import_kv.js
-// Скрипт восстановления дампа базы данных Upstash Redis / Vercel KV из JSON-файла
+// Восстановление дампа (scripts/export_kv.js) в настроенный KV: Redis (REDIS_URL)
+// или Upstash / Vercel KV REST (KV_REST_API_URL + KV_REST_API_TOKEN).
+//
+//   node --env-file=.env scripts/import_kv.js <файл_дампа.json>
+//
+// Сессии студентов (gm:user:<id>:session, gm:user:<id>:lms_session) шифруются
+// при записи, если задан SESSION_ENC_KEY.
 
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const { getKvBackend, kvPipeline, closeKv } = require('../api/stats/engine.js');
+const { sealSecret, isSealed, hasEncryptionKey } = require('../api/_lib/util.js');
 
-function loadEnvFile() {
-    const envPath = path.join(process.cwd(), '.env');
-    if (!fs.existsSync(envPath)) return {};
-    const content = fs.readFileSync(envPath, 'utf8');
-    const result = {};
-    for (const line of content.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) continue;
-        const eqIdx = trimmed.indexOf('=');
-        if (eqIdx !== -1) {
-            const key = trimmed.slice(0, eqIdx).trim();
-            let val = trimmed.slice(eqIdx + 1).trim();
-            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-                val = val.slice(1, -1);
-            }
-            result[key] = val;
+const SECRET_KEY_PATTERN = /^gm:user:[^:]+:(session|lms_session)$/;
+const BATCH_SIZE = 50;
+const PIPELINE_TIMEOUT_MS = 15000;
+
+const toArg = (v) => (typeof v === 'object' ? JSON.stringify(v) : String(v));
+
+function buildCommands({ key, type, ttl, value }, sealSecrets) {
+    if (!key || value === null || value === undefined) return [];
+    const expire = ttl && ttl > 0 ? [['EXPIRE', key, ttl]] : [];
+
+    if (type === 'string') {
+        let str = toArg(value);
+        if (sealSecrets && SECRET_KEY_PATTERN.test(key) && !isSealed(str)) {
+            str = sealSecret(str);
         }
+        return [ttl && ttl > 0 ? ['SET', key, str, 'EX', ttl] : ['SET', key, str]];
     }
-    return result;
-}
-
-const envVars = loadEnvFile();
-
-const args = process.argv.slice(2);
-const rawUrl = (args[0] || process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || envVars.KV_REST_API_URL || envVars.UPSTASH_REDIS_REST_URL || '').trim();
-const token = (args[1] || process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || envVars.KV_REST_API_TOKEN || envVars.UPSTASH_REDIS_REST_TOKEN || '').trim();
-const inputFile = args[2] || path.join(process.cwd(), 'backup_kv.json');
-
-if (!rawUrl || !token) {
-    console.error('❌ Ошибка: не указаны целевой KV_REST_API_URL и KV_REST_API_TOKEN!');
-    console.log('\nИспользование:');
-    console.log('  node scripts/import_kv.js <URL> <TOKEN> [файл_бэкапа.json]');
-    process.exit(1);
-}
-
-if (!fs.existsSync(inputFile)) {
-    console.error(`❌ Файл бэкапа не найден: ${inputFile}`);
-    process.exit(1);
-}
-
-const cleanUrl = rawUrl.replace(/\/+$/, '');
-const pipelineUrl = cleanUrl.endsWith('/pipeline') ? cleanUrl : `${cleanUrl}/pipeline`;
-
-async function kvPipeline(commands) {
-    const res = await fetch(pipelineUrl, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(commands)
-    });
-
-    if (!res.ok) {
-        throw new Error(`Upstash API error ${res.status}: ${await res.text()}`);
+    if (type === 'set' && Array.isArray(value) && value.length > 0) {
+        return [['SADD', key, ...value.map(toArg)], ...expire];
     }
-
-    const data = await res.json();
-    return Array.isArray(data) ? data.map(item => item?.result) : [];
+    if (type === 'list' && Array.isArray(value) && value.length > 0) {
+        // DEL first so that a re-run does not append the list twice.
+        return [['DEL', key], ['RPUSH', key, ...value.map(toArg)], ...expire];
+    }
+    if (type === 'hash' && value && typeof value === 'object') {
+        // HGETALL comes back as a flat [field, value, ...] array; older dumps hold an object.
+        const entries = Array.isArray(value) ? value : Object.entries(value).flat();
+        return entries.length > 0 ? [['HSET', key, ...entries.map(toArg)], ...expire] : [];
+    }
+    if (type === 'zset' && Array.isArray(value) && value.length > 0) {
+        // WITHSCORES dump is [member, score, member, score, ...]; ZADD wants score member.
+        const zArgs = [];
+        for (let idx = 0; idx < value.length; idx += 2) {
+            zArgs.push(value[idx + 1], value[idx]);
+        }
+        return [['ZADD', key, ...zArgs], ...expire];
+    }
+    return [];
 }
 
 async function main() {
-    console.log('📖 Чтение файла бэкапа:', inputFile);
-    const raw = fs.readFileSync(inputFile, 'utf8');
-    const backup = JSON.parse(raw);
-    const records = backup.data || [];
-
-    console.log(`📦 Записей для загрузки: ${records.length}`);
-    console.log('📡 Подключение к целевому Redis:', cleanUrl);
-
-    const BATCH_SIZE = 50;
-
-    for (let i = 0; i < records.length; i += BATCH_SIZE) {
-        const batch = records.slice(i, i + BATCH_SIZE);
-        const commands = [];
-
-        for (const item of batch) {
-            const { key, type, ttl, value } = item;
-            if (value === null || value === undefined) continue;
-
-            if (type === 'string') {
-                if (ttl && ttl > 0) {
-                    commands.push(['SET', key, typeof value === 'object' ? JSON.stringify(value) : String(value), 'EX', ttl]);
-                } else {
-                    commands.push(['SET', key, typeof value === 'object' ? JSON.stringify(value) : String(value)]);
-                }
-            } else if (type === 'set' && Array.isArray(value) && value.length > 0) {
-                commands.push(['SADD', key, ...value.map(v => typeof v === 'object' ? JSON.stringify(v) : String(v))]);
-                if (ttl && ttl > 0) commands.push(['EXPIRE', key, ttl]);
-            } else if (type === 'list' && Array.isArray(value) && value.length > 0) {
-                commands.push(['RPUSH', key, ...value.map(v => typeof v === 'object' ? JSON.stringify(v) : String(v))]);
-                if (ttl && ttl > 0) commands.push(['EXPIRE', key, ttl]);
-            } else if (type === 'hash' && value && typeof value === 'object') {
-                const entries = Object.entries(value).flat();
-                if (entries.length > 0) {
-                    commands.push(['HSET', key, ...entries.map(v => typeof v === 'object' ? JSON.stringify(v) : String(v))]);
-                    if (ttl && ttl > 0) commands.push(['EXPIRE', key, ttl]);
-                }
-            } else if (type === 'zset' && Array.isArray(value) && value.length > 0) {
-                // WITHSCORES returns [member, score, member, score] or pairs
-                const zArgs = [];
-                for (let idx = 0; idx < value.length; idx += 2) {
-                    zArgs.push(value[idx + 1], value[idx]); // score member
-                }
-                if (zArgs.length > 0) {
-                    commands.push(['ZADD', key, ...zArgs]);
-                    if (ttl && ttl > 0) commands.push(['EXPIRE', key, ttl]);
-                }
-            }
-        }
-
-        if (commands.length > 0) {
-            await kvPipeline(commands);
-        }
-
-        process.stdout.write(`\r   Восстановлено: ${Math.min(i + BATCH_SIZE, records.length)} / ${records.length}`);
+    const inputFile = process.argv[2];
+    if (!inputFile) {
+        console.error('Использование: node --env-file=.env scripts/import_kv.js <файл_дампа.json>');
+        process.exit(1);
+    }
+    const backend = getKvBackend();
+    if (!backend) {
+        console.error('❌ KV не настроен: задайте REDIS_URL или KV_REST_API_URL + KV_REST_API_TOKEN');
+        process.exit(1);
     }
 
-    console.log('\n🎉 ВСЕ ДАННЫЕ УСПЕШНО ВОССТАНОВЛЕНЫ В ЦЕЛЕВУЮ БАЗУ!');
+    const dump = JSON.parse(fs.readFileSync(inputFile, 'utf8'));
+    const records = Array.isArray(dump) ? dump : (dump.data || []);
+    const sealSecrets = hasEncryptionKey();
+    console.log(`📦 Записей: ${records.length} → ${backend}${sealSecrets ? ' (сессии шифруются)' : ''}`);
+
+    let imported = 0;
+    let errors = 0;
+
+    for (let i = 0; i < records.length; i += BATCH_SIZE) {
+        const commands = [];
+        const owners = [];
+        records.slice(i, i + BATCH_SIZE).forEach((record, idx) => {
+            for (const command of buildCommands(record, sealSecrets)) {
+                commands.push(command);
+                owners.push(idx);
+            }
+        });
+        if (commands.length === 0) continue;
+
+        const results = await kvPipeline(commands, PIPELINE_TIMEOUT_MS);
+        const failed = new Set();
+        commands.forEach((_, j) => {
+            if (!results || results[j] === null || results[j] === undefined) {
+                errors++;
+                failed.add(owners[j]);
+            }
+        });
+        imported += new Set(owners).size - failed.size;
+
+        process.stdout.write(`\r   ${Math.min(i + BATCH_SIZE, records.length)} / ${records.length}`);
+    }
+
+    console.log(`\nImported ${imported} keys, ${errors} errors`);
+    await closeKv();
+    if (errors > 0) process.exitCode = 1;
 }
 
 main().catch(err => {
-    console.error('\n❌ Ошибка восстановления:', err);
+    console.error('\n❌ Ошибка восстановления:', err.message);
     process.exit(1);
 });

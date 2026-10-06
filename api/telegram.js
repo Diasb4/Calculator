@@ -11,10 +11,20 @@ function checkFeedbackIpRateLimit(ip) {
     }
     timestamps.push(now);
     feedbackIpRateLimit.set(ip, timestamps);
+    if (feedbackIpRateLimit.size > 10000) {
+        feedbackIpRateLimit.delete(feedbackIpRateLimit.keys().next().value);
+    }
     return true;
 }
 
-export default async function handler(req, res) {
+// The site's feedback form sends <b> labels and pre-escaped entities; anything else
+// a client puts in the message is escaped so it cannot inject links or markup.
+function sanitizeFeedbackHtml(s) {
+    return s.replace(/(<\/?b>|&(?:amp|lt|gt|quot|#39);)|[<>&]/g,
+        (m, keep) => keep ? keep : ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' })[m]);
+}
+
+async function handler(req, res) {
     function fail(status, code, error) {
         return res.status(status).json({ success: false, code, error });
     }
@@ -143,7 +153,7 @@ export default async function handler(req, res) {
             if (message.length > 24576 || textLength > 4096) {
                 return fail(400, "MESSAGE_TOO_LONG", "Message exceeds the length limit");
             }
-            finalMessage = message;
+            finalMessage = sanitizeFeedbackHtml(message);
         }
 
         const hasLinks = /(?:https?:\/\/|tg:\/\/|t\.me\/)[^\s<>"]+/i.test(finalMessage);
@@ -220,4 +230,6 @@ export default async function handler(req, res) {
             "Feedback service is temporarily unavailable");
     }
 }
+
+module.exports = handler;
 

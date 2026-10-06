@@ -188,7 +188,8 @@ async function fetchMoodleStudentGrades(moodleSession) {
                 'Cookie': cookieHeader,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) GradeMasterBot/2.0'
             },
-            redirect: 'manual'
+            redirect: 'manual',
+            signal: AbortSignal.timeout(15000)
         });
 
         if (overviewRes.status === 302 || overviewRes.status === 303) {
@@ -226,16 +227,19 @@ async function fetchMoodleStudentGrades(moodleSession) {
             };
         }
 
-        // 2. Параллельно запрашиваем детальные табели по каждому курсу
-        const courseGradePromises = courseList.map(async (course) => {
+        // 2. Детальные табели по курсам, не больше 4 запросов к LMS одновременно
+        const fetchCourseGrades = async (course) => {
             try {
                 const reportUrl = `${LMS_BASE_URL}/grade/report/user/index.php?id=${encodeURIComponent(course.id)}`;
                 const userRes = await fetch(reportUrl, {
                     headers: {
                         'Cookie': cookieHeader,
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) GradeMasterBot/2.0'
-                    }
+                    },
+                    redirect: 'manual',
+                    signal: AbortSignal.timeout(15000)
                 });
+                // A redirect here means the session was dropped mid-sync (login page)
                 if (!userRes.ok) return null;
                 const userHtml = await userRes.text();
                 return parseCourseUserGrades(userHtml, course.name);
@@ -243,9 +247,12 @@ async function fetchMoodleStudentGrades(moodleSession) {
                 console.warn(`Ошибка парсинга курса ${course.id}:`, err.message);
                 return null;
             }
-        });
+        };
 
-        const settledResults = await Promise.all(courseGradePromises);
+        const settledResults = [];
+        for (let i = 0; i < courseList.length; i += 4) {
+            settledResults.push(...await Promise.all(courseList.slice(i, i + 4).map(fetchCourseGrades)));
+        }
         const validCourses = settledResults.filter(Boolean);
 
         return {

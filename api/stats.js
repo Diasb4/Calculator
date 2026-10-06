@@ -1,15 +1,7 @@
-const crypto = require('crypto');
 const statsEngine = require('./stats/engine.js');
+const { safeCompare, isProduction, BoundedMap } = require('./_lib/util.js');
 
-function safeCompare(a, b) {
-    if (typeof a !== 'string' || typeof b !== 'string') return false;
-    const bufA = Buffer.from(a);
-    const bufB = Buffer.from(b);
-    if (bufA.length !== bufB.length) return false;
-    return crypto.timingSafeEqual(bufA, bufB);
-}
-
-const statsIpRateLimit = new Map();
+const statsIpRateLimit = new BoundedMap(10000);
 const STATS_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const STATS_RATE_LIMIT_MAX_COUNT = 60;
 
@@ -39,6 +31,9 @@ module.exports = async function handler(req, res) {
     if (req.method === 'GET') {
         const authHeader = req.headers ? req.headers['authorization'] : null;
         const secret = process.env.CRON_SECRET || process.env.TELEGRAM_SECRET_TOKEN;
+        if (!secret && isProduction()) {
+            return res.status(503).json({ ok: false, error: 'Stats secret is not configured' });
+        }
         if (secret) {
             if (!authHeader || !safeCompare(authHeader, `Bearer ${secret}`)) {
                 return res.status(401).json({ ok: false, error: 'Unauthorized' });

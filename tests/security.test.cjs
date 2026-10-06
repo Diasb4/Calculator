@@ -232,11 +232,20 @@ test('Security: Webhook setup endpoint enforces TELEGRAM_SECRET_TOKEN authentica
         assert.strictEqual(statusCode, 200);
         assert.strictEqual(responsePayload.ok, true);
 
-        // 4. With correct secret token via query param -> 200 OK
+        // 4. Secret in the query string is no longer accepted (it leaks into logs) -> 401
         await bot({
             method: 'GET',
             query: { setup: '1', secret: 'super_secret_webhook_key_456' },
             headers: {}
+        }, mockRes);
+        assert.strictEqual(statusCode, 401);
+        assert.strictEqual(responsePayload.ok, false);
+
+        // 5. Bearer authorization header -> 200 OK
+        await bot({
+            method: 'GET',
+            query: { setup: '1' },
+            headers: { authorization: 'Bearer super_secret_webhook_key_456' }
         }, mockRes);
         assert.strictEqual(statusCode, 200);
         assert.strictEqual(responsePayload.ok, true);
