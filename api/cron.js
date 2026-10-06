@@ -5,7 +5,7 @@
 const aitu = require('./bot/aitu.js');
 const lms = require('./bot/lms.js');
 const statsEngine = require('./stats/engine.js');
-const { safeCompare, getAdminChatIds, BoundedSet } = require('./_lib/util.js');
+const { safeCompare, getAdminChatIds, isProduction, BoundedSet } = require('./_lib/util.js');
 const { sendText, isChatGoneError } = require('./_lib/telegram.js');
 
 // Быстрый кэш отметок об отправке; источник истины — KV (gm:alert:<key>, 3 дня).
@@ -587,8 +587,11 @@ async function runCron({ now = new Date(), force = false } = {}) {
 }
 
 module.exports = async function handler(req, res) {
-    // Проверка CRON_SECRET (timing-safe)
+    // Проверка CRON_SECRET (timing-safe); в production без секрета — отказ
     const authHeader = req ? req.headers?.['authorization'] : null;
+    if (!process.env.CRON_SECRET && isProduction()) {
+        return res.status(503).json({ error: 'CRON_SECRET is not configured' });
+    }
     if (process.env.CRON_SECRET) {
         if (!authHeader || !safeCompare(authHeader, `Bearer ${process.env.CRON_SECRET}`)) {
             return res.status(401).json({ error: 'Unauthorized' });
