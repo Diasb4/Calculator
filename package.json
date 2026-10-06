@@ -5,5 +5,8 @@
   },
   "devDependencies": {
     "linkedom": "^0.18.13"
+  },
+  "dependencies": {
+    "redis": "^6.3.0"
   }
 }

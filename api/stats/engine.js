@@ -1,6 +1,7 @@
 // api/stats/engine.js
-// Privacy-preserving anonymous analytics engine for GradeMaster
-// Powered by Vercel KV / Upstash Redis REST API with graceful offline/memory fallback.
+// Privacy-preserving anonymous analytics engine for GradeMaster, plus the shared
+// KV access layer: Redis over TCP (REDIS_URL) or Upstash / Vercel KV over REST,
+// with an in-memory fallback when neither is configured.
 
 const crypto = require('node:crypto');
 
@@ -45,206 +46,90 @@ function getTodayDateStr(offsetDays = 0) {
  */
 function anonymizeUserId(rawId) {
     if (!rawId) return 'anon_unknown';
-    const salt = (process.env.TELEGRAM_BOT_TOKEN || 'gm_secure_salt_grade_master_2026').trim();
+    const salt = (process.env.ANALYTICS_SALT || process.env.TELEGRAM_BOT_TOKEN || 'gm_secure_salt_grade_master_2026').trim();
     return crypto.createHmac('sha256', salt).update(String(rawId)).digest('hex').slice(0, 12);
 }
 
-const fs = require('node:fs');
-const path = require('node:path');
+function getUpstashConfig() {
+    const url = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '').trim();
+    const token = (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '').trim();
+    return url && token ? { url, token } : null;
+}
 
-// Local file DB store (backup_kv.json / local_kv.json)
-let localDbMap = null;
-let localDbPath = null;
-let saveDebounceTimer = null;
-
-function getLocalDbFile() {
-    if (process.env.LOCAL_DB_FILE) {
-        return path.resolve(process.env.LOCAL_DB_FILE);
-    }
-    const defaultBackup = path.join(process.cwd(), 'backup_kv.json');
-    if (fs.existsSync(defaultBackup)) {
-        return defaultBackup;
-    }
-    const defaultLocal = path.join(process.cwd(), 'local_kv.json');
-    if (fs.existsSync(defaultLocal)) {
-        return defaultLocal;
-    }
+/** 'redis' (REDIS_URL), 'upstash' (REST URL + token) or null (memory fallback). */
+function getKvBackend() {
+    if ((process.env.REDIS_URL || '').trim()) return 'redis';
+    if (getUpstashConfig()) return 'upstash';
     return null;
 }
 
-function initLocalDb() {
-    if (localDbMap) return localDbMap;
-    const filePath = getLocalDbFile();
-    if (!filePath || !fs.existsSync(filePath)) {
-        return null;
-    }
-    localDbPath = filePath;
-    localDbMap = new Map();
-    try {
-        const raw = fs.readFileSync(filePath, 'utf8');
-        const parsed = JSON.parse(raw);
-        const records = Array.isArray(parsed) ? parsed : (parsed.data || []);
-        for (const item of records) {
-            if (item && item.key) {
-                localDbMap.set(item.key, {
-                    type: item.type || 'string',
-                    value: item.value,
-                    expiresAt: item.ttl && item.ttl > 0 ? Date.now() + item.ttl * 1000 : null
-                });
-            }
+let redisClient = null;
+let redisConnectPromise = null;
+let lastRedisErrorLogAt = 0;
+
+function getRedisClient() {
+    if (redisClient) return redisClient;
+    const { createClient } = require('redis');
+    redisClient = createClient({
+        url: process.env.REDIS_URL,
+        disableOfflineQueue: true,
+        socket: {
+            connectTimeout: 5000,
+            reconnectStrategy: (retries) => Math.min(1000 * 2 ** retries, 30000)
         }
-        console.log(`📁 GradeMaster Local DB loaded from ${path.basename(filePath)} (${localDbMap.size} keys)`);
-    } catch (e) {
-        console.warn('Could not load local DB file:', e.message);
-        localDbMap = null;
-    }
-    return localDbMap;
+    });
+    redisClient.on('error', (err) => {
+        const now = Date.now();
+        if (now - lastRedisErrorLogAt >= 60000) {
+            lastRedisErrorLogAt = now;
+            console.warn('Redis error:', err.message);
+        }
+    });
+    redisConnectPromise = redisClient.connect();
+    redisConnectPromise.catch(() => { });
+    return redisClient;
 }
 
-function scheduleLocalDbSave() {
-    if (!localDbPath || !localDbMap) return;
-    if (saveDebounceTimer) return;
-    saveDebounceTimer = setTimeout(() => {
-        saveDebounceTimer = null;
-        try {
-            const data = [];
-            const now = Date.now();
-            for (const [key, item] of localDbMap.entries()) {
-                const ttl = item.expiresAt ? Math.max(0, Math.round((item.expiresAt - now) / 1000)) : -1;
-                if (item.expiresAt && ttl <= 0) continue; // expired
-                data.push({
-                    key,
-                    type: item.type,
-                    ttl,
-                    value: item.value
-                });
-            }
-            fs.writeFileSync(localDbPath, JSON.stringify({ dumpedAt: new Date().toISOString(), totalKeys: data.length, data }, null, 2), 'utf8');
-        } catch (err) {
-            console.warn('Local DB save error:', err.message);
-        }
-    }, 1000);
+function withTimeout(promise, ms) {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-function executeLocalKv(commandArray) {
-    const db = initLocalDb();
-    if (!db) return null;
-    if (!Array.isArray(commandArray) || commandArray.length === 0) return null;
-
-    const cmd = String(commandArray[0]).toUpperCase();
-    const key = commandArray[1];
-    const now = Date.now();
-
-    // Check expiration
-    if (key && db.has(key)) {
-        const item = db.get(key);
-        if (item.expiresAt && item.expiresAt <= now) {
-            db.delete(key);
-            scheduleLocalDbSave();
-        }
+/** The connected Redis client, or null if it is not ready within `timeoutMs`. */
+async function getReadyRedisClient(timeoutMs) {
+    const client = getRedisClient();
+    if (!client.isReady) {
+        await withTimeout(redisConnectPromise, timeoutMs).catch(() => { });
     }
-
-    if (cmd === 'GET') {
-        const item = db.get(key);
-        return item ? item.value : null;
-    }
-
-    if (cmd === 'SET') {
-        const val = commandArray[2];
-        let ttl = null;
-        for (let i = 3; i < commandArray.length; i++) {
-            if (String(commandArray[i]).toUpperCase() === 'EX' && commandArray[i + 1]) {
-                ttl = parseInt(commandArray[i + 1], 10);
-            }
-        }
-        db.set(key, {
-            type: 'string',
-            value: val,
-            expiresAt: ttl && ttl > 0 ? now + ttl * 1000 : null
-        });
-        scheduleLocalDbSave();
-        return 'OK';
-    }
-
-    if (cmd === 'DEL') {
-        let count = 0;
-        for (let i = 1; i < commandArray.length; i++) {
-            const k = commandArray[i];
-            if (db.delete(k)) count++;
-        }
-        if (count > 0) scheduleLocalDbSave();
-        return count;
-    }
-
-    if (cmd === 'SADD') {
-        let item = db.get(key);
-        if (!item || item.type !== 'set' || !Array.isArray(item.value)) {
-            item = { type: 'set', value: [], expiresAt: null };
-            db.set(key, item);
-        }
-        const set = new Set(item.value.map(String));
-        let added = 0;
-        for (let i = 2; i < commandArray.length; i++) {
-            const member = String(commandArray[i]);
-            if (!set.has(member)) {
-                set.add(member);
-                added++;
-            }
-        }
-        item.value = Array.from(set);
-        if (added > 0) scheduleLocalDbSave();
-        return added;
-    }
-
-    if (cmd === 'SREM') {
-        const item = db.get(key);
-        if (!item || item.type !== 'set' || !Array.isArray(item.value)) return 0;
-        const set = new Set(item.value.map(String));
-        let removed = 0;
-        for (let i = 2; i < commandArray.length; i++) {
-            const member = String(commandArray[i]);
-            if (set.delete(member)) removed++;
-        }
-        item.value = Array.from(set);
-        if (removed > 0) scheduleLocalDbSave();
-        return removed;
-    }
-
-    if (cmd === 'SMEMBERS') {
-        const item = db.get(key);
-        if (!item || item.type !== 'set' || !Array.isArray(item.value)) return [];
-        return item.value;
-    }
-
-    if (cmd === 'EXPIRE') {
-        const item = db.get(key);
-        const sec = parseInt(commandArray[2], 10);
-        if (item && sec > 0) {
-            item.expiresAt = now + sec * 1000;
-            scheduleLocalDbSave();
-            return 1;
-        }
-        return 0;
-    }
-
-    return null;
+    return client.isReady ? client : null;
 }
 
 /**
- * Execute Redis REST command via Upstash / Vercel KV REST API
+ * Execute one Redis command. Returns null when no backend is configured or the
+ * command fails, which callers treat as "fall back to memory".
  */
 async function kvCommand(commandArray, timeoutMs = 3000) {
-    const rawUrl = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '').trim();
-    const token = (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '').trim();
+    const backend = getKvBackend();
 
-    if (!rawUrl || !token) {
-        const localRes = executeLocalKv(commandArray);
-        if (localRes !== null) {
-            return localRes;
+    if (backend === 'redis') {
+        const client = await getReadyRedisClient(timeoutMs);
+        if (!client) return null;
+        try {
+            return await withTimeout(client.sendCommand(commandArray.map(String)), timeoutMs);
+        } catch {
+            console.warn(`KV command failed: ${commandArray[0]}`);
+            return null;
         }
+    }
+
+    if (backend !== 'upstash') {
         return null; // Signals fallback to memoryStore
     }
 
+    const { url: rawUrl, token } = getUpstashConfig();
     const cleanUrl = rawUrl.replace(/\/+$/, '');
 
     try {
@@ -275,22 +160,31 @@ async function kvCommand(commandArray, timeoutMs = 3000) {
 }
 
 /**
- * Execute a pipeline of Redis REST commands in a single HTTP request
+ * Execute several commands in one round trip. Returns one result per command
+ * (null for a failed command), or null if the backend is unavailable.
  */
 async function kvPipeline(commands, timeoutMs = 2500) {
-    const rawUrl = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '').trim();
-    const token = (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '').trim();
-
-    if (!rawUrl || !token || !Array.isArray(commands) || commands.length === 0) {
-        if (!rawUrl || !token) {
-            const db = initLocalDb();
-            if (db && Array.isArray(commands)) {
-                return commands.map(cmd => executeLocalKv(cmd));
-            }
-        }
+    const backend = getKvBackend();
+    if (!backend || !Array.isArray(commands) || commands.length === 0) {
         return null;
     }
 
+    if (backend === 'redis') {
+        const client = await getReadyRedisClient(timeoutMs);
+        if (!client) return null;
+        try {
+            const settled = await withTimeout(
+                Promise.allSettled(commands.map(cmd => client.sendCommand(cmd.map(String)))),
+                timeoutMs
+            );
+            return settled.map(r => (r.status === 'fulfilled' ? r.value : null));
+        } catch {
+            console.warn(`KV pipeline timed out (${commands.length} commands)`);
+            return null;
+        }
+    }
+
+    const { url: rawUrl, token } = getUpstashConfig();
     const cleanUrl = rawUrl.replace(/\/+$/, '');
     const pipelineUrl = cleanUrl.endsWith('/pipeline') ? cleanUrl : `${cleanUrl}/pipeline`;
 
@@ -318,6 +212,25 @@ async function kvPipeline(commands, timeoutMs = 2500) {
         }
         console.warn('KV pipeline network warning:', err.message);
         return null;
+    }
+}
+
+function isKvReady() {
+    const backend = getKvBackend();
+    if (backend === 'redis') return getRedisClient().isReady === true;
+    return backend === 'upstash';
+}
+
+/** Closes the Redis connection (no-op for Upstash and memory). */
+async function closeKv() {
+    if (!redisClient) return;
+    const client = redisClient;
+    redisClient = null;
+    redisConnectPromise = null;
+    try {
+        await withTimeout(client.close(), 5000);
+    } catch {
+        try { client.destroy(); } catch { }
     }
 }
 
@@ -395,11 +308,8 @@ async function getStatsSummary() {
     const today = getTodayDateStr();
     const yesterday = getTodayDateStr(-1);
 
-    // Check if KV is active
-    const url = (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '').trim();
-    const token = (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '').trim();
-
-    if (url && token) {
+    const backend = getKvBackend();
+    if (backend) {
         // Collect last 7 days dates for WAU
         const past7DaysKeys = [];
         for (let i = 0; i < 7; i++) {
@@ -432,7 +342,7 @@ async function getStatsSummary() {
 
         const results = await kvPipeline(commands, 3500);
 
-        if (results && results.length >= 13) {
+        if (Array.isArray(results) && results.length >= 15) {
             const dauToday = parseInt(results[0], 10) || 0;
             const dauBot = parseInt(results[1], 10) || 0;
             const dauWeb = parseInt(results[2], 10) || 0;
@@ -453,6 +363,7 @@ async function getStatsSummary() {
 
             return {
                 storage: 'kv',
+                backend,
                 today,
                 dau: dauToday,
                 dauBot,
@@ -514,7 +425,9 @@ async function formatStatsTelegram() {
     const pAtt = Math.round((t.attendance / sumKnown) * 100);
     const pTarget = Math.round((t.target / sumKnown) * 100);
 
-    const storageBadge = stats.storage === 'kv' ? '🟢 Vercel KV / Upstash Active' : '🟡 In-Memory (KV connecting...)';
+    const storageBadge = stats.backend === 'redis'
+        ? '🟢 Redis'
+        : (stats.backend === 'upstash' ? '🟢 Upstash Redis' : '🟡 In-Memory');
 
     return `📊 <b>Статистика использования GradeMaster:</b>\n\n` +
         `👥 <b>Уникальные пользователи:</b>\n` +
@@ -544,6 +457,10 @@ module.exports = {
     getStatsSummary,
     formatStatsTelegram,
     kvCommand,
+    kvPipeline,
+    getKvBackend,
+    isKvReady,
+    closeKv,
     _memoryStore: memoryStore
 };
 
