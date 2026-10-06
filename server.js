@@ -234,9 +234,43 @@ const server = http.createServer(async (req, res) => {
 // Start listening if run directly
 if (require.main === module) {
     server.listen(PORT, HOST, () => {
-        console.log(`🚀 GradeMaster server is running at http://${HOST}:${PORT}`);
-        console.log(`   Health check: http://${HOST}:${PORT}/health`);
-        console.log(`   Telegram Bot Webhook: http://${HOST}:${PORT}/api/bot`);
+        console.log(`🚀 GradeMaster unified server is running at http://${HOST}:${PORT}`);
+        console.log(`   🌐 Web UI & Calculators: http://${HOST}:${PORT}`);
+        console.log(`   🩺 Health check: http://${HOST}:${PORT}/health`);
+        console.log(`   🤖 Bot Webhook endpoint: http://${HOST}:${PORT}/api/bot`);
+
+        // Start Telegram Bot in Long Polling mode if enabled or if token provided without webhook
+        if (process.env.BOT_POLLING === 'true') {
+            try {
+                const bot = require('./api/bot/index.js');
+                if (typeof bot.startPolling === 'function') {
+                    bot.startPolling();
+                }
+            } catch (err) {
+                console.warn('Could not launch Telegram Bot Polling:', err.message);
+            }
+        }
+
+        // Background Cron runner for VPS
+        if (process.env.ENABLE_BACKGROUND_CRON === 'true') {
+            console.log('⏰ Background Cron worker active (checks every 15 minutes)');
+            const cronHandler = require('./api/cron.js');
+            setInterval(async () => {
+                try {
+                    const mockReq = { method: 'GET', headers: { authorization: `Bearer ${process.env.CRON_SECRET || ''}` } };
+                    const mockRes = {
+                        statusCode: 200,
+                        setHeader: () => {},
+                        status: function (code) { this.statusCode = code; return this; },
+                        json: () => {},
+                        end: () => {}
+                    };
+                    await cronHandler(mockReq, mockRes);
+                } catch (err) {
+                    console.warn('Background cron run error:', err.message);
+                }
+            }, 15 * 60 * 1000);
+        }
     });
 }
 

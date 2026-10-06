@@ -49,7 +49,7 @@ async function getBotInfo() {
             if (me.username) botUsernameCache = me.username;
             if (me.id) botIdCache = String(me.id);
         }
-    } catch (_) {}
+    } catch (_) { }
     return { username: botUsernameCache, id: botIdCache };
 }
 
@@ -196,8 +196,8 @@ function checkRateLimit(chatId) {
             remainingSec,
             remainingMin,
             message: `⏳ <b>Пожалуйста, подождите:</b> отправка свободных запросов и сообщений ограничена 1 раз в 5 минут.\n` +
-                     `Следующее сообщение можно отправить через <b>${remainingMin} мин.</b>\n\n` +
-                     `<i>💡 Кнопки меню и стандартные калькуляторы работают без ограничений!</i>`
+                `Следующее сообщение можно отправить через <b>${remainingMin} мин.</b>\n\n` +
+                `<i>💡 Кнопки меню и стандартные калькуляторы работают без ограничений!</i>`
         };
     }
     return { allowed: true };
@@ -325,7 +325,7 @@ async function answerCallbackQuery(callbackQueryId, text = '', showAlert = false
         callback_query_id: callbackQueryId,
         text,
         show_alert: showAlert
-    }).catch(() => {});
+    }).catch(() => { });
 }
 
 async function editMessageText(chatId, messageId, text, options = {}) {
@@ -336,7 +336,7 @@ async function editMessageText(chatId, messageId, text, options = {}) {
         parse_mode: 'HTML',
         disable_web_page_preview: true,
         ...options
-    }).catch(() => {});
+    }).catch(() => { });
 }
 
 function esc(str) {
@@ -1195,7 +1195,7 @@ function parseNaturalLanguageAcademicQuery(rawText, isGauharUser = false) {
     // 3. Проверяем наличие вопроса вида "хватит ли X на экзамене..."
     let givenFinal = null;
     const finalMatch = text.match(/(?:хватит\s+ли|если\s+(?:наберу|получу|сдам\s+на))\s+(\d{1,3}(?:\.\d+)?)/i) ||
-                       text.match(/(?:на\s+файнал[еа]?|на\s+экзамен[еа]?)\s+(\d{1,3}(?:\.\d+)?)/i);
+        text.match(/(?:на\s+файнал[еа]?|на\s+экзамен[еа]?)\s+(\d{1,3}(?:\.\d+)?)/i);
     if (finalMatch) {
         const cand = parseFloat(finalMatch[1]);
         if (!isNaN(cand) && cand >= 0 && cand <= 100 && cand !== rm && cand !== re) {
@@ -1349,7 +1349,7 @@ function getFoolproofHelpText(isGauharUser = false) {
 function getCookieGuideText(isGauharUser = false) {
     const gauharHeader = isGauharUser
         ? `🍪 <b>Пошаговый гайд по кукам специально для Гаухар:</b> 🧠✨\n` +
-          `<i>(Гаухар, сохрани этот пост в «Избранное», чтобы не спрашивать разработчика через 5 минут!)</i> 😉\n\n`
+        `<i>(Гаухар, сохрани этот пост в «Избранное», чтобы не спрашивать разработчика через 5 минут!)</i> 😉\n\n`
         : `🍪 <b>Как подключить куки и напоминания (с телефона и ПК):</b>\n\n`;
 
     return gauharHeader +
@@ -1408,13 +1408,13 @@ async function handleAdminPanel(chatId, messageId = null) {
     try {
         const qUsers = await aitu.getAllQuizUsers();
         quizUsersCount = qUsers.length;
-    } catch {}
+    } catch { }
 
     let lmsUsersCount = 0;
     try {
         const lUsers = await lms.getAllLmsUsers();
         lmsUsersCount = lUsers.length;
-    } catch {}
+    } catch { }
 
     const storedLms = await lms.getUserLmsSession(chatId);
     const hasLms = Boolean(storedLms);
@@ -1428,7 +1428,7 @@ async function handleAdminPanel(chatId, messageId = null) {
     try {
         const allU = await getAllBotUsers();
         allBotUsersCount = allU.length;
-    } catch {}
+    } catch { }
 
     const adminMsg = `⚙️ <b>Панель администратора GradeMaster:</b>\n\n` +
         `👤 <b>Ваш Admin Chat ID:</b> <code>${chatId}</code>\n` +
@@ -1637,11 +1637,11 @@ function buildLmsMarkMenu(result, isGauharUser = false) {
 
     const text = isGauharUser
         ? `<b>Гаухар, выбери сданные задания Moodle LMS:</b> 🎓\n\n` +
-          `Нажимай на задания, которые ты уже сдала. Бот исключит их из напоминаний 🔕\n\n` +
-          `💡 <i>Можно нажимать подряд несколько заданий или нажать «✨ Сдать всё». По завершении нажми «Готово».</i>`
+        `Нажимай на задания, которые ты уже сдала. Бот исключит их из напоминаний 🔕\n\n` +
+        `💡 <i>Можно нажимать подряд несколько заданий или нажать «✨ Сдать всё». По завершении нажми «Готово».</i>`
         : `<b>Выберите сданные задания Moodle LMS:</b>\n\n` +
-          `Нажимайте на задания, которые вы уже сдали. Бот исключит их из списка дедлайнов и отключит утренние и экстренные напоминания 🔕\n\n` +
-          `💡 <i>Можно нажимать подряд несколько заданий или нажать «✨ Сдать всё». По завершении нажмите «Готово».</i>`;
+        `Нажимайте на задания, которые вы уже сдали. Бот исключит их из списка дедлайнов и отключит утренние и экстренные напоминания 🔕\n\n` +
+        `💡 <i>Можно нажимать подряд несколько заданий или нажать «✨ Сдать всё». По завершении нажмите «Готово».</i>`;
 
     return { text, reply_markup: { inline_keyboard: buttons } };
 }
@@ -1680,11 +1680,11 @@ function buildLearnMarkMenu(result, isGauharUser = false) {
 
     const text = isGauharUser
         ? `<b>Гаухар, выбери пройденные квизы AITU Learn:</b> 🎓\n\n` +
-          `Нажимай на квизы, которые ты уже сдала. Бот исключит их из напоминаний 🔕\n\n` +
-          `💡 <i>Можно нажимать подряд несколько квизов или нажать «✨ Сдать всё». По завершении нажми «Готово».</i>`
+        `Нажимай на квизы, которые ты уже сдала. Бот исключит их из напоминаний 🔕\n\n` +
+        `💡 <i>Можно нажимать подряд несколько квизов или нажать «✨ Сдать всё». По завершении нажми «Готово».</i>`
         : `<b>Выберите сданные квизы AITU Learn:</b>\n\n` +
-          `Нажимайте на квизы, которые вы уже сдали. Бот исключит их из списка и отключит звуковые напоминания и утреннюю сводку 🔕\n\n` +
-          `💡 <i>Можно нажимать подряд несколько квизов или нажать «✨ Сдать всё». По завершении нажмите «Готово».</i>`;
+        `Нажимайте на квизы, которые вы уже сдали. Бот исключит их из списка и отключит звуковые напоминания и утреннюю сводку 🔕\n\n` +
+        `💡 <i>Можно нажимать подряд несколько квизов или нажать «✨ Сдать всё». По завершении нажмите «Готово».</i>`;
 
     return { text, reply_markup: { inline_keyboard: buttons } };
 }
@@ -1696,7 +1696,7 @@ async function handleCallbackQuery(cq) {
 
     const chatId = cq.message?.chat?.id || cq.from?.id;
     if (chatId) {
-        recordBotUser(chatId).catch(() => {});
+        recordBotUser(chatId).catch(() => { });
     }
     const messageId = cq.message?.message_id;
     const data = cq.data;
@@ -1704,8 +1704,8 @@ async function handleCallbackQuery(cq) {
 
     // Не гасим уведомление сразу, если обработчик отправляет свой тост (например, "✅ Задание отмечено")
     const hasCustomToast = data.startsWith('mark_') || data.startsWith('unmark_') ||
-                           data === 'mark_all_lms' || data === 'mark_all_lrn' || data === 'mark_all_everything' ||
-                           data === 'unmark_all_lms' || data === 'unmark_all_lrn';
+        data === 'mark_all_lms' || data === 'mark_all_lrn' || data === 'mark_all_everything' ||
+        data === 'unmark_all_lms' || data === 'unmark_all_lrn';
     if (!hasCustomToast) {
         await answerCallbackQuery(cq.id);
     }
@@ -2375,7 +2375,7 @@ function extractLmsCalendarOrCookie(input) {
     // 1. Прямая ссылка на экспорт календаря Moodle LMS (https / http / webcal)
     // Например: https://lms.astanait.edu.kz/calendar/export_execute.php?userid=18258&authtoken=0d3c12c531aeec350de2ca7cc064e882f761b418&preset_what=all&preset_time=recentupcoming
     const calMatch = str.match(/(?:https?:\/\/|webcal:\/\/)[^\s<>"]*lms\.astanait\.edu\.kz\/calendar\/export_execute\.php[^\s<>"]*/i) ||
-                     str.match(/(?:https?:\/\/|webcal:\/\/)?[^\s<>"]*lms\.astanait\.edu\.kz\/[^?\s<>"]*export_execute\.php\?[^\s<>"]*(?:authtoken|userid)=[^\s<>"]*/i);
+        str.match(/(?:https?:\/\/|webcal:\/\/)?[^\s<>"]*lms\.astanait\.edu\.kz\/[^?\s<>"]*export_execute\.php\?[^\s<>"]*(?:authtoken|userid)=[^\s<>"]*/i);
     if (calMatch) {
         let url = calMatch[0];
         if (url.startsWith('webcal://')) {
@@ -2400,7 +2400,7 @@ function extractLmsCalendarOrCookie(input) {
                     if (/^[a-zA-Z0-9_\-]{16,128}$/.test(v)) return v;
                 }
             }
-        } catch {}
+        } catch { }
     }
 
     const moodleMatch = str.match(/(?:moodlesession)\s*[:=]\s*["']?([a-zA-Z0-9_\-]+)["']?/i);
@@ -2501,8 +2501,8 @@ function extractLearnSessionId(input) {
 function extractTargetIdFromReply(replyText) {
     if (!replyText || typeof replyText !== 'string') return null;
     const match = replyText.match(/\(ID:\s*(?:<code>)?(-?\d{4,16})(?:<\/code>)?\)/i) ||
-                  replyText.match(/\/reply\s+(-?\d{4,16})/i) ||
-                  replyText.match(/ID:\s*(?:<code>)?(-?\d{4,16})(?:<\/code>)?/i);
+        replyText.match(/\/reply\s+(-?\d{4,16})/i) ||
+        replyText.match(/ID:\s*(?:<code>)?(-?\d{4,16})(?:<\/code>)?/i);
     return match ? match[1] : null;
 }
 
@@ -2553,13 +2553,13 @@ async function executeSetLms(chatId, val, isGauharUser) {
 
         const successNote = isGauharUser
             ? `🎉 <b>Гаухар, Moodle LMS успешно подключен!</b> 🧠✨\n` +
-              `🌐 <b>Источник:</b> <code>${sourceHost}</code>\n` +
-              `Найдено активных дедлайнов: <b>${testRes.quizzesCount}</b>\n\n` +
-              `✅ Сгенерирован вечный токен: куки больше обновлять не нужно! Бот будет присылать напоминания каждое утро в 08:00 и за 1 час до дедлайна лично тебе.\n\n`
+            `🌐 <b>Источник:</b> <code>${sourceHost}</code>\n` +
+            `Найдено активных дедлайнов: <b>${testRes.quizzesCount}</b>\n\n` +
+            `✅ Сгенерирован вечный токен: куки больше обновлять не нужно! Бот будет присылать напоминания каждое утро в 08:00 и за 1 час до дедлайна лично тебе.\n\n`
             : `🎉 <b>Moodle LMS успешно подключен!</b>\n` +
-              `🌐 <b>Источник:</b> <code>${sourceHost}</code>\n` +
-              `Найдено активных дедлайнов: <b>${testRes.quizzesCount}</b>\n\n` +
-              `✅ Сгенерирован вечный токен календаря: сессия не истечет через 20 минут. Напоминания включены!\n\n`;
+            `🌐 <b>Источник:</b> <code>${sourceHost}</code>\n` +
+            `Найдено активных дедлайнов: <b>${testRes.quizzesCount}</b>\n\n` +
+            `✅ Сгенерирован вечный токен календаря: сессия не истечет через 20 минут. Напоминания включены!\n\n`;
 
         return sendMessage(chatId, successNote + lms.formatLmsDeadlinesMessage(testRes, isGauharUser), {
             reply_markup: getMainKeyboard(chatId),
@@ -2591,9 +2591,9 @@ async function executeSetLearnCookie(chatId, cookieVal, isGauharUser) {
         await aitu.saveUserSession(chatId, cleanSid);
         const successNote = isGauharUser
             ? `🎉 <b>Гаухар, сессия успешно подключена!</b> 🧠✨\nНайдено дедлайнов: <b>${testRes.quizzes.length}</b>\n\n` +
-              `✅ Теперь бот каждое утро в 08:00 и за 1 час до каждого дедлайна будет присылать персональные сигналы тревоги лично тебе, чтобы ты ничего не пропустила!\n\n`
+            `✅ Теперь бот каждое утро в 08:00 и за 1 час до каждого дедлайна будет присылать персональные сигналы тревоги лично тебе, чтобы ты ничего не пропустила!\n\n`
             : `🎉 <b>Успешно подключено к AITU!</b>\nНайдено дедлайнов: <b>${testRes.quizzes.length}</b>\n\n` +
-              `✅ Теперь бот каждое утро в 08:00 и экстренно за 1 час до дедлайна будет присылать персональные напоминания лично тебе!\n\n`;
+            `✅ Теперь бот каждое утро в 08:00 и экстренно за 1 час до дедлайна будет присылать персональные напоминания лично тебе!\n\n`;
 
         return sendMessage(chatId, successNote + aitu.formatQuizzesMessage(testRes, isGauharUser, false, 'week'), {
             reply_markup: getMainKeyboard(chatId),
@@ -2631,14 +2631,14 @@ async function handleMessage(msg) {
     }
 
     if (!isGroup) {
-        recordBotUser(chatId).catch(() => {});
+        recordBotUser(chatId).catch(() => { });
     }
     if (msg.from?.id) {
-        recordBotUser(msg.from.id).catch(() => {});
+        recordBotUser(msg.from.id).catch(() => { });
     }
 
     const anonId = statsEngine.anonymizeUserId(msg.from?.id || chatId);
-    await statsEngine.recordVisit({ anonId, platform: 'bot' }).catch(() => {});
+    await statsEngine.recordVisit({ anonId, platform: 'bot' }).catch(() => { });
 
     let isAddressedToBot = !isGroup;
     let isReplyToBot = false;
@@ -2844,27 +2844,27 @@ async function handleMessage(msg) {
         if (!userSid) {
             const setupMsg = isGauharUser
                 ? `📝 <b>Персональные квизы learn.astanait.edu.kz для Гаухар</b> 🧠\n\n` +
-                  `Подключи автоматические напоминания лично для себя, чтобы ничего не забыть:\n` +
-                  `• 🎯 Бот проверяет твои личные курсы и присылает твои дедлайны.\n` +
-                  `• ☀️ Каждое утро в 08:00 — сводка квизов на ближайшие 3 дня.\n` +
-                  `• 🚨 За 1 час до конца дедлайна — громкое экстренное оповещение с сиреной и кнопкой сдачи!\n\n` +
-                  `👉 <b>Как подключить за 1 минуту:</b>\n` +
-                  `1. Войди на <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> через браузер на компьютере.\n` +
-                  `2. Нажми <b>F12</b> ➔ вкладка <b>Application (Приложение)</b> ➔ <b>Cookies</b> ➔ скопируй значение <code>sessionid</code>.\n` +
-                  `3. Отправь боту команду сюда в чат:\n` +
-                  `<code>/set_cookie ТВОЙ_SESSION_ID</code>\n\n` +
-                  `🔒 <i>Твоя сессия хранится изолированно и доступна только тебе.</i>`
+                `Подключи автоматические напоминания лично для себя, чтобы ничего не забыть:\n` +
+                `• 🎯 Бот проверяет твои личные курсы и присылает твои дедлайны.\n` +
+                `• ☀️ Каждое утро в 08:00 — сводка квизов на ближайшие 3 дня.\n` +
+                `• 🚨 За 1 час до конца дедлайна — громкое экстренное оповещение с сиреной и кнопкой сдачи!\n\n` +
+                `👉 <b>Как подключить за 1 минуту:</b>\n` +
+                `1. Войди на <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> через браузер на компьютере.\n` +
+                `2. Нажми <b>F12</b> ➔ вкладка <b>Application (Приложение)</b> ➔ <b>Cookies</b> ➔ скопируй значение <code>sessionid</code>.\n` +
+                `3. Отправь боту команду сюда в чат:\n` +
+                `<code>/set_cookie ТВОЙ_SESSION_ID</code>\n\n` +
+                `🔒 <i>Твоя сессия хранится изолированно и доступна только тебе.</i>`
                 : `📝 <b>Персональные квизы learn.astanait.edu.kz</b>\n\n` +
-                  `Вы можете подключить автоматические напоминания лично для себя:\n` +
-                  `• 🎯 Бот проверяет только ваши личные курсы и присылает ваши дедлайны.\n` +
-                  `• ☀️ Каждое утро в 08:00 — сводка квизов на ближайшие 3 дня.\n` +
-                  `• 🚨 За 1 час до конца дедлайна — громкое экстренное оповещение со звуком и кнопкой сдачи!\n\n` +
-                  `👉 <b>Как подключить за 1 минуту:</b>\n` +
-                  `1. Войдите на <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> через браузер на компьютере.\n` +
-                  `2. Нажмите <b>F12</b> (Инструменты разработчика) ➔ вкладка <b>Application (Приложение)</b> ➔ <b>Cookies</b> ➔ скопируйте значение <code>sessionid</code>.\n` +
-                  `3. Отправьте боту команду в этот чат:\n` +
-                  `<code>/set_cookie ВАШ_SESSION_ID</code>\n\n` +
-                  `🔒 <i>100% изоляция: ваша сессия доступна только вам и хранится в защищенном виде.</i>`;
+                `Вы можете подключить автоматические напоминания лично для себя:\n` +
+                `• 🎯 Бот проверяет только ваши личные курсы и присылает ваши дедлайны.\n` +
+                `• ☀️ Каждое утро в 08:00 — сводка квизов на ближайшие 3 дня.\n` +
+                `• 🚨 За 1 час до конца дедлайна — громкое экстренное оповещение со звуком и кнопкой сдачи!\n\n` +
+                `👉 <b>Как подключить за 1 минуту:</b>\n` +
+                `1. Войдите на <a href="https://learn.astanait.edu.kz">learn.astanait.edu.kz</a> через браузер на компьютере.\n` +
+                `2. Нажмите <b>F12</b> (Инструменты разработчика) ➔ вкладка <b>Application (Приложение)</b> ➔ <b>Cookies</b> ➔ скопируйте значение <code>sessionid</code>.\n` +
+                `3. Отправьте боту команду в этот чат:\n` +
+                `<code>/set_cookie ВАШ_SESSION_ID</code>\n\n` +
+                `🔒 <i>100% изоляция: ваша сессия доступна только вам и хранится в защищенном виде.</i>`;
 
             return sendMessage(chatId, setupMsg, {
                 reply_markup: getMainKeyboard(chatId),
@@ -3061,9 +3061,9 @@ async function handleMessage(msg) {
     const lowerText = text.toLowerCase();
     const isDoneCmd = lowerText === '/done' || lowerText === '/сдал' || lowerText === '/сдано' || lowerText === '/completed' || text === '✅ Отметить сданное';
     const isDoneAllCmd = lowerText === '/done all' || lowerText === '/done все' || lowerText === '/done всё' ||
-                         lowerText === '/сдал все' || lowerText === '/сдал всё' ||
-                         lowerText === '/сдано все' || lowerText === '/сдано всё' ||
-                         lowerText === '/completed all';
+        lowerText === '/сдал все' || lowerText === '/сдал всё' ||
+        lowerText === '/сдано все' || lowerText === '/сдано всё' ||
+        lowerText === '/completed all';
 
     if (isDoneCmd || isDoneAllCmd) {
         const hasLms = Boolean(await lms.getUserLmsSession(chatId));
@@ -3274,7 +3274,7 @@ async function handleMessage(msg) {
                 const errMsg = (err && err.message) ? err.message.toLowerCase() : '';
                 if (errMsg.includes('blocked') || errMsg.includes('deactivated') || errMsg.includes('chat not found')) {
                     blocked++;
-                    await removeBotUser(user).catch(() => {});
+                    await removeBotUser(user).catch(() => { });
                 }
             }
             if (i < allUsers.length - 1) {
@@ -3360,21 +3360,21 @@ async function handleMessage(msg) {
         if (parts.length < 2) {
             return sendMessage(chatId, '❌ <b>Недостаточно данных.</b>\n<i>Формат:</i> <code>/calc РегМид РегЭнд [Файнал]</code>\n<i>Пример:</i> <code>/calc 80 85</code> или <code>/calc 80 85 90</code>');
         }
-        await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => { });
         const res = calculateGradeReport(parts[0], parts[1], parts[2], isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (text === '/gpa' || text.startsWith('/gpa ')) {
         const raw = text.replace(/^\/gpa\s*/i, '');
-        await statsEngine.recordCalculation({ calcType: 'gpa', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'gpa', platform: 'bot' }).catch(() => { });
         const res = calculateGPAReport(raw, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (/^\/(?:cgpa|cumulative|totalgpa|cum)(?:\s|$)/i.test(text)) {
         const raw = text.replace(/^(\/cgpa|\/cumulative|\/totalgpa|\/cum)\s*/i, '');
-        await statsEngine.recordCalculation({ calcType: 'cumulative', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'cumulative', platform: 'bot' }).catch(() => { });
         const res = calculateCumulativeGPAReport(raw, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
@@ -3384,7 +3384,7 @@ async function handleMessage(msg) {
         if (parts.length === 0) {
             return sendMessage(chatId, '❌ <b>Укажите количество пар в неделю.</b>\n<i>Пример:</i> <code>/att 3</code> или <code>/att 3 2</code>');
         }
-        await statsEngine.recordCalculation({ calcType: 'attendance', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'attendance', platform: 'bot' }).catch(() => { });
         const res = calculateAttendanceReport(parts[0], parts[1], isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
@@ -3429,7 +3429,7 @@ async function handleMessage(msg) {
             synthesizedText += `Register Final -> ${c.regfinal !== null ? c.regfinal.toFixed(2) : '0.00'}\n\n`;
         });
 
-        await statsEngine.recordCalculation({ calcType: 'tracker_lms_sync', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'tracker_lms_sync', platform: 'bot' }).catch(() => { });
         const studentGreeting = gradesResult.studentName ? `👤 Студент: <b>${gradesResult.studentName}</b>\n\n` : '';
         const report = calculateTrackerReport(synthesizedText, isGauharUser);
         return sendMessage(chatId, `🔄 <b>Синхронизировано из Moodle LMS!</b>\n${studentGreeting}${report}`, { reply_markup: getMainKeyboard(chatId) });
@@ -3440,7 +3440,7 @@ async function handleMessage(msg) {
         if (!raw.trim()) {
             return sendMessage(chatId, `📊 <b>Трекер предметов и шансов на стипендию:</b>\n\nОтправь список предметов с баллами за РегМид и РегЭнд:\n<code>/tracker\nМатанализ 80 85\nАлгоритмы 75 80\nАнглийский 90 95\nФизика 70 65</code>\n\n<i>Формат:</i> <code>[Название] РегМид РегЭнд [Файнал]</code>\n\nБот мгновенно рассчитает шансы на обычную (70+) и повышенную (90+) стипендию и покажет критический экзамен! 🎯`, { reply_markup: getMainKeyboard(chatId) });
         }
-        await statsEngine.recordCalculation({ calcType: 'tracker', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'tracker', platform: 'bot' }).catch(() => { });
         const res = calculateTrackerReport(raw, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
@@ -3465,7 +3465,7 @@ async function handleMessage(msg) {
         const re = val;
         clearSession(chatId);
 
-        await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => { });
         const forecast = calculateGradeReport(rm, re, null, isGauharUser);
         const inlineKeyboard = {
             inline_keyboard: [
@@ -3487,21 +3487,21 @@ async function handleMessage(msg) {
         const re = session.data.re;
         clearSession(chatId);
 
-        await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => { });
         const res = calculateGradeReport(rm, re, val, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (session.step === 'gpa_input') {
         clearSession(chatId);
-        await statsEngine.recordCalculation({ calcType: 'gpa', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'gpa', platform: 'bot' }).catch(() => { });
         const res = calculateGPAReport(text, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (session.step === 'cgpa_input' || session.step === 'cum_input') {
         clearSession(chatId);
-        await statsEngine.recordCalculation({ calcType: 'cumulative', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'cumulative', platform: 'bot' }).catch(() => { });
         const res = calculateCumulativeGPAReport(text, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
@@ -3524,7 +3524,7 @@ async function handleMessage(msg) {
         const lessons = session.data.lessons;
         clearSession(chatId);
 
-        await statsEngine.recordCalculation({ calcType: 'attendance', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'attendance', platform: 'bot' }).catch(() => { });
         const res = calculateAttendanceReport(lessons, missed, isGauharUser);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
@@ -3572,13 +3572,13 @@ async function handleMessage(msg) {
             return sendMessage(chatId, rl.message, { reply_markup: getMainKeyboard(chatId) });
         }
         recordRateLimit(chatId);
-        await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => { });
         return sendMessage(chatId, nlpReport, { reply_markup: getMainKeyboard(chatId) });
     }
 
     // 9.6. Автоматическое распознавание выгрузки оценок LMS/бота (Register Midterm / Register Endterm)
     if (/Register\s*Midterm/i.test(text) && /Register\s*Endterm/i.test(text)) {
-        await statsEngine.recordCalculation({ calcType: 'tracker', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'tracker', platform: 'bot' }).catch(() => { });
         const trackerRes = calculateTrackerReport(text, isGauharUser);
         return sendMessage(chatId, `💡 <i>Распознана выгрузка дисциплины из LMS:</i>\n\n${trackerRes}`, { reply_markup: getMainKeyboard(chatId) });
     }
@@ -3586,7 +3586,7 @@ async function handleMessage(msg) {
     // 10. Попытка автоматического распознавания чисел (если пользователь просто отправил числа)
     const numTokens = text.split(/[\s,]+/).filter(Boolean).map(Number);
     if (numTokens.length >= 2 && numTokens.every(n => !isNaN(n) && n >= 0 && n <= 100)) {
-        await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
+        await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => { });
         if (numTokens.length === 2) {
             const res = calculateGradeReport(numTokens[0], numTokens[1], null, isGauharUser);
             return sendMessage(chatId, `💡 <i>Распознан расчёт РегМид = ${numTokens[0]}, РегЭнд = ${numTokens[1]}:</i>\n\n${res}`, { reply_markup: getMainKeyboard(chatId) });
@@ -3619,7 +3619,7 @@ async function handleMessage(msg) {
                 `💬 <b>Текст:</b>\n${esc(text)}` +
                 secWarningBlock + `\n\n` +
                 `<i>💡 Чтобы ответить:</i> просто ответьте на это сообщение (Reply) или <code>/reply ${chatId} Ваш ответ</code>`;
-            await sendMessage(targetAdmin, notify, { disable_web_page_preview: true }).catch(() => {});
+            await sendMessage(targetAdmin, notify, { disable_web_page_preview: true }).catch(() => { });
         }
         if (secAnalysis.isBotFatherLink) {
             return sendMessage(chatId, `ℹ️ <b>Обратите внимание:</b> ссылки на <b>@BotFather</b> не требуются для работы бота GradeMaster.\n\n` +

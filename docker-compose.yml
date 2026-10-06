@@ -18,6 +18,8 @@ services:
       - CRON_SECRET=${CRON_SECRET:-}
       - KV_REST_API_URL=${KV_REST_API_URL:-}
       - KV_REST_API_TOKEN=${KV_REST_API_TOKEN:-}
+      - BOT_POLLING=${BOT_POLLING:-false}
+      - ENABLE_BACKGROUND_CRON=${ENABLE_BACKGROUND_CRON:-true}
     env_file:
       - path: .env
         required: false
