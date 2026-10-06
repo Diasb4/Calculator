@@ -286,13 +286,33 @@ async function rawSendMessage(chatId, text, options = {}) {
     if (Number(chatId) < 0 && opts.reply_markup && opts.reply_markup.keyboard) {
         delete opts.reply_markup;
     }
-    return apiCall('sendMessage', {
-        chat_id: chatId,
-        text,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-        ...opts
-    });
+    let safeText = String(text ?? '');
+    if (safeText.length > 4000) {
+        const lastNl = safeText.lastIndexOf('\n', 3900);
+        safeText = (lastNl > 2000 ? safeText.slice(0, lastNl) : safeText.slice(0, 3900)) + '\n\n...(сокращено)';
+    }
+    try {
+        return await apiCall('sendMessage', {
+            chat_id: chatId,
+            text: safeText,
+            parse_mode: 'HTML',
+            disable_web_page_preview: true,
+            ...opts
+        });
+    } catch (err) {
+        if (err.message && (err.message.includes('parse') || err.message.includes('entity') || err.message.includes('tag'))) {
+            const plainText = safeText.replace(/<[^>]*>/g, '');
+            const fallbackOpts = { ...opts };
+            delete fallbackOpts.parse_mode;
+            return await apiCall('sendMessage', {
+                chat_id: chatId,
+                text: plainText,
+                disable_web_page_preview: true,
+                ...fallbackOpts
+            });
+        }
+        throw err;
+    }
 }
 
 async function sendMessage(chatId, text, options = {}) {
@@ -547,8 +567,10 @@ function calculateGradeReport(regmid, regend, finalGrade = null, isGauharUser = 
 
         let gauharNote = '';
         if (isGauharUser) {
-            if (total >= 70) {
+            if (finalVal >= 50 && total >= 70) {
                 gauharNote = `\n\n🌟 <i>Ого, стипендия на горизонте! Главное теперь — не забудь карту, на которую её перечислят 💳</i>`;
+            } else if (finalVal < 50) {
+                gauharNote = `\n\n⚠️ <i>Гаухар, главное подготовиться к пересдаче (FX) и закрыть экзамен на 50+ баллов! 🧠</i>`;
             } else {
                 gauharNote = `\n\n⚠️ <i>Гаухар, главное на экзамен не забудь прийти! Паспорт, ручку и голову возьми с собой обязательно 🧠</i>`;
             }
@@ -750,6 +772,222 @@ function calculateGPAReport(inputStr, isGauharUser = false) {
     }
 
     return msg;
+}
+
+// 2.5. Мультипредметный трекер стипендии (РегМид, РегЭнд, Файнал)
+function calculateTrackerReport(inputStr, isGauharUser = false) {
+    if (!inputStr || typeof inputStr !== 'string' || !inputStr.trim()) {
+        return '❌ <b>Укажите предметы с баллами за РегМид и РегЭнд!</b>\n<i>Пример:</i>\n<code>Матанализ 80 85\nАлгоритмы 75 80\nФизика 70 65</code>';
+    }
+
+    const subjects = [];
+
+    // Поддержка формата выгрузки оценок AITU / LMS (Register Midterm -> ..., Register Endterm -> ...)
+    if (/Register\s*Midterm/i.test(inputStr)) {
+        const allLines = inputStr.split(/\r?\n/);
+        const rmIndices = [];
+
+        for (let i = 0; i < allLines.length; i++) {
+            if (/Register\s*Midterm/i.test(allLines[i])) rmIndices.push(i);
+        }
+
+        const blocks = [];
+        for (let k = 0; k < rmIndices.length; k++) {
+            const start = (k === 0) ? 0 : Math.max(0, rmIndices[k] - 5);
+            const end = (k === rmIndices.length - 1) ? allLines.length : Math.max(0, rmIndices[k + 1] - 5);
+            blocks.push(allLines.slice(start, end).join('\n'));
+        }
+
+        for (const block of blocks) {
+            const rmMatch = block.match(/Register\s*Midterm\s*[-–—>:\s]+(\d+(?:\.\d+)?)/i);
+            const reMatch = block.match(/Register\s*Endterm\s*[-–—>:\s]+(\d+(?:\.\d+)?)/i);
+            if (!rmMatch && !reMatch) continue;
+
+            const teacherMatch = block.match(/Teacher\s*[:\-]\s*([^\r\n]+)/i);
+            const teacher = teacherMatch ? teacherMatch[1].trim() : '';
+
+            const lines = block.split(/\r?\n/).map(s => s.trim());
+            let name = '';
+            const teacherIdx = lines.findIndex(l => /^Teacher\s*:/i.test(l));
+            if (teacherIdx > 0) {
+                for (let i = teacherIdx - 1; i >= 0; i--) {
+                    if (lines[i] && !lines[i].startsWith('/')) {
+                        name = lines[i];
+                        break;
+                    }
+                }
+            }
+            if (!name) {
+                const rmIdx = lines.findIndex(l => /Register\s*Midterm/i.test(l));
+                if (rmIdx > 0) {
+                    for (let i = rmIdx - 1; i >= 0; i--) {
+                        if (lines[i] && !lines[i].startsWith('/') && !lines[i].startsWith('Teacher') && !lines[i].startsWith('Attendance')) {
+                            name = lines[i];
+                            break;
+                        }
+                    }
+                }
+            }
+
+            const rm = rmMatch ? parseFloat(rmMatch[1]) : 0;
+            const re = reMatch ? parseFloat(reMatch[1]) : 0;
+            const rfMatch = block.match(/Register\s*Final\s*[-–—>:\s]+(\d+(?:\.\d+)?)/i);
+            const fn = (rfMatch && parseFloat(rfMatch[1]) > 0) ? parseFloat(rfMatch[1]) : null;
+
+            subjects.push({
+                name: name ? (teacher ? `${name} (${teacher})` : name) : 'Subject',
+                regmid: rm,
+                regend: re,
+                final: fn
+            });
+        }
+    } else {
+        const lines = inputStr.split(/[\n;]+/).map(s => s.trim()).filter(Boolean);
+        if (lines.length === 0) {
+            return '❌ <b>Не удалось распознать предметы.</b>\n<i>Пример:</i> <code>Матанализ 80 85, Физика 70 75</code>';
+        }
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const nums = line.match(/\d+(?:\.\d+)?/g);
+            if (!nums || nums.length < 2) {
+                return `❌ <b>Ошибка в строке #${i + 1} («${esc(line)}»):</b>\nНужно указать хотя бы 2 числа (РегМид и РегЭнд). Пример: <code>Математика 80 85</code>`;
+            }
+
+            const rm = parseFloat(nums[0]);
+            const re = parseFloat(nums[1]);
+            const fn = nums.length >= 3 ? parseFloat(nums[2]) : null;
+
+            let name = line.replace(/\d+(?:\.\d+)?/g, '').replace(/[:,\-]/g, '').trim();
+            if (!name) name = `Предмет ${i + 1}`;
+
+            subjects.push({ name, regmid: rm, regend: re, final: fn });
+        }
+    }
+
+    if (subjects.length === 0) {
+        return '❌ <b>Не удалось распознать оценки за Register Midterm и Register Endterm.</b>';
+    }
+
+    // Evaluation
+    let joint70 = 1.0;
+    let joint90 = 1.0;
+    let bottleneck = null;
+    let minProb = 1.0;
+    const evaluated = [];
+
+    for (const sub of subjects) {
+        const { regmid, regend, final, name } = sub;
+        if (regmid < 0 || regmid > 100 || regend < 0 || regend > 100 || (final !== null && (final < 0 || final > 100))) {
+            return `❌ <b>Ошибка в предмете «${esc(name)}»:</b>\nОценки должны быть в диапазоне от 0 до 100.`;
+        }
+
+        const regterm = (regmid + regend) / 2;
+        const regScore = (regmid * 0.3) + (regend * 0.3);
+
+        const isAdmitted = regmid >= 25 && regend >= 25 && regterm >= 50;
+        let blockedReason = '';
+        if (!isAdmitted) {
+            if (regmid < 25) blockedReason = 'РМ < 25';
+            else if (regend < 25) blockedReason = 'РЭ < 25';
+            else blockedReason = 'РТ < 50';
+        }
+
+        let prob70 = 0.0;
+        let prob90 = 0.0;
+        let need70 = 50;
+        let need90 = 50;
+        let total = 0;
+
+        if (!isAdmitted) {
+            prob70 = 0.0;
+            prob90 = 0.0;
+        } else if (final !== null) {
+            total = regScore + (final * 0.4);
+            const passed = final >= 50 && total >= 50;
+            prob70 = (passed && total >= 70) ? 1.0 : 0.0;
+            prob90 = (passed && total >= 90) ? 1.0 : 0.0;
+            need70 = final;
+            need90 = final;
+        } else {
+            need70 = Math.max(50, Math.ceil((70 - regScore) / 0.4));
+            need90 = Math.max(50, Math.ceil((90 - regScore) / 0.4));
+
+            function getP(target) {
+                if (target > 100) return 0.0;
+                if (target <= 50) return 0.98;
+                if (target <= 60) return 0.98 - ((target - 50) / 10) * 0.08;
+                if (target <= 70) return 0.90 - ((target - 60) / 10) * 0.12;
+                if (target <= 80) return 0.78 - ((target - 70) / 10) * 0.18;
+                if (target <= 85) return 0.60 - ((target - 80) / 5) * 0.15;
+                if (target <= 90) return 0.45 - ((target - 85) / 5) * 0.15;
+                if (target <= 95) return 0.30 - ((target - 90) / 5) * 0.18;
+                return 0.12 - ((target - 95) / 5) * 0.09;
+            }
+
+            prob70 = getP(need70);
+            prob90 = getP(need90);
+        }
+
+        joint70 *= prob70;
+        joint90 *= prob90;
+
+        if (prob70 < minProb) {
+            minProb = prob70;
+            bottleneck = { name, isAdmitted, blockedReason, need70, prob70 };
+        }
+
+        evaluated.push({ name, regmid, regend, regterm, final, isAdmitted, blockedReason, need70, need90, total, prob70 });
+    }
+
+    const p70Pct = Math.round(joint70 * 100);
+    const p90Pct = Math.round(joint90 * 100);
+
+    let verdict = '';
+    if (p70Pct === 0) {
+        verdict = '❌ <b>Стипендия потеряна</b> (один из предметов не дотягивает до 70 баллов или заблокирован)';
+    } else if (p70Pct < 45) {
+        verdict = '⚠️ <b>Стипендия в зоне высокого риска!</b> Срочно бросайте все силы на подготовку к файналам.';
+    } else if (p70Pct < 80) {
+        verdict = '✨ <b>Хорошие шансы на стипендию!</b> Держите планку на экзаменах.';
+    } else {
+        verdict = '💎 <b>Превосходный результат!</b> Стипендия практически гарантирована!';
+    }
+
+    let report = `📊 <b>Мультипредметный трекер стипендии:</b>\n\n` +
+        `🎯 <b>Шанс на обычную стипендию (70+):</b> <b>${p70Pct}%</b>\n` +
+        `🏆 <b>Шанс на повышенную (90+):</b> <b>${p90Pct}%</b>\n\n` +
+        `${verdict}\n\n`;
+
+    if (bottleneck && minProb < 0.95) {
+        if (bottleneck.isAdmitted) {
+            const bTarget = bottleneck.need70 > 100 ? 'невозможно (>100)' : `${bottleneck.need70}+ баллов`;
+            report += `⚠️ <b>Критический экзамен (Bottleneck):</b> <code>${esc(bottleneck.name)}</code> — нужно <b>${bTarget}</b> на экзамене\n\n`;
+        } else {
+            report += `⚠️ <b>Критический предмет (Bottleneck):</b> <code>${esc(bottleneck.name)}</code> — 🚫 <b>Недопуск (${bottleneck.blockedReason})</b>\n\n`;
+        }
+    }
+
+    report += `📋 <i>Детали по предметам:</i>\n`;
+    evaluated.forEach((item, idx) => {
+        if (!item.isAdmitted) {
+            report += `❌ <b>${idx + 1}. ${esc(item.name)}:</b> РМ ${item.regmid}, РЭ ${item.regend} ➔ 🚫 <b>Недопуск (${item.blockedReason})</b>\n`;
+        } else if (item.final !== null) {
+            const passIcon = item.total >= 70 ? '✅' : '⚠️';
+            report += `${passIcon} <b>${idx + 1}. ${esc(item.name)}:</b> Итог: <b>${item.total.toFixed(1)}</b> (Файнал: ${item.final})\n`;
+        } else {
+            const n70 = item.need70 > 100 ? '❌ >100' : `${item.need70}`;
+            const n90 = item.need90 > 100 ? '—' : `${item.need90}`;
+            const chance = Math.round(item.prob70 * 100);
+            report += `• <b>${idx + 1}. ${esc(item.name)}:</b> РТ ${item.regterm.toFixed(1)} ➔ Нужно на файнале: <b>${n70}</b> (90+: <b>${n90}</b>) | шанс: ${chance}%\n`;
+        }
+    });
+
+    if (isGauharUser) {
+        report += `\n🌟 <i>Гаухар, главное перед каждым из этих экзаменов проверить студенческий и не забыть зайти в аудиторию! 🧠</i>`;
+    }
+
+    return report;
 }
 
 // 3. Калькулятор кумулятивного GPA
@@ -3159,6 +3397,16 @@ async function handleMessage(msg) {
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
     }
 
+    if (/^\/(?:tracker|stipend)(?:\s|$)/i.test(text)) {
+        const raw = text.replace(/^\/(?:tracker|stipend)\s*/i, '');
+        if (!raw.trim()) {
+            return sendMessage(chatId, `📊 <b>Трекер предметов и шансов на стипендию:</b>\n\nОтправь список предметов с баллами за РегМид и РегЭнд:\n<code>/tracker\nМатанализ 80 85\nАлгоритмы 75 80\nАнглийский 90 95\nФизика 70 65</code>\n\n<i>Формат:</i> <code>[Название] РегМид РегЭнд [Файнал]</code>\n\nБот мгновенно рассчитает шансы на обычную (70+) и повышенную (90+) стипендию и покажет критический экзамен! 🎯`, { reply_markup: getMainKeyboard(chatId) });
+        }
+        await statsEngine.recordCalculation({ calcType: 'tracker', platform: 'bot' }).catch(() => {});
+        const res = calculateTrackerReport(raw, isGauharUser);
+        return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
+    }
+
     // 9. Пошаговые сценарии (Interactive Wizard Steps)
     if (session.step === 'total_regmid') {
         const val = parseFloat(text);
@@ -3288,6 +3536,13 @@ async function handleMessage(msg) {
         recordRateLimit(chatId);
         await statsEngine.recordCalculation({ calcType: 'total', platform: 'bot' }).catch(() => {});
         return sendMessage(chatId, nlpReport, { reply_markup: getMainKeyboard(chatId) });
+    }
+
+    // 9.6. Автоматическое распознавание выгрузки оценок LMS/бота (Register Midterm / Register Endterm)
+    if (/Register\s*Midterm/i.test(text) && /Register\s*Endterm/i.test(text)) {
+        await statsEngine.recordCalculation({ calcType: 'tracker', platform: 'bot' }).catch(() => {});
+        const trackerRes = calculateTrackerReport(text, isGauharUser);
+        return sendMessage(chatId, `💡 <i>Распознана выгрузка дисциплины из LMS:</i>\n\n${trackerRes}`, { reply_markup: getMainKeyboard(chatId) });
     }
 
     // 10. Попытка автоматического распознавания чисел (если пользователь просто отправил числа)
@@ -3437,6 +3692,7 @@ module.exports = async function handler(req, res) {
 module.exports.percentageToGradeInfo = percentageToGradeInfo;
 module.exports.calculateGradeReport = calculateGradeReport;
 module.exports.calculateGPAReport = calculateGPAReport;
+module.exports.calculateTrackerReport = calculateTrackerReport;
 module.exports.calculateCumulativeGPAReport = calculateCumulativeGPAReport;
 module.exports.calculateAttendanceReport = calculateAttendanceReport;
 module.exports.convertGradeReport = convertGradeReport;
@@ -3467,6 +3723,8 @@ module.exports.activeUsers = activeUsers;
 module.exports.buildLmsMarkMenu = buildLmsMarkMenu;
 module.exports.buildLearnMarkMenu = buildLearnMarkMenu;
 module.exports.formatBroadcastContent = formatBroadcastContent;
+module.exports.sendMessage = sendMessage;
+module.exports.rawSendMessage = rawSendMessage;
 module.exports.handleMessage = handleMessage;
 module.exports.getBotInfo = getBotInfo;
 module.exports._setBotInfoForTesting = _setBotInfoForTesting;

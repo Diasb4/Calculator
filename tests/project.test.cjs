@@ -475,6 +475,103 @@ test('Telegram bot: calculateCumulativeGPAReport computes credit-weighted cumula
     assert.match(report, /Сумма кредитов.*60/);
 });
 
+test('tracker.js: evaluates admission, scholarship odds and bottleneck accurately', () => {
+    const tracker = require('../js/tracker.js');
+
+    // Safe high-performing courses
+    const goodCourses = [
+        { name: 'Course A', regmid: 85, regend: 85 },
+        { name: 'Course B', regmid: 90, regend: 90 },
+        { name: 'Course C', regmid: 80, regend: 80 }
+    ];
+    const goodOdds = tracker.calculateOverallScholarshipOdds(goodCourses);
+    assert.ok(goodOdds.prob70Percent >= 80, `Expected high odds, got ${goodOdds.prob70Percent}%`);
+    assert.equal(goodOdds.verdictKey, 'tracker_verdict_high');
+
+    // Blocked course (< 25)
+    const blockedCourses = [
+        { name: 'Math', regmid: 80, regend: 80 },
+        { name: 'Physics', regmid: 20, regend: 80 }
+    ];
+    const blockedOdds = tracker.calculateOverallScholarshipOdds(blockedCourses);
+    assert.equal(blockedOdds.prob70Percent, 0);
+    assert.equal(blockedOdds.verdictKey, 'tracker_verdict_lost');
+    assert.equal(blockedOdds.bottleneck.name, 'Physics');
+    assert.equal(blockedOdds.bottleneck.isAdmitted, false);
+
+    // Impossible target (> 100 on final)
+    const impossibleCourses = [
+        { name: 'Course A', regmid: 80, regend: 80 },
+        { name: 'Hard Course', regmid: 40, regend: 40 } // RegScore = 24. For 70: need (70 - 24)/0.4 = 115
+    ];
+    const impossibleOdds = tracker.calculateOverallScholarshipOdds(impossibleCourses);
+    assert.equal(impossibleOdds.prob70Percent, 0);
+    assert.equal(impossibleOdds.bottleneck.name, 'Hard Course');
+    assert.ok(impossibleOdds.bottleneck.need70 > 100);
+
+    // Courses with actual final grades
+    const completedCourses = [
+        { name: 'Course A', regmid: 80, regend: 80, final: 85 }, // Total = 48 + 34 = 82 >= 70
+        { name: 'Course B', regmid: 75, regend: 75, final: 70 }  // Total = 45 + 28 = 73 >= 70
+    ];
+    const completedOdds = tracker.calculateOverallScholarshipOdds(completedCourses);
+    assert.equal(completedOdds.prob70Percent, 100);
+});
+
+test('Telegram bot: calculateTrackerReport processes multi-course inputs and reports chances', () => {
+    const bot = require('../api/bot/index.js');
+    const input = `Матанализ 80 85\nАлгоритмы 75 80\nФизика 70 65`;
+    const report = bot.calculateTrackerReport(input);
+    assert.match(report, /Мультипредметный трекер стипендии/i);
+    assert.match(report, /Шанс на обычную стипендию/);
+    assert.match(report, /Критический экзамен/);
+    assert.match(report, /Матанализ/);
+
+    // Failed threshold course
+    const failInput = `Матанализ 80 85\nФизика 20 70`;
+    const failReport = bot.calculateTrackerReport(failInput);
+    assert.match(failReport, /Шанс на обычную стипендию.*0%/);
+    assert.match(failReport, /Недопуск/);
+
+    // LMS screenshot format (Probability Theory, Register Midterm, Register Endterm)
+    const lmsSample = `Probability Theory
+Teacher: Karatay Assiya
+
+Register Midterm -> 75.00
+Register Endterm -> 80.00
+Register Term -> 77.50
+Register Final -> 0.00`;
+    const lmsReport = bot.calculateTrackerReport(lmsSample);
+    assert.match(lmsReport, /Probability Theory/);
+    assert.match(lmsReport, /Karatay Assiya/);
+    assert.match(lmsReport, /Шанс на обычную стипендию/);
+});
+
+test('tracker.js: parseLmsGradeText parses course, teacher and scores from LMS screenshot text', () => {
+    const tracker = require('../js/tracker.js');
+    const sample = `/start 8:27 PM
+
+Probability Theory
+Teacher: Karatay Assiya
+
+Register Midterm -> 85.00
+Register Endterm -> 90.00
+Register Term -> 87.50
+Register Final -> 0.00
+
+Attendance activity Attendance -> 100.00
+Assignment activity Midterm -> 0.00
+Assignment activity Endterm -> 0.00`;
+
+    const parsed = tracker.parseLmsGradeText(sample);
+    assert.equal(parsed.length, 1);
+    assert.equal(parsed[0].name, 'Probability Theory');
+    assert.equal(parsed[0].teacher, 'Karatay Assiya');
+    assert.equal(parsed[0].regmid, 85);
+    assert.equal(parsed[0].regend, 90);
+    assert.equal(parsed[0].final, '');
+});
+
 test('Telegram bot: calculateAttendanceReport calculates 10-week limit and visual meter', () => {
     const bot = require('../api/bot/index.js');
     const reportSafe = bot.calculateAttendanceReport(3, 2);
@@ -3109,6 +3206,156 @@ test('SessionID validation: handles pipes ||, quotes, Cookie-Editor JSON, specia
         aitu.saveUserSession = originalSaveUserSession;
         delete process.env.TELEGRAM_BOT_TOKEN;
     }
+});
+
+test('PWA cache configuration: sw.js includes analytics and localization.js preserves grademaster-v3', () => {
+    const swContent = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
+    assert.match(swContent, /'grademaster-v3'/);
+    assert.match(swContent, /'\.\/js\/analytics\.js'/);
+
+    const locContent = fs.readFileSync(path.join(root, 'js/localization.js'), 'utf8');
+    assert.match(locContent, /name !== 'grademaster-v3'/);
+    assert.doesNotMatch(locContent, /name !== 'grademaster-v2'/);
+});
+
+test('TotalCalculator: corrupt share links show danger error and robust pick handles non-arrays', () => {
+    const app = loadPage('main/TotalCalculator.html', { search: '?d=corrupted_invalid_data!!!' });
+    const resultDiv = app.document.getElementById('result');
+    assert.match(resultDiv.className, /danger/);
+    assert.match(resultDiv.innerHTML, /недействительн|invalid|жарамсыз/i);
+
+    // Verify pick handles strings and arrays safely
+    const single = app.run('pick("single-string")');
+    assert.strictEqual(single, 'single-string');
+    const fromArray = app.run('pick(["only-element"])');
+    assert.strictEqual(fromArray, 'only-element');
+});
+
+test('templated_calculator: tracks target calculation telemetry in calculateAll', () => {
+    const app = loadPage('main/templated_calculator.html');
+    let trackedType = null;
+    app.context.window.trackCalculation = (type) => { trackedType = type; };
+    app.run('calculateAll()');
+    assert.strictEqual(trackedType, 'target');
+});
+
+test('GPA calculator: Enter key in subjects-count triggers generate-subjects', () => {
+    const app = loadPage('main/CalculatorGPA.html');
+    let generatedClicked = false;
+    let calculateClicked = false;
+    app.document.getElementById('generate-subjects').click = () => { generatedClicked = true; };
+    app.document.getElementById('calculate-gpa').click = () => { calculateClicked = true; };
+
+    const countInput = app.document.getElementById('subjects-count');
+    const keyEvent = app.event('keypress');
+    keyEvent.key = 'Enter';
+    let currentTarget = countInput;
+    Object.defineProperty(keyEvent, 'target', {
+        get: () => currentTarget,
+        set: () => {},
+        configurable: true
+    });
+    app.document.dispatchEvent(keyEvent);
+
+    assert.strictEqual(generatedClicked, true);
+    assert.strictEqual(calculateClicked, false);
+
+    // Enter in regular field triggers calculate-gpa
+    generatedClicked = false;
+    calculateClicked = false;
+    currentTarget = app.document.createElement('input');
+    app.document.dispatchEvent(keyEvent);
+    assert.strictEqual(calculateClicked, true);
+    assert.strictEqual(generatedClicked, false);
+});
+
+test('Telegram bot: calculateGradeReport FX on final exam does not show scholarship note to Gauhar', () => {
+    const bot = require('../api/bot/index.js');
+    // RM: 90, RE: 90 -> regterm: 90. Final: 40 (< 50 => FX). Total: 54 + 16 = 70.
+    const reportGauhar = bot.calculateGradeReport(90, 90, 40, true);
+    assert.match(reportGauhar, /Пересдача \(FX \/ Retake\)/);
+    assert.doesNotMatch(reportGauhar, /стипендия на горизонте/i);
+    assert.match(reportGauhar, /подготовиться к пересдаче/i);
+
+    // When final >= 50 and total >= 70, scholarship note is present
+    const passReport = bot.calculateGradeReport(90, 90, 75, true);
+    assert.match(passReport, /стипендия на горизонте/i);
+});
+
+test('Telegram bot: rawSendMessage clamps oversized messages and handles HTML entity parse fallback', async () => {
+    const bot = require('../api/bot/index.js');
+    const originalFetch = global.fetch;
+    const sentRequests = [];
+    let shouldFailHtml = true;
+
+    global.fetch = async (url, opts) => {
+        if (url && url.includes('/sendMessage')) {
+            const body = JSON.parse(opts.body);
+            sentRequests.push(body);
+            if (shouldFailHtml && body.parse_mode === 'HTML' && body.text.includes('<unclosed')) {
+                return {
+                    ok: false,
+                    json: async () => ({ ok: false, description: "Bad Request: can't parse entities: unclosed tag" })
+                };
+            }
+            return { ok: true, json: async () => ({ ok: true, result: { message_id: 999 } }) };
+        }
+        return { ok: true, json: async () => ({}) };
+    };
+
+    process.env.TELEGRAM_BOT_TOKEN = 'test_token_clamp';
+
+    try {
+        // Test message exceeding 4000 chars
+        const longMessage = 'Line of test text\n'.repeat(350);
+        assert.ok(longMessage.length > 4000);
+        await bot.sendMessage(12345, longMessage);
+
+        assert.strictEqual(sentRequests.length, 1);
+        assert.ok(sentRequests[0].text.length <= 4000);
+        assert.match(sentRequests[0].text, /сокращено/);
+
+        // Test fallback when HTML entity parse error occurs
+        sentRequests.length = 0;
+        await bot.sendMessage(12345, '<b>Hello <unclosed');
+        assert.strictEqual(sentRequests.length, 2); // First failed, second sent as fallback
+        assert.strictEqual(sentRequests[1].parse_mode, undefined);
+        assert.strictEqual(sentRequests[1].text, 'Hello <unclosed');
+    } finally {
+        global.fetch = originalFetch;
+        delete process.env.TELEGRAM_BOT_TOKEN;
+    }
+});
+
+test('AITU: formatQuizzesMessage caps upcoming semester quizzes to 15 items', () => {
+    const aitu = require('../api/bot/aitu.js');
+    const quizzes = [];
+    const futureDate = new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString();
+    for (let i = 1; i <= 25; i++) {
+        quizzes.push({
+            courseName: `Course ${i}`,
+            courseId: `C${i}`,
+            title: `Quiz ${i}`,
+            link: `https://example.com/quiz/${i}`,
+            dueDate: futureDate,
+            diffDays: 14,
+            diffHours: 336,
+            diffMinutes: 20160,
+            isPast: false
+        });
+    }
+
+    const mockResult = {
+        ok: true,
+        quizzes,
+        activeQuizzes: quizzes,
+        completedQuizzes: []
+    };
+
+    const msg = aitu.formatQuizzesMessage(mockResult, false, false, 'all');
+    assert.match(msg, /Course 15/);
+    assert.doesNotMatch(msg, /Course 16/);
+    assert.match(msg, /ещё 10 квизов на семестр/);
 });
 
 

@@ -17,8 +17,10 @@ const STATIC_ASSETS = [
     './style/styleForAtt.css',
     './style/styleForTempl.css',
     './style/styleForFeedback.css',
+    './style/styleForTracker.css',
     './js/language.js',
     './js/localization.js',
+    './js/analytics.js',
     './js/main.js',
     './js/total.js',
     './js/gpa.js',
@@ -26,12 +28,14 @@ const STATIC_ASSETS = [
     './js/att.js',
     './js/template.js',
     './js/feedback.js',
+    './js/tracker.js',
     './main/TotalCalculator.html',
     './main/CalculatorGPA.html',
     './main/CumulativeGPA.html',
     './main/ManyTrimCalc.html',
     './main/AttendanceCalculator.html',
     './main/templated_calculator.html',
+    './main/ScholarshipTracker.html',
     './main/Feedback.html'
 ];
 

@@ -189,6 +189,9 @@ function loadFromShareLink() {
         try {
             shareData = decodeShareData(dParam);
         } catch {
+            shareData = null;
+        }
+        if (!shareData) {
             showComment(translationHTML('invalid_link'), 'danger');
             return false;
         }
@@ -588,9 +591,4 @@ function calculate() {
     if (typeof window.trackCalculation === 'function') {
         window.trackCalculation('total');
     }
-}
-
-
-function pick(arr) {
-    return arr[Math.floor(Math.random() * arr.length)];
 }

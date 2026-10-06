@@ -160,7 +160,11 @@ document.getElementById('calculate-gpa').addEventListener('click', function () {
 // Обработчик нажатия Enter в полях ввода
 document.addEventListener('keypress', function (e) {
     if (e.key === 'Enter') {
-        document.getElementById('calculate-gpa').click();
+        if (e.target && e.target.id === 'subjects-count') {
+            document.getElementById('generate-subjects')?.click();
+        } else {
+            document.getElementById('calculate-gpa')?.click();
+        }
     }
 });
 

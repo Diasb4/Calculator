@@ -304,6 +304,9 @@ function calculateAll() {
 
     // Показ результата с оценкой
     showResult(overallTotal);
+    if (typeof window.trackCalculation === 'function') {
+        window.trackCalculation('target');
+    }
 }
 
 // Расчет одной секции

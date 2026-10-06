@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
+    <meta name="theme-color" content="#090d16">
+    <title>Трекер предметов и стипендии - GradeMaster</title>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-4DVBKX599T"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+        gtag('config', 'G-4DVBKX599T');
+    </script>
+    <link rel="manifest" href="../manifest.json">
+    <link rel="icon" href="../icons/icon-192.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="../icons/icon-192.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../style/style.css">
+    <link rel="stylesheet" href="../style/styleForTracker.css">
+    <link rel="stylesheet" href="../style/navbarResponsive.css">
+</head>
+
+<body>
+    <nav class="navbar">
+        <a href="../index.html" class="nav-button" data-translate="nav_home">← На главную</a>
+        <div class="nav-buttons">
+            <select id="language-toggle" class="nav-button" aria-label="Язык">
+                <option value="ru" lang="ru">Русский</option>
+                <option value="kk" lang="kk">Қазақша</option>
+                <option value="en" lang="en">English</option>
+            </select>
+            <button id="theme-toggle" class="nav-button" data-translate="nav_theme">🌙 Theme</button>
+        </div>
+        <a href="../main/Feedback.html" class="nav-button" data-translate="nav_feedback">Обратная связь</a>
+    </nav>
+
+    <div class="tracker-container">
+        <header class="tracker-header">
+            <h1 data-translate="tracker_title">Трекер предметов и стипендии</h1>
+            <p class="subtitle" data-translate="tracker_subtitle">
+                Введите РегМид и РегЭнд по вашим предметам — алгоритм мгновенно покажет шансы на стипендию и самый опасный экзамен
+            </p>
+        </header>
+
+        <!-- Dashboard Summary Card -->
+        <section class="dashboard-card" aria-label="Статистика шансов на стипендию">
+            <div class="gauges-row">
+                <div class="gauge-box">
+                    <div class="gauge-header">
+                        <span class="gauge-title" data-translate="tracker_overall_scholarship">Шанс на стипендию (70+)</span>
+                        <span class="gauge-percentage" id="gauge70Value">0%</span>
+                    </div>
+                    <div class="gauge-bar-track">
+                        <div class="gauge-bar-fill" id="gauge70Fill" style="width: 0%;"></div>
+                    </div>
+                </div>
+
+                <div class="gauge-box">
+                    <div class="gauge-header">
+                        <span class="gauge-title" data-translate="tracker_overall_high">Повышенная стипендия (90+)</span>
+                        <span class="gauge-percentage" id="gauge90Value">0%</span>
+                    </div>
+                    <div class="gauge-bar-track">
+                        <div class="gauge-bar-fill" id="gauge90Fill" style="width: 0%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="verdict-box" id="verdictBox">
+                💎 Стипендия в безопасности
+            </div>
+
+            <div class="bottleneck-box" id="bottleneckBox" style="display: none;">
+                <!-- Динамически заполняется узкое место -->
+            </div>
+        </section>
+
+        <!-- Actions Toolbar -->
+        <div class="actions-bar">
+            <button type="button" class="btn-action btn-primary-action" id="btnAddSubject" data-translate="tracker_add_subject">
+                + Добавить предмет
+            </button>
+            <button type="button" class="btn-action btn-secondary-action" id="btnOpenImport" data-translate="tracker_import_btn">
+                📋 Импорт из Moodle / бота
+            </button>
+            <button type="button" class="btn-action btn-secondary-action" id="btnDefaultSubjects" data-translate="tracker_default_subjects">
+                Заполнить 6 предметов
+            </button>
+            <button type="button" class="btn-action btn-secondary-action" id="btnShareTracker" data-translate="tracker_share">
+                Поделиться списком
+            </button>
+            <button type="button" class="btn-action btn-danger-outline" id="btnClearAll" data-translate="tracker_clear">
+                Очистить всё
+            </button>
+        </div>
+
+        <!-- Subjects List -->
+        <div class="subjects-list" id="subjectsList">
+            <!-- Динамические карточки предметов -->
+        </div>
+
+        <!-- Import Modal -->
+        <div class="modal-overlay" id="importModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h3 id="modalTitle" data-translate="tracker_import_title">Быстрый импорт предметов</h3>
+                    <button type="button" class="modal-close-btn" id="btnCloseImport" aria-label="Закрыть">&times;</button>
+                </div>
+                <textarea class="modal-textarea" id="importTextarea" data-translate="tracker_import_placeholder" data-translate-type="placeholder" placeholder="Вставьте сообщение с оценками из Moodle или бота..."></textarea>
+                <div class="modal-actions">
+                    <button type="button" class="btn-action btn-secondary-action" id="btnCancelImport" data-translate="tracker_import_close">Отмена</button>
+                    <button type="button" class="btn-action btn-primary-action" id="btnSubmitImport" data-translate="tracker_import_submit">Импортировать</button>
+                </div>
+            </div>
+        </div>
+
+        <p class="save-hint" data-translate="tracker_saved_hint">
+            💾 Данные автоматически сохраняются на вашем устройстве
+        </p>
+    </div>
+
+    <footer>
+        <span data-translate="footer_copyright">&copy; 2025 Not_404. In case of any bug contact via Telegram</span>
+        <a href="https://t.me/Qrudos" target="_blank" rel="noopener noreferrer">@Qrudos</a>.
+    </footer>
+
+    <script src="../js/language.js"></script>
+    <script src="../js/localization.js"></script>
+    <script src="../js/tracker.js"></script>
+    <script src="../js/analytics.js"></script>
+</body>
+
+</html>

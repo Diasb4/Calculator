@@ -929,7 +929,9 @@ function formatQuizzesMessage(result, isGauharUser = false, showCompletedOnly = 
 
     if (upcoming.length > 0) {
         msg += `🟢 <b>Предстоящие дедлайны:</b>\n`;
-        for (const item of upcoming) {
+        const displayLimit = 15;
+        const displayItems = upcoming.slice(0, displayLimit);
+        for (const item of displayItems) {
             const dateObj = new Date(item.dueDate);
             const astanaTime = new Intl.DateTimeFormat('ru-RU', {
                 timeZone: 'Asia/Almaty',
@@ -953,6 +955,9 @@ function formatQuizzesMessage(result, isGauharUser = false, showCompletedOnly = 
             msg += `\n📚 <b>${item.courseName}</b>\n` +
                    `📝 <a href="${item.link}">${item.title}</a>\n` +
                    `⏰ Дедлайн: <b>${astanaTime}</b> (${remainingText})\n`;
+        }
+        if (upcoming.length > displayLimit) {
+            msg += `\n<i>... и ещё ${upcoming.length - displayLimit} квизов на семестр.</i>\n`;
         }
     } else {
         msg += isGauharUser

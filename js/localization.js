@@ -63,6 +63,7 @@ function applyTranslations() {
     updatePageTitle();
     if (typeof updateModeDisplay === 'function') updateModeDisplay();
     if (typeof updateBodyPaddingForNavbar === 'function') updateBodyPaddingForNavbar();
+    try { window.dispatchEvent(new CustomEvent('languageChanged')); } catch { /* Ignore */ }
 }
 
 function switchLanguage(lang) {
@@ -88,7 +89,7 @@ function updatePageTitle() {
         'totalcalculator.html': 'page_title_total', 'calculatorgpa.html': 'page_title_gpa',
         'cumulativegpa.html': 'page_title_cumulative', 'manytrimcalc.html': 'page_title_cumulative',
         'attendancecalculator.html': 'page_title_attendance', 'feedback.html': 'page_title_feedback',
-        'templated_calculator.html': 'page_title_template'
+        'templated_calculator.html': 'page_title_template', 'scholarshiptracker.html': 'tracker_title'
     };
     document.title = getTranslation(titles[page] || 'main_title');
 }
@@ -118,7 +119,7 @@ if (typeof window !== 'undefined') {
     if ('caches' in window) {
         caches.keys().then(names => {
             names.forEach(name => {
-                if (name !== 'grademaster-v2') {
+                if (name !== 'grademaster-v3') {
                     caches.delete(name);
                 }
             });
