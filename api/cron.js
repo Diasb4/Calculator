@@ -49,12 +49,18 @@ function clearSentAlertsMemory() {
 /**
  * Отправляет сообщение. { ok: true } только при подтверждённой доставке;
  * gone: true — чат больше недоступен (бот заблокирован, аккаунт удалён).
+ * Если часть длинного сообщения уже ушла, оно считается доставленным: повтор
+ * на следующем прогоне продублировал бы начало.
  */
 async function sendTelegram(chatId, text, options = {}) {
     try {
         await sendText(chatId, text, options);
         return { ok: true };
     } catch (err) {
+        if (err.deliveredChunks > 0) {
+            console.warn(`Cron send to ${chatId} delivered partially (${err.deliveredChunks} part(s)): ${err.message}`);
+            return { ok: true, partial: true };
+        }
         console.warn(`Cron send to ${chatId} failed: ${err.message}`);
         return { ok: false, gone: isChatGoneError(err), error: err.message };
     }

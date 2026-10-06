@@ -69,6 +69,7 @@ function splitMessage(text, limit = MESSAGE_LIMIT) {
 /**
  * Sends HTML text, split into as many messages as needed. `reply_markup` goes
  * on the last chunk only; a chunk Telegram cannot parse is resent as plain text.
+ * A failure after some chunks went out carries `deliveredChunks` on the error.
  */
 async function sendText(chatId, text, options = {}) {
     const { reply_markup: replyMarkup, ...rest } = options;
@@ -86,12 +87,17 @@ async function sendText(chatId, text, options = {}) {
             payload.reply_markup = replyMarkup;
         }
         try {
-            result = await callTelegram('sendMessage', payload);
+            try {
+                result = await callTelegram('sendMessage', payload);
+            } catch (err) {
+                if (!/parse|entity|tag/i.test(err.description || err.message || '')) throw err;
+                const plain = { ...payload, text: chunks[i].replace(/<[^>]*>/g, '') };
+                delete plain.parse_mode;
+                result = await callTelegram('sendMessage', plain);
+            }
         } catch (err) {
-            if (!/parse|entity|tag/i.test(err.description || err.message || '')) throw err;
-            const plain = { ...payload, text: chunks[i].replace(/<[^>]*>/g, '') };
-            delete plain.parse_mode;
-            result = await callTelegram('sendMessage', plain);
+            err.deliveredChunks = i;
+            throw err;
         }
     }
     return result;
