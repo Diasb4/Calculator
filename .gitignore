@@ -6,3 +6,6 @@ node_modules/
 .agents
 .claude
 .gemini
+backup_kv.json
+local_kv.json
+*.rdb
