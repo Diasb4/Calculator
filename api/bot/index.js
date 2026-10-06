@@ -7,8 +7,9 @@ const aitu = require('./aitu.js');
 const lms = require('./lms.js');
 const lmsGrades = require('./lms_grades.js');
 const statsEngine = require('../stats/engine.js');
-const { safeCompare, getBotToken, getAdminChatIds, esc, BoundedMap } = require('../_lib/util.js');
-const { callTelegram, sendText } = require('../_lib/telegram.js');
+const { setTimeout: delay } = require('node:timers/promises');
+const { safeCompare, getBotToken, getAdminChatIds, isProduction, esc, BoundedMap } = require('../_lib/util.js');
+const { callTelegram, sendText, TelegramError } = require('../_lib/telegram.js');
 
 const WEBAPP_URL = process.env.WEBAPP_URL || 'https://calculator-not-404.vercel.app';
 
@@ -3575,11 +3576,20 @@ module.exports = async function handler(req, res) {
         const setupParam = query.setup || query.action || (urlObj ? urlObj.searchParams.get('setup') || urlObj.searchParams.get('action') : null);
 
         if (setupParam === '1' || setupParam === 'setWebhook') {
+            if (process.env.BOT_POLLING === 'true') {
+                return res.status(409).json({ ok: false, error: 'Polling mode active; webhook setup disabled' });
+            }
             const secret = process.env.TELEGRAM_SECRET_TOKEN;
+            if (!secret && isProduction()) {
+                return res.status(503).json({ ok: false, error: 'TELEGRAM_SECRET_TOKEN is not configured' });
+            }
             if (secret) {
-                const authHeader = req.headers ? (req.headers['authorization'] || req.headers['x-telegram-bot-api-secret-token']) : null;
-                const secretParam = query.secret || (urlObj ? urlObj.searchParams.get('secret') : null);
-                if (authHeader !== `Bearer ${secret}` && authHeader !== secret && secretParam !== secret) {
+                const headers = req.headers || {};
+                const authorization = headers['authorization'];
+                const bearer = typeof authorization === 'string' && authorization.startsWith('Bearer ')
+                    ? authorization.slice('Bearer '.length)
+                    : null;
+                if (!safeCompare(headers['x-telegram-bot-api-secret-token'], secret) && !safeCompare(bearer, secret)) {
                     return res.status(401).json({
                         ok: false,
                         error: 'Unauthorized: TELEGRAM_SECRET_TOKEN обязателен для настройки Webhook'
@@ -3626,8 +3636,15 @@ module.exports = async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    // Проверка секретного токена вебхука Telegram (если задан, timing-safe)
+    if (process.env.BOT_POLLING === 'true') {
+        return res.status(403).json({ error: 'Webhook disabled: bot runs in long-polling mode' });
+    }
+
+    // Проверка секретного токена вебхука Telegram (timing-safe); в production без секрета — отказ
     const secretToken = process.env.TELEGRAM_SECRET_TOKEN;
+    if (!secretToken && isProduction()) {
+        return res.status(503).json({ error: 'TELEGRAM_SECRET_TOKEN is not configured' });
+    }
     if (secretToken) {
         const headerToken = req.headers['x-telegram-bot-api-secret-token'];
         if (!headerToken || !safeCompare(headerToken, secretToken)) {
@@ -3691,29 +3708,104 @@ module.exports.rawSendMessage = rawSendMessage;
 module.exports.handleMessage = handleMessage;
 module.exports.getBotInfo = getBotInfo;
 module.exports._setBotInfoForTesting = _setBotInfoForTesting;
+module.exports.startPolling = startPolling;
+module.exports.stopPolling = stopPolling;
 
-// Локальный long-polling (для разработки)
-if (require.main === module) {
+// Long polling (VPS): getUpdates instead of the webhook. Updates of one chat run
+// in order; different chats run concurrently, so a slow or hung handler never
+// stalls polling for everyone else.
+
+let polling = null;
+
+function getUpdateChatId(update) {
+    return update.message?.chat?.id ?? update.callback_query?.message?.chat?.id ?? update.callback_query?.from?.id;
+}
+
+function dispatchUpdate(state, update) {
+    const key = String(getUpdateChatId(update) ?? `update:${update.update_id}`);
+    const previous = state.chats.get(key) || Promise.resolve();
+    const next = previous
+        .then(() => {
+            if (update.message) return handleMessage(update.message);
+            if (update.callback_query) return handleCallbackQuery(update.callback_query);
+            return undefined;
+        })
+        .catch(err => console.error('Update handling error:', err));
+    state.chats.set(key, next);
+    next.then(() => {
+        if (state.chats.get(key) === next) state.chats.delete(key);
+    });
+}
+
+async function pollUpdates(state) {
+    const { signal } = state.controller;
     let offset = 0;
-    async function poll() {
-        console.log(`🤖 GradeMaster Telegram Bot запущен в режиме Long-Polling...`);
-        while (true) {
-            try {
-                const updates = await apiCall('getUpdates', { offset, timeout: 30 });
-                for (const update of updates) {
-                    offset = update.update_id + 1;
-                    if (update.message) {
-                        await handleMessage(update.message).catch(console.error);
-                    } else if (update.callback_query) {
-                        await handleCallbackQuery(update.callback_query).catch(console.error);
-                    }
+    let backoff = 1000;
+    let webhookRemoved = false;
+    let conflicts = 0;
+
+    while (!state.stop) {
+        try {
+            if (!webhookRemoved) {
+                await callTelegram('deleteWebhook', { drop_pending_updates: false }, { signal });
+                webhookRemoved = true;
+                if (!state.announced) {
+                    state.announced = true;
+                    console.log('🤖 Long polling started (webhook removed)');
                 }
-            } catch (err) {
-                console.error('Polling error:', err.message);
-                await new Promise(r => setTimeout(r, 4000));
             }
+            const updates = await callTelegram('getUpdates', {
+                offset,
+                timeout: 30,
+                allowed_updates: ['message', 'callback_query']
+            }, { timeoutMs: 40000, signal });
+            backoff = 1000;
+            conflicts = 0;
+            for (const update of updates || []) {
+                offset = Math.max(offset, update.update_id + 1);
+                dispatchUpdate(state, update);
+            }
+        } catch (err) {
+            if (state.stop) break;
+            if (err instanceof TelegramError && err.code === 401) {
+                console.error('❌ Invalid TELEGRAM_BOT_TOKEN (401) — polling stopped');
+                process.exit(1);
+            }
+            if (err instanceof TelegramError && err.code === 409) {
+                console.warn('⚠️ 409 Conflict: another getUpdates consumer or webhook is active');
+                webhookRemoved = false;
+                conflicts += 1;
+                if (conflicts > 1) await delay(30000, undefined, { signal }).catch(() => { });
+                continue;
+            }
+            console.error(`Polling error: ${err.message}`);
+            await delay(backoff, undefined, { signal }).catch(() => { });
+            backoff = Math.min(backoff * 2, 60000);
         }
     }
-    poll();
 }
+
+function startPolling() {
+    if (polling) return polling.done;
+    const state = { stop: false, announced: false, controller: new AbortController(), chats: new Map(), done: null };
+    polling = state;
+    state.done = pollUpdates(state);
+    return state.done;
+}
+
+/** Stops polling and waits (up to 15 s) for updates that are already being handled. */
+async function stopPolling() {
+    if (!polling) return;
+    const state = polling;
+    state.stop = true;
+    state.controller.abort();
+    await state.done;
+    await Promise.race([
+        Promise.allSettled([...state.chats.values()]),
+        delay(15000, undefined, { ref: false })
+    ]);
+    polling = null;
+}
+
+if (require.main === module) startPolling();
 

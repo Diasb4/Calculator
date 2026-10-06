@@ -1,15 +1,19 @@
 // server.js
-// Standalone production HTTP server for GradeMaster (VPS / Docker / PM2 deployment)
-// Zero external dependencies - uses standard Node.js libraries.
+// Standalone HTTP server for GradeMaster (VPS / Docker): serves the public site and
+// the API handlers, and, when enabled, runs the Telegram bot in long-polling mode
+// and the reminder cron in-process.
 
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const url = require('url');
+const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
+const { setTimeout: delay } = require('node:timers/promises');
+const statsEngine = require('./api/stats/engine.js');
+const { getBotToken, getAdminChatIds, isProduction } = require('./api/_lib/util.js');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 const ROOT_DIR = __dirname;
+const MAX_BODY_BYTES = 1048576;
 
 const MIME_TYPES = {
     '.html': 'text/html; charset=utf-8',
@@ -29,7 +33,13 @@ const MIME_TYPES = {
     '.webmanifest': 'application/manifest+json'
 };
 
-// Map API routes to their respective handlers
+// Same page security headers as the Vercel deployment; vercel.json is the single source.
+const SECURITY_HEADERS = require('./vercel.json').headers.find(rule => rule.source === '/(.*)').headers;
+
+// Only the public site is served. Server code, .env, .git and data dumps never are.
+const PUBLIC_FILES = new Set(['/index.html', '/manifest.json', '/sw.js']);
+const PUBLIC_DIRS = ['/main/', '/js/', '/style/', '/icons/'];
+
 const API_ROUTES = {
     '/api/bot': path.join(ROOT_DIR, 'api', 'bot', 'index.js'),
     '/api/telegram': path.join(ROOT_DIR, 'api', 'telegram.js'),
@@ -67,7 +77,8 @@ function enhanceResponse(res) {
 }
 
 /**
- * Parse incoming request body
+ * Parse the request body. Past MAX_BODY_BYTES nothing more is buffered: the rest is
+ * drained and req.bodyTooLarge is set, so the client still receives the 413.
  */
 async function parseRequestBody(req) {
     return new Promise((resolve) => {
@@ -77,10 +88,24 @@ async function parseRequestBody(req) {
         }
 
         const chunks = [];
-        req.on('data', (chunk) => chunks.push(chunk));
+        let size = 0;
+        const onData = (chunk) => {
+            if (req.bodyTooLarge) return;
+            size += chunk.length;
+            if (size > MAX_BODY_BYTES) {
+                req.bodyTooLarge = true;
+                chunks.length = 0;
+                return;
+            }
+            chunks.push(chunk);
+        };
+        req.on('data', onData);
         req.on('end', () => {
-            const buffer = Buffer.concat(chunks);
-            const str = buffer.toString('utf8');
+            if (req.bodyTooLarge) {
+                req.body = {};
+                return resolve();
+            }
+            const str = Buffer.concat(chunks).toString('utf8');
             const contentType = req.headers['content-type'] || '';
 
             if (contentType.includes('application/json')) {
@@ -108,55 +133,57 @@ async function parseRequestBody(req) {
     });
 }
 
-/**
- * Serve static files from workspace root
- */
+/** Absolute path of a public file for a URL path, or null when it must not be served. */
+function resolvePublicPath(pathname) {
+    let decoded;
+    try {
+        decoded = decodeURIComponent(pathname === '/' ? '/index.html' : pathname);
+    } catch {
+        return null;
+    }
+    if (decoded.includes('\0') || decoded.includes('\\')) return null;
+    if (decoded.split('/').some(segment => segment.startsWith('.'))) return null;
+    if (!PUBLIC_FILES.has(decoded) && !PUBLIC_DIRS.some(dir => decoded.startsWith(dir))) return null;
+
+    const filePath = path.join(ROOT_DIR, decoded);
+    const relative = path.relative(ROOT_DIR, filePath);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
+    return filePath;
+}
+
+function sendNotFound(res) {
+    res.statusCode = 404;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.end('404 Not Found');
+}
+
 function serveStatic(req, res, pathname) {
-    let safePath = path.normalize(pathname).replace(/^(\.\.[\/\\])+/, '');
-    if (safePath === '/' || safePath === '') {
-        safePath = '/index.html';
-    }
-
-    const filePath = path.join(ROOT_DIR, safePath);
-
-    // Prevent directory traversal outside ROOT_DIR
-    if (!filePath.startsWith(ROOT_DIR)) {
-        res.statusCode = 403;
-        return res.end('Forbidden');
-    }
+    const filePath = resolvePublicPath(pathname);
+    if (!filePath) return sendNotFound(res);
 
     fs.stat(filePath, (err, stats) => {
-        if (err || !stats.isFile()) {
-            // If file not found, try adding .html (clean URLs)
-            if (!path.extname(filePath)) {
-                const htmlPath = filePath + '.html';
-                fs.stat(htmlPath, (htmlErr, htmlStats) => {
-                    if (!htmlErr && htmlStats.isFile()) {
-                        return sendFile(res, htmlPath, '.html');
-                    }
-                    res.statusCode = 404;
-                    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-                    res.end('404 Not Found');
-                });
-                return;
-            }
-
-            res.statusCode = 404;
-            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-            res.end('404 Not Found');
-            return;
+        if (!err && stats.isFile()) {
+            return sendFile(res, filePath, pathname);
         }
-
-        const ext = path.extname(filePath).toLowerCase();
-        sendFile(res, filePath, ext);
+        // Clean URLs (/main/CalculatorGPA -> /main/CalculatorGPA.html) exist only under /main/
+        if (pathname.startsWith('/main/') && !path.extname(filePath)) {
+            const htmlPath = `${filePath}.html`;
+            return fs.stat(htmlPath, (htmlErr, htmlStats) => {
+                if (!htmlErr && htmlStats.isFile()) return sendFile(res, htmlPath, pathname);
+                sendNotFound(res);
+            });
+        }
+        sendNotFound(res);
     });
 }
 
-function sendFile(res, filePath, ext) {
-    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+function sendFile(res, filePath, pathname) {
+    const ext = path.extname(filePath).toLowerCase();
+    res.setHeader('Content-Type', MIME_TYPES[ext] || 'application/octet-stream');
+    for (const { key, value } of SECURITY_HEADERS) {
+        res.setHeader(key, value);
+    }
+    res.setHeader('Cache-Control', ext === '.html' || pathname === '/sw.js' ? 'no-cache' : 'public, max-age=3600');
 
     const stream = fs.createReadStream(filePath);
     stream.on('error', () => {
@@ -174,7 +201,13 @@ function sendFile(res, filePath, ext) {
 const server = http.createServer(async (req, res) => {
     enhanceResponse(res);
 
-    const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    let parsedUrl;
+    try {
+        parsedUrl = new URL(req.url, 'http://localhost');
+    } catch {
+        res.statusCode = 400;
+        return res.end('Bad Request');
+    }
     req.query = Object.fromEntries(parsedUrl.searchParams.entries());
     const pathname = parsedUrl.pathname || '/';
 
@@ -194,25 +227,33 @@ const server = http.createServer(async (req, res) => {
             ok: true,
             status: 'healthy',
             uptime: Math.round(process.uptime()),
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            kv: statsEngine.getKvBackend(),
+            kvReady: statsEngine.isKvReady(),
+            polling: process.env.BOT_POLLING === 'true'
         });
     }
 
     // Dispatch API routes
     if (pathname.startsWith('/api/')) {
-        await parseRequestBody(req);
+        // Without a trusted reverse proxy in front, client-supplied forwarding headers are spoofable.
+        if (process.env.TRUST_PROXY !== '1') {
+            req.headers['x-forwarded-for'] = req.socket.remoteAddress || 'unknown';
+            delete req.headers['x-real-ip'];
+        }
 
-        // Exact match or prefix match
-        const routeKey = Object.keys(API_ROUTES).find(r => pathname === r || pathname.startsWith(r + '/'));
-        if (routeKey) {
-            const handlerPath = API_ROUTES[routeKey];
+        await parseRequestBody(req);
+        if (req.bodyTooLarge) {
+            res.statusCode = 413;
+            res.setHeader('Connection', 'close');
+            return res.json({ ok: false, error: 'Payload too large' });
+        }
+
+        const handlerPath = API_ROUTES[pathname];
+        if (handlerPath) {
             try {
                 const handler = require(handlerPath);
-                if (typeof handler === 'function') {
-                    return await handler(req, res);
-                } else if (handler && typeof handler.default === 'function') {
-                    return await handler.default(req, res);
-                }
+                return await handler(req, res);
             } catch (err) {
                 console.error(`API Route Error [${pathname}]:`, err);
                 if (!res.headersSent) {
@@ -231,47 +272,101 @@ const server = http.createServer(async (req, res) => {
     serveStatic(req, res, pathname);
 });
 
-// Start listening if run directly
-if (require.main === module) {
-    server.listen(PORT, HOST, () => {
-        console.log(`🚀 GradeMaster unified server is running at http://${HOST}:${PORT}`);
-        console.log(`   🌐 Web UI & Calculators: http://${HOST}:${PORT}`);
-        console.log(`   🩺 Health check: http://${HOST}:${PORT}/health`);
-        console.log(`   🤖 Bot Webhook endpoint: http://${HOST}:${PORT}/api/bot`);
+/** First configuration problem that makes a production start unsafe, or null. */
+function validateProductionEnv() {
+    if (!getBotToken().includes(':')) {
+        return 'TELEGRAM_BOT_TOKEN is missing or malformed';
+    }
+    if (getAdminChatIds().length === 0) {
+        return 'ADMIN_CHAT_ID is not set';
+    }
+    if (Buffer.from(process.env.SESSION_ENC_KEY || '', 'base64').length !== 32) {
+        return 'SESSION_ENC_KEY must be 32 bytes, base64-encoded (openssl rand -base64 32)';
+    }
+    if (!statsEngine.getKvBackend()) {
+        return 'no KV backend: set REDIS_URL or KV_REST_API_URL + KV_REST_API_TOKEN';
+    }
+    if (process.env.BOT_POLLING !== 'true' && (process.env.TELEGRAM_SECRET_TOKEN || '').length < 32) {
+        return 'TELEGRAM_SECRET_TOKEN must be at least 32 characters in webhook mode';
+    }
+    return null;
+}
 
-        // Start Telegram Bot in Long Polling mode if enabled or if token provided without webhook
-        if (process.env.BOT_POLLING === 'true') {
+if (require.main === module) {
+    if (isProduction()) {
+        const problem = validateProductionEnv();
+        if (problem) {
+            console.error(`❌ Config error: ${problem}`);
+            process.exit(1);
+        }
+    }
+    process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
+
+    const bot = process.env.BOT_POLLING === 'true' ? require('./api/bot/index.js') : null;
+    let cronTimeout = null;
+    let cronInterval = null;
+    let currentRun = null;
+
+    async function cronTick(runCron) {
+        if (currentRun) {
+            console.warn('Cron tick skipped: previous run still active');
+            return;
+        }
+        currentRun = (async () => {
             try {
-                const bot = require('./api/bot/index.js');
-                if (typeof bot.startPolling === 'function') {
-                    bot.startPolling();
+                const r = await runCron();
+                if (r.ok === false) {
+                    console.warn(`⏰ Cron: ${r.error}`);
+                } else {
+                    console.log(`⏰ Cron: users=${r.usersChecked ?? 0} critical=${r.criticalSent ?? 0} daily=${r.dailySent ?? 0} evening=${r.eveningSent ?? 0}`);
                 }
             } catch (err) {
-                console.warn('Could not launch Telegram Bot Polling:', err.message);
+                console.warn('Background cron run error:', err.message);
             }
+        })();
+        try {
+            await currentRun;
+        } finally {
+            currentRun = null;
+        }
+    }
+
+    server.listen(PORT, HOST, () => {
+        console.log(`🚀 GradeMaster server is running at http://${HOST}:${PORT}`);
+        console.log(`   🩺 Health check: http://${HOST}:${PORT}/health`);
+
+        if (bot) {
+            bot.startPolling();
         }
 
-        // Background Cron runner for VPS
         if (process.env.ENABLE_BACKGROUND_CRON === 'true') {
-            console.log('⏰ Background Cron worker active (checks every 15 minutes)');
-            const cronHandler = require('./api/cron.js');
-            setInterval(async () => {
-                try {
-                    const mockReq = { method: 'GET', headers: { authorization: `Bearer ${process.env.CRON_SECRET || ''}` } };
-                    const mockRes = {
-                        statusCode: 200,
-                        setHeader: () => {},
-                        status: function (code) { this.statusCode = code; return this; },
-                        json: () => {},
-                        end: () => {}
-                    };
-                    await cronHandler(mockReq, mockRes);
-                } catch (err) {
-                    console.warn('Background cron run error:', err.message);
-                }
-            }, 15 * 60 * 1000);
+            const { runCron } = require('./api/cron.js');
+            cronTimeout = setTimeout(() => cronTick(runCron), 60 * 1000);
+            cronInterval = setInterval(() => cronTick(runCron), 15 * 60 * 1000);
+            console.log('⏰ Background cron active: first run in 60 s, then every 15 minutes');
         }
     });
+
+    let shuttingDown = false;
+    async function shutdown() {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        console.log('Shutting down…');
+        setTimeout(() => process.exit(1), 25000).unref();
+        clearTimeout(cronTimeout);
+        clearInterval(cronInterval);
+        try {
+            if (bot) await bot.stopPolling();
+            if (currentRun) await Promise.race([currentRun, delay(20000, undefined, { ref: false })]);
+            await new Promise(resolve => server.close(() => resolve()));
+            await statsEngine.closeKv();
+        } catch (err) {
+            console.error('Shutdown error:', err.message);
+        }
+        process.exit(0);
+    }
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
 }
 
 module.exports = server;

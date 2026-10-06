@@ -499,15 +499,11 @@ async function processUserLms(chatId, context) {
     };
 }
 
-module.exports = async function handler(req, res) {
-    // Проверка CRON_SECRET от Vercel (timing-safe)
-    const authHeader = req ? req.headers?.['authorization'] : null;
-    if (process.env.CRON_SECRET) {
-        if (!authHeader || !safeCompare(authHeader, `Bearer ${process.env.CRON_SECRET}`)) {
-            return res.status(401).json({ error: 'Unauthorized' });
-        }
-    }
-
+/**
+ * Один проход напоминаний по всем подписчикам (Learn + LMS). Используется и
+ * HTTP-обработчиком /api/cron, и фоновым планировщиком server.js.
+ */
+async function runCron({ now = new Date(), force = false } = {}) {
     const adminChatIds = getAdminChatIds();
     let allRegisteredUsers = [];
     let allLmsUsers = [];
@@ -530,19 +526,24 @@ module.exports = async function handler(req, res) {
     const allTargetUsers = Array.from(new Set([...targetUsers, ...targetLmsUsers]));
 
     if (allTargetUsers.length === 0) {
-        return res.status(500).json({ error: 'No quiz users or TELEGRAM_CHAT_ID configured' });
+        return { ok: false, error: 'No quiz users or TELEGRAM_CHAT_ID configured' };
     }
 
-    const todayStr = statsEngine.getTodayDateStr ? statsEngine.getTodayDateStr() : new Date().toISOString().slice(0, 10);
+    const todayStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Almaty',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(now);
     const astanaHour = Number(new Intl.DateTimeFormat('en-US', {
         timeZone: 'Asia/Almaty',
         hour: 'numeric',
         hourCycle: 'h23'
-    }).format(new Date()));
+    }).format(now));
 
     const isMorningWindow = astanaHour >= 6 && astanaHour <= 11;
     const isEveningWindow = astanaHour >= 19 && astanaHour <= 22;
-    const forceSend = req && req.query && req.query.force === '1';
+    const forceSend = force;
 
     const context = {
         isMorningWindow,
@@ -589,7 +590,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (totalCriticalSent > 0) {
-        return res.status(200).json({
+        return {
             ok: true,
             type: 'critical_1h',
             criticalSent: totalCriticalSent,
@@ -598,10 +599,10 @@ module.exports = async function handler(req, res) {
             eveningSent: totalEveningSent,
             usersChecked: allTargetUsers.length,
             details: summary
-        });
+        };
     }
 
-    return res.status(200).json({
+    return {
         ok: true,
         message: 'All users checked successfully',
         usersChecked: allTargetUsers.length,
@@ -610,8 +611,23 @@ module.exports = async function handler(req, res) {
         dailySent: totalDailySent,
         eveningSent: totalEveningSent,
         details: summary
-    });
+    };
+}
+
+module.exports = async function handler(req, res) {
+    // Проверка CRON_SECRET (timing-safe)
+    const authHeader = req ? req.headers?.['authorization'] : null;
+    if (process.env.CRON_SECRET) {
+        if (!authHeader || !safeCompare(authHeader, `Bearer ${process.env.CRON_SECRET}`)) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+    }
+
+    const result = await runCron({ force: req?.query?.force === '1' });
+    return res.status(result.ok === false ? 500 : 200).json(result);
 };
+
+module.exports.runCron = runCron;
 
 module.exports.hasAlertBeenSent = hasAlertBeenSent;
 module.exports.markAlertAsSent = markAlertAsSent;

@@ -14,7 +14,7 @@ function checkFeedbackIpRateLimit(ip) {
     return true;
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
     function fail(status, code, error) {
         return res.status(status).json({ success: false, code, error });
     }
@@ -220,4 +220,6 @@ export default async function handler(req, res) {
             "Feedback service is temporarily unavailable");
     }
 }
+
+module.exports = handler;
 

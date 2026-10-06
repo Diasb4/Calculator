@@ -4,13 +4,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const source = fs.readFileSync(path.join(__dirname, '../api/telegram.js'), 'utf8')
-    .replace('export default async function handler', 'async function handler');
+const source = fs.readFileSync(path.join(__dirname, '../api/telegram.js'), 'utf8');
 
 function loadApi({ env = {}, reply = { ok: true, result: { message_id: 123 } }, status = 200, error } = {}) {
     const calls = [];
     const logs = [];
     const context = vm.createContext({
+        module: { exports: {} },
         process: { env: { TELEGRAM_BOT_TOKEN: '123:test-token', TELEGRAM_CHAT_ID: '456', ...env } },
         AbortSignal,
         console: { error: (...args) => logs.push(args) },
@@ -22,7 +22,7 @@ function loadApi({ env = {}, reply = { ok: true, result: { message_id: 123 } }, 
         }
     });
     vm.runInContext(source, context);
-    const handler = vm.runInContext('handler', context);
+    const handler = context.module.exports;
     async function request(body = { message: 'Local test only' }, method = 'POST') {
         const res = { statusCode: 200, headers: {},
             setHeader(key, value) { this.headers[key] = value; },
