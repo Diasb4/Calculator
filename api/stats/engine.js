@@ -49,6 +49,187 @@ function anonymizeUserId(rawId) {
     return crypto.createHmac('sha256', salt).update(String(rawId)).digest('hex').slice(0, 12);
 }
 
+const fs = require('node:fs');
+const path = require('node:path');
+
+// Local file DB store (backup_kv.json / local_kv.json)
+let localDbMap = null;
+let localDbPath = null;
+let saveDebounceTimer = null;
+
+function getLocalDbFile() {
+    if (process.env.LOCAL_DB_FILE) {
+        return path.resolve(process.env.LOCAL_DB_FILE);
+    }
+    const defaultBackup = path.join(process.cwd(), 'backup_kv.json');
+    if (fs.existsSync(defaultBackup)) {
+        return defaultBackup;
+    }
+    const defaultLocal = path.join(process.cwd(), 'local_kv.json');
+    if (fs.existsSync(defaultLocal)) {
+        return defaultLocal;
+    }
+    return null;
+}
+
+function initLocalDb() {
+    if (localDbMap) return localDbMap;
+    const filePath = getLocalDbFile();
+    if (!filePath || !fs.existsSync(filePath)) {
+        return null;
+    }
+    localDbPath = filePath;
+    localDbMap = new Map();
+    try {
+        const raw = fs.readFileSync(filePath, 'utf8');
+        const parsed = JSON.parse(raw);
+        const records = Array.isArray(parsed) ? parsed : (parsed.data || []);
+        for (const item of records) {
+            if (item && item.key) {
+                localDbMap.set(item.key, {
+                    type: item.type || 'string',
+                    value: item.value,
+                    expiresAt: item.ttl && item.ttl > 0 ? Date.now() + item.ttl * 1000 : null
+                });
+            }
+        }
+        console.log(`📁 GradeMaster Local DB loaded from ${path.basename(filePath)} (${localDbMap.size} keys)`);
+    } catch (e) {
+        console.warn('Could not load local DB file:', e.message);
+        localDbMap = null;
+    }
+    return localDbMap;
+}
+
+function scheduleLocalDbSave() {
+    if (!localDbPath || !localDbMap) return;
+    if (saveDebounceTimer) return;
+    saveDebounceTimer = setTimeout(() => {
+        saveDebounceTimer = null;
+        try {
+            const data = [];
+            const now = Date.now();
+            for (const [key, item] of localDbMap.entries()) {
+                const ttl = item.expiresAt ? Math.max(0, Math.round((item.expiresAt - now) / 1000)) : -1;
+                if (item.expiresAt && ttl <= 0) continue; // expired
+                data.push({
+                    key,
+                    type: item.type,
+                    ttl,
+                    value: item.value
+                });
+            }
+            fs.writeFileSync(localDbPath, JSON.stringify({ dumpedAt: new Date().toISOString(), totalKeys: data.length, data }, null, 2), 'utf8');
+        } catch (err) {
+            console.warn('Local DB save error:', err.message);
+        }
+    }, 1000);
+}
+
+function executeLocalKv(commandArray) {
+    const db = initLocalDb();
+    if (!db) return null;
+    if (!Array.isArray(commandArray) || commandArray.length === 0) return null;
+
+    const cmd = String(commandArray[0]).toUpperCase();
+    const key = commandArray[1];
+    const now = Date.now();
+
+    // Check expiration
+    if (key && db.has(key)) {
+        const item = db.get(key);
+        if (item.expiresAt && item.expiresAt <= now) {
+            db.delete(key);
+            scheduleLocalDbSave();
+        }
+    }
+
+    if (cmd === 'GET') {
+        const item = db.get(key);
+        return item ? item.value : null;
+    }
+
+    if (cmd === 'SET') {
+        const val = commandArray[2];
+        let ttl = null;
+        for (let i = 3; i < commandArray.length; i++) {
+            if (String(commandArray[i]).toUpperCase() === 'EX' && commandArray[i + 1]) {
+                ttl = parseInt(commandArray[i + 1], 10);
+            }
+        }
+        db.set(key, {
+            type: 'string',
+            value: val,
+            expiresAt: ttl && ttl > 0 ? now + ttl * 1000 : null
+        });
+        scheduleLocalDbSave();
+        return 'OK';
+    }
+
+    if (cmd === 'DEL') {
+        let count = 0;
+        for (let i = 1; i < commandArray.length; i++) {
+            const k = commandArray[i];
+            if (db.delete(k)) count++;
+        }
+        if (count > 0) scheduleLocalDbSave();
+        return count;
+    }
+
+    if (cmd === 'SADD') {
+        let item = db.get(key);
+        if (!item || item.type !== 'set' || !Array.isArray(item.value)) {
+            item = { type: 'set', value: [], expiresAt: null };
+            db.set(key, item);
+        }
+        const set = new Set(item.value.map(String));
+        let added = 0;
+        for (let i = 2; i < commandArray.length; i++) {
+            const member = String(commandArray[i]);
+            if (!set.has(member)) {
+                set.add(member);
+                added++;
+            }
+        }
+        item.value = Array.from(set);
+        if (added > 0) scheduleLocalDbSave();
+        return added;
+    }
+
+    if (cmd === 'SREM') {
+        const item = db.get(key);
+        if (!item || item.type !== 'set' || !Array.isArray(item.value)) return 0;
+        const set = new Set(item.value.map(String));
+        let removed = 0;
+        for (let i = 2; i < commandArray.length; i++) {
+            const member = String(commandArray[i]);
+            if (set.delete(member)) removed++;
+        }
+        item.value = Array.from(set);
+        if (removed > 0) scheduleLocalDbSave();
+        return removed;
+    }
+
+    if (cmd === 'SMEMBERS') {
+        const item = db.get(key);
+        if (!item || item.type !== 'set' || !Array.isArray(item.value)) return [];
+        return item.value;
+    }
+
+    if (cmd === 'EXPIRE') {
+        const item = db.get(key);
+        const sec = parseInt(commandArray[2], 10);
+        if (item && sec > 0) {
+            item.expiresAt = now + sec * 1000;
+            scheduleLocalDbSave();
+            return 1;
+        }
+        return 0;
+    }
+
+    return null;
+}
+
 /**
  * Execute Redis REST command via Upstash / Vercel KV REST API
  */
@@ -57,6 +238,10 @@ async function kvCommand(commandArray, timeoutMs = 3000) {
     const token = (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '').trim();
 
     if (!rawUrl || !token) {
+        const localRes = executeLocalKv(commandArray);
+        if (localRes !== null) {
+            return localRes;
+        }
         return null; // Signals fallback to memoryStore
     }
 
@@ -97,6 +282,12 @@ async function kvPipeline(commands, timeoutMs = 2500) {
     const token = (process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '').trim();
 
     if (!rawUrl || !token || !Array.isArray(commands) || commands.length === 0) {
+        if (!rawUrl || !token) {
+            const db = initLocalDb();
+            if (db && Array.isArray(commands)) {
+                return commands.map(cmd => executeLocalKv(cmd));
+            }
+        }
         return null;
     }
 
