@@ -695,12 +695,25 @@ test('Telegram bot: admin panel and setup handler execute without ReferenceError
     }
 });
 
-test('AITU: local cache stores and retrieves session', () => {
+test('AITU: getStoredSession falls back to AITU_SESSION_ID and prefers the saved admin session', async () => {
     const aitu = require('../api/bot/aitu.js');
-    const testSession = 'test_sess_abc123';
-    aitu.writeLocalCache(testSession);
-    assert.equal(aitu.readLocalCache(), testSession);
-    assert.equal(process.env.AITU_SESSION_ID, testSession);
+    const savedEnv = { ADMIN_CHAT_ID: process.env.ADMIN_CHAT_ID, AITU_SESSION_ID: process.env.AITU_SESSION_ID };
+    try {
+        process.env.ADMIN_CHAT_ID = '111';
+        process.env.AITU_SESSION_ID = 'envsid_abcdefghijklmnop';
+        await aitu.deleteUserSession('111');
+        assert.equal(await aitu.getStoredSession(), 'envsid_abcdefghijklmnop');
+
+        await aitu.saveUserSession('111', 'kvsid_abcdefghijklmnop');
+        assert.equal(await aitu.getStoredSession('111'), 'kvsid_abcdefghijklmnop');
+        assert.equal(await aitu.getStoredSession(), 'kvsid_abcdefghijklmnop');
+    } finally {
+        await aitu.deleteUserSession('111');
+        for (const [name, value] of Object.entries(savedEnv)) {
+            if (value === undefined) delete process.env[name];
+            else process.env[name] = value;
+        }
+    }
 });
 
 test('AITU: formatQuizzesMessage instructs user to use /set_cookie on session expiration', () => {
@@ -709,46 +722,6 @@ test('AITU: formatQuizzesMessage instructs user to use /set_cookie on session ex
     const msg = aitu.formatQuizzesMessage(expiredRes);
     assert.match(msg, /Сессия learn\.astanait\.edu\.kz истекла/);
     assert.match(msg, /\/set_cookie ВАШ_SESSION_ID/);
-});
-
-test('AITU: getStoredSession extracts session from Telegram pinned message storage format', async () => {
-    const os = require('node:os');
-    const aitu = require('../api/bot/aitu.js');
-    const secretSession = '1|mock_user_session_token_xyz:12345';
-    const b64 = Buffer.from(secretSession, 'utf8').toString('base64');
-    const pinnedText = `🔐 GradeMaster • Хранилище сессии AITU\nGM_AITU_SESSION:${b64}\n🕒 17.09.2026`;
-
-    const originalFetch = global.fetch;
-    try {
-        global.fetch = async (url, opts) => {
-            if (url && url.includes('/getChat')) {
-                return {
-                    ok: true,
-                    json: async () => ({
-                        ok: true,
-                        result: {
-                            id: 123456,
-                            pinned_message: {
-                                message_id: 999,
-                                text: pinnedText
-                            }
-                        }
-                    })
-                };
-            }
-            return originalFetch ? originalFetch(url, opts) : Promise.reject(new Error('unhandled'));
-        };
-
-        aitu.clearLocalCache();
-        process.env.TELEGRAM_BOT_TOKEN = 'mock_bot_token';
-        process.env.TELEGRAM_CHAT_ID = '123456';
-
-        const retrieved = await aitu.getStoredSession('123456');
-        assert.equal(retrieved, secretSession);
-        assert.equal(aitu.readLocalCache(), secretSession);
-    } finally {
-        global.fetch = originalFetch;
-    }
 });
 
 test('AITU: formatCriticalHourAlert produces loud siren warning and direct inline action button', () => {

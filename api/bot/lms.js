@@ -4,7 +4,7 @@
 // так и автоматическую генерацию токена из cookie MoodleSession.
 
 const statsEngine = require('../stats/engine.js');
-const { getAdminChatIds, esc, BoundedMap } = require('../_lib/util.js');
+const { getAdminChatIds, esc, BoundedMap, sealSecret, openSecret, isSealed, hasEncryptionKey } = require('../_lib/util.js');
 
 const LMS_BASE_URL = 'https://lms.astanait.edu.kz';
 const GAUHAR_CHAT_ID = '1365231049';
@@ -140,13 +140,21 @@ async function getUserLmsSession(chatId) {
 
     try {
         if (typeof statsEngine.kvCommand === 'function') {
-            const res = await statsEngine.kvCommand(['GET', `gm:user:${strId}:lms_session`]);
-            if (res && typeof res === 'string' && res.trim()) {
-                const clean = res.trim();
+            const key = `gm:user:${strId}:lms_session`;
+            const res = await statsEngine.kvCommand(['GET', key]);
+            const clean = res && typeof res === 'string' && res.trim() ? openSecret(res.trim()) : null;
+            if (clean) {
                 if ((clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('webcal://')) && !isAllowedLmsUrl(clean)) {
-                    console.warn(`getUserLmsSession purged invalid legacy URL for ${strId}: ${clean}`);
+                    console.warn(`getUserLmsSession purged invalid legacy URL for ${strId}`);
                     deleteUserLmsSession(strId).catch(() => {});
                     return null;
+                }
+                if (!isSealed(res) && hasEncryptionKey()) {
+                    try {
+                        statsEngine.kvCommand(['SET', key, sealSecret(clean), 'KEEPTTL']).catch(() => {});
+                    } catch (err) {
+                        console.warn('getUserLmsSession: re-seal skipped:', err.message);
+                    }
                 }
                 lmsUserSessionsMemory.set(strId, clean);
                 lmsSubscribersMemory.add(strId);
@@ -175,7 +183,7 @@ async function saveUserLmsSession(chatId, sessionOrUrl) {
     const clean = String(sessionOrUrl).trim();
 
     if ((clean.startsWith('http://') || clean.startsWith('https://') || clean.startsWith('webcal://')) && !isAllowedLmsUrl(clean)) {
-        console.warn(`saveUserLmsSession SSRF protection blocked invalid URL: ${clean}`);
+        console.warn('saveUserLmsSession SSRF protection blocked a non-LMS URL');
         return false;
     }
 
@@ -185,7 +193,7 @@ async function saveUserLmsSession(chatId, sessionOrUrl) {
     try {
         if (typeof statsEngine.kvCommand === 'function') {
             // Сохраняем сессию на 90 дней (2592000 сек * 3)
-            await statsEngine.kvCommand(['SET', `gm:user:${strId}:lms_session`, clean, 'EX', 7776000]);
+            await statsEngine.kvCommand(['SET', `gm:user:${strId}:lms_session`, sealSecret(clean), 'EX', 7776000]);
             await statsEngine.kvCommand(['SADD', 'gm:lms_subscribers', strId]);
         }
     } catch (err) {
