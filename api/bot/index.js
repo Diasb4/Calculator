@@ -3,32 +3,13 @@
 // Полноценная замена веб-сайта GradeMaster прямо в Telegram.
 // Работает и как Vercel Serverless Webhook (/api/bot), и как локальный Long-Polling скрипт.
 
-const crypto = require('crypto');
 const aitu = require('./aitu.js');
 const lms = require('./lms.js');
 const lmsGrades = require('./lms_grades.js');
 const statsEngine = require('../stats/engine.js');
+const { safeCompare, getBotToken, getAdminChatIds, esc, BoundedMap } = require('../_lib/util.js');
+const { callTelegram, sendText } = require('../_lib/telegram.js');
 
-function safeCompare(a, b) {
-    if (typeof a !== 'string' || typeof b !== 'string') return false;
-    const bufA = Buffer.from(a);
-    const bufB = Buffer.from(b);
-    if (bufA.length !== bufB.length) return false;
-    return crypto.timingSafeEqual(bufA, bufB);
-}
-function getBotToken() {
-    return (process.env.TELEGRAM_BOT_TOKEN || '').trim();
-}
-
-function getApiBase() {
-    return `https://api.telegram.org/bot${getBotToken()}`;
-}
-
-const RAW_ADMIN_IDS = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
-const ADMIN_CHAT_IDS = RAW_ADMIN_IDS
-    ? RAW_ADMIN_IDS.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean)
-    : [];
-const ADMIN_CHAT_ID = ADMIN_CHAT_IDS[0] || '';
 const WEBAPP_URL = process.env.WEBAPP_URL || 'https://calculator-not-404.vercel.app';
 
 let botUsernameCache = (process.env.TELEGRAM_BOT_USERNAME || '').replace(/^@/, '');
@@ -58,17 +39,8 @@ function _setBotInfoForTesting(info) {
     if (info && info.id !== undefined) botIdCache = info.id ? String(info.id) : null;
 }
 
-function getAdminChatIds() {
-    const raw = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
-    if (raw) {
-        return raw.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean);
-    }
-    return ADMIN_CHAT_IDS;
-}
-
 function getPrimaryAdminId() {
-    const ids = getAdminChatIds();
-    return ids[0] || ADMIN_CHAT_ID || '';
+    return getAdminChatIds()[0] || '';
 }
 
 const ATTENDANCE_WEEKS = 10;
@@ -76,10 +48,10 @@ const ATTENDANCE_LIMIT_PERCENT = 0.30;
 
 // Хранилище сессий пользователей (для пошаговых диалогов)
 // В serverless сохраняется в памяти инстанса с TTL
-const userSessions = new Map();
+const userSessions = new BoundedMap(5000);
 // Хранилище списка пользователей для рассылки админа
 const activeUsers = new Set();
-for (const id of ADMIN_CHAT_IDS) {
+for (const id of getAdminChatIds()) {
     activeUsers.add(id);
 }
 
@@ -177,8 +149,8 @@ async function getAllBotUsers() {
 }
 
 // Хранилище таймаута на сообщения пользователей (1 сообщение в 5 минут для NLP и фидбека)
-const userRateLimits = new Map(); // chatId -> timestamp
-const userCourseListMemory = new Map(); // chatId + '_lms' / '_learn' -> Array<courseName>
+const userRateLimits = new BoundedMap(10000); // chatId -> timestamp
+const userCourseListMemory = new BoundedMap(5000); // chatId + '_lms' / '_learn' -> Array<courseName>
 const RATE_LIMIT_COOLDOWN_MS = 5 * 60 * 1000; // 5 минут
 
 function checkRateLimit(chatId) {
@@ -264,21 +236,7 @@ function analyzeMessageSecurity(text) {
 // Telegram API клиент
 
 async function apiCall(method, payload = {}) {
-    const token = getBotToken();
-    if (!token) {
-        throw new Error('TELEGRAM_BOT_TOKEN environment variable is not configured');
-    }
-    const response = await fetch(`${getApiBase()}/${method}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-    const data = await response.json();
-    if (!data.ok) {
-        console.error(`Telegram API [${method}] Error:`, data);
-        throw new Error(data.description || 'Unknown Telegram API error');
-    }
-    return data.result;
+    return callTelegram(method, payload);
 }
 
 async function rawSendMessage(chatId, text, options = {}) {
@@ -287,33 +245,7 @@ async function rawSendMessage(chatId, text, options = {}) {
     if (Number(chatId) < 0 && opts.reply_markup && opts.reply_markup.keyboard) {
         delete opts.reply_markup;
     }
-    let safeText = String(text ?? '');
-    if (safeText.length > 4000) {
-        const lastNl = safeText.lastIndexOf('\n', 3900);
-        safeText = (lastNl > 2000 ? safeText.slice(0, lastNl) : safeText.slice(0, 3900)) + '\n\n...(сокращено)';
-    }
-    try {
-        return await apiCall('sendMessage', {
-            chat_id: chatId,
-            text: safeText,
-            parse_mode: 'HTML',
-            disable_web_page_preview: true,
-            ...opts
-        });
-    } catch (err) {
-        if (err.message && (err.message.includes('parse') || err.message.includes('entity') || err.message.includes('tag'))) {
-            const plainText = safeText.replace(/<[^>]*>/g, '');
-            const fallbackOpts = { ...opts };
-            delete fallbackOpts.parse_mode;
-            return await apiCall('sendMessage', {
-                chat_id: chatId,
-                text: plainText,
-                disable_web_page_preview: true,
-                ...fallbackOpts
-            });
-        }
-        throw err;
-    }
+    return sendText(chatId, text, opts);
 }
 
 async function sendMessage(chatId, text, options = {}) {
@@ -337,13 +269,6 @@ async function editMessageText(chatId, messageId, text, options = {}) {
         disable_web_page_preview: true,
         ...options
     }).catch(() => { });
-}
-
-function esc(str) {
-    return String(str ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
 }
 
 function formatBroadcastContent(rawText) {

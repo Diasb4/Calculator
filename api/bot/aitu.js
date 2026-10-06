@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const statsEngine = require('../stats/engine.js');
 const { getEndOfWeek } = require('./lms.js');
+const { getAdminChatIds, BoundedMap } = require('../_lib/util.js');
 
 const DEFAULT_COURSES = [
     { id: 'course-v1:AITU+PHIL01+26-27_C1_Y3', name: 'Philosophy' },
@@ -20,11 +21,11 @@ function isGauhar(chatId) {
     return String(chatId).trim() === GAUHAR_CHAT_ID;
 }
 let memorySessionCache = null;
-const userSessionsMemory = new Map();
+const userSessionsMemory = new BoundedMap(5000);
 const quizSubscribersMemory = new Set();
-const quizCompletedMemory = new Map();
-const quizCacheMemory = new Map(); // cacheKey -> { timestamp, data }
-const quizLastSuccessfulSnapshot = new Map(); // cacheKey -> { timestamp, data }
+const quizCompletedMemory = new BoundedMap(5000);
+const quizCacheMemory = new BoundedMap(2000); // cacheKey -> { timestamp, data }
+const quizLastSuccessfulSnapshot = new BoundedMap(2000); // cacheKey -> { timestamp, data }
 const QUIZ_CACHE_TTL_MS = 60 * 1000; // 60 секунд SWR
 
 function getCacheFilePath() {
@@ -274,8 +275,7 @@ async function getUserSession(chatId) {
         console.warn(`getUserSession error for ${strId}:`, err.message);
     }
 
-    const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
-    const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+    const adminIds = getAdminChatIds();
     if (adminIds.includes(strId)) {
         const adminSid = await getStoredSession(strId);
         if (adminSid) {
@@ -292,8 +292,7 @@ async function getUserSession(chatId) {
  */
 async function canUserSubscribe(chatId) {
     const strId = String(chatId).trim();
-    const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
-    const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+    const adminIds = getAdminChatIds();
     if (adminIds.includes(strId)) {
         return { allowed: true, currentCount: 0, limit: MAX_SUBSCRIBERS_LIMIT, isExisting: true };
     }
@@ -340,8 +339,7 @@ async function saveUserSession(chatId, sessionId) {
         console.warn(`saveUserSession Redis error for ${strId}:`, err.message);
     }
 
-    const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
-    const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+    const adminIds = getAdminChatIds();
     if (adminIds.includes(strId)) {
         await saveStoredSession(cleanSid, strId);
     }
@@ -370,8 +368,7 @@ async function deleteUserSession(chatId) {
         console.warn(`deleteUserSession Redis error for ${strId}:`, err.message);
     }
 
-    const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
-    const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+    const adminIds = getAdminChatIds();
     if (adminIds.includes(strId)) {
         clearLocalCache();
     }
@@ -522,8 +519,7 @@ async function getUpcomingQuizzesForUser(chatId, forceRefresh = false) {
     if (sid) {
         res = await module.exports.getUpcomingQuizzes(sid, forceRefresh);
     } else {
-        const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
-        const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+        const adminIds = getAdminChatIds();
         if (!chatId || adminIds.includes(String(chatId).trim())) {
             const globalSid = await getStoredSession();
             res = globalSid ? await module.exports.getUpcomingQuizzes(globalSid, forceRefresh) : await module.exports.getUpcomingQuizzes(undefined, forceRefresh);

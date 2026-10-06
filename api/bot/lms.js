@@ -3,10 +3,8 @@
 // Поддерживает как "вечные токены" экспорта календаря (iCal authtoken),
 // так и автоматическую генерацию токена из cookie MoodleSession.
 
-const os = require('os');
-const path = require('path');
-const fs = require('fs');
 const statsEngine = require('../stats/engine.js');
+const { getAdminChatIds, esc, BoundedMap } = require('../_lib/util.js');
 
 const LMS_BASE_URL = 'https://lms.astanait.edu.kz';
 const GAUHAR_CHAT_ID = '1365231049';
@@ -17,11 +15,11 @@ function isGauhar(chatId) {
 }
 
 // In-memory fallback хранилище для serverless / тестов
-const lmsUserSessionsMemory = new Map();
+const lmsUserSessionsMemory = new BoundedMap(5000);
 const lmsSubscribersMemory = new Set();
-const lmsCompletedEventsMemory = new Map();
-const lmsCacheMemory = new Map(); // cacheKey -> { timestamp, data }
-const lmsLastSuccessfulSnapshot = new Map(); // cacheKey -> { timestamp, data }
+const lmsCompletedEventsMemory = new BoundedMap(5000);
+const lmsCacheMemory = new BoundedMap(2000); // cacheKey -> { timestamp, data }
+const lmsLastSuccessfulSnapshot = new BoundedMap(2000); // cacheKey -> { timestamp, data }
 const LMS_CACHE_TTL_MS = 60 * 1000; // 60 секунд SWR
 
 /**
@@ -40,14 +38,6 @@ function getEndOfWeek(nowDate = new Date()) {
         23, 59, 59, 999
     );
     return new Date(endOfWeekAlmatyMs - 5 * 3600 * 1000);
-}
-
-function getLmsCacheFilePath() {
-    try {
-        return path.join(os.tmpdir(), 'gm_aitu_lms_session.json');
-    } catch {
-        return null;
-    }
 }
 
 /**
@@ -93,15 +83,6 @@ function isAllowedLmsUrl(rawUrl) {
     }
 }
 
-function esc(str) {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
-
 /**
  * Проверить, не превышен ли лимит подписчиков (55 человек)
  * @param {string|number} chatId
@@ -111,8 +92,7 @@ async function canUserSubscribe(chatId, type = 'lms') {
     const strId = String(chatId).trim();
 
     // Администраторы всегда без лимита
-    const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
-    const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+    const adminIds = getAdminChatIds();
     if (adminIds.includes(strId)) {
         return { allowed: true, currentCount: 0, limit: MAX_SUBSCRIBERS_LIMIT, isExisting: true };
     }
@@ -178,8 +158,7 @@ async function getUserLmsSession(chatId) {
     }
 
     // Если админ и есть дефолтная переменная
-    const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
-    const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+    const adminIds = getAdminChatIds();
     if (adminIds.includes(strId) && process.env.AITU_LMS_SESSION_ID) {
         return process.env.AITU_LMS_SESSION_ID.trim();
     }
@@ -365,8 +344,7 @@ async function getAllLmsUsers() {
         console.warn('getAllLmsUsers Redis error:', err.message);
     }
 
-    const rawAdminIds = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
-    const adminIds = rawAdminIds ? rawAdminIds.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
+    const adminIds = getAdminChatIds();
     for (const adm of adminIds) {
         if (process.env.AITU_LMS_SESSION_ID || lmsUserSessionsMemory.has(adm)) {
             users.add(adm);

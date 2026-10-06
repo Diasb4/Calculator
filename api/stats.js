@@ -1,13 +1,5 @@
-const crypto = require('crypto');
 const statsEngine = require('./stats/engine.js');
-
-function safeCompare(a, b) {
-    if (typeof a !== 'string' || typeof b !== 'string') return false;
-    const bufA = Buffer.from(a);
-    const bufB = Buffer.from(b);
-    if (bufA.length !== bufB.length) return false;
-    return crypto.timingSafeEqual(bufA, bufB);
-}
+const { safeCompare } = require('./_lib/util.js');
 
 const statsIpRateLimit = new Map();
 const STATS_RATE_LIMIT_WINDOW_MS = 60 * 1000;

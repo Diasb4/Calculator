@@ -5,27 +5,10 @@
 const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs');
-const crypto = require('node:crypto');
 const aitu = require('./bot/aitu.js');
 const lms = require('./bot/lms.js');
 const statsEngine = require('./stats/engine.js');
-
-function safeCompare(a, b) {
-    if (typeof a !== 'string' || typeof b !== 'string') return false;
-    const bufA = Buffer.from(a);
-    const bufB = Buffer.from(b);
-    if (bufA.length !== bufB.length) return false;
-    return crypto.timingSafeEqual(bufA, bufB);
-}
-
-function getBotToken() {
-    return (process.env.TELEGRAM_BOT_TOKEN || '').trim();
-}
-
-function getAdminChatIds() {
-    const raw = (process.env.ADMIN_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '').trim();
-    return raw ? raw.split(/[,\s;]+/).map(s => s.trim()).filter(Boolean) : [];
-}
+const { safeCompare, getBotToken, getAdminChatIds } = require('./_lib/util.js');
 
 const sentAlertsMemory = new Set();
 

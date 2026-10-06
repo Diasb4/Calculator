@@ -3282,7 +3282,7 @@ test('Telegram bot: calculateGradeReport FX on final exam does not show scholars
     assert.match(passReport, /стипендия на горизонте/i);
 });
 
-test('Telegram bot: rawSendMessage clamps oversized messages and handles HTML entity parse fallback', async () => {
+test('Telegram bot: rawSendMessage splits oversized messages and handles HTML entity parse fallback', async () => {
     const bot = require('../api/bot/index.js');
     const originalFetch = global.fetch;
     const sentRequests = [];
@@ -3306,14 +3306,17 @@ test('Telegram bot: rawSendMessage clamps oversized messages and handles HTML en
     process.env.TELEGRAM_BOT_TOKEN = 'test_token_clamp';
 
     try {
-        // Test message exceeding 4000 chars
-        const longMessage = 'Line of test text\n'.repeat(350);
-        assert.ok(longMessage.length > 4000);
+        // A message over the 4096-char limit is split on line breaks, nothing is dropped
+        const longMessage = 'Line of test text\n'.repeat(300);
+        assert.ok(longMessage.length > 4096);
         await bot.sendMessage(12345, longMessage);
 
-        assert.strictEqual(sentRequests.length, 1);
-        assert.ok(sentRequests[0].text.length <= 4000);
-        assert.match(sentRequests[0].text, /сокращено/);
+        assert.strictEqual(sentRequests.length, 2);
+        for (const req of sentRequests) {
+            assert.ok(req.text.length <= 4096);
+            assert.doesNotMatch(req.text, /сокращено/);
+        }
+        assert.strictEqual(sentRequests.map(r => r.text).join('\n').trimEnd(), longMessage.trimEnd());
 
         // Test fallback when HTML entity parse error occurs
         sentRequests.length = 0;
