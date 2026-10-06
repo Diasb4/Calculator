@@ -58,19 +58,5 @@
                 }
             ]
         }
-    ],
-    "crons": [
-        {
-            "path": "/api/cron",
-            "schedule": "0 3 * * *"
-        },
-        {
-            "path": "/api/cron",
-            "schedule": "0 15 * * *"
-        },
-        {
-            "path": "/api/cron",
-            "schedule": "0 18 * * *"
-        }
     ]
 }
