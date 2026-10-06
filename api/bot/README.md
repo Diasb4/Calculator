@@ -9,7 +9,7 @@
 2. [Требования к окружению](#-требования-к-окружению)
 3. [Переменные окружения (.env)](#-переменные-окружения-env)
 4. [Вариант развёртывания 1: Vercel Serverless (Рекомендуемый для Free)](#-вариант-1-развёртывание-на-vercel-serverless)
-5. [Вариант развёртывания 2: Свой сервер (VPS Ubuntu + Docker / Node.js + PM2)](#-вариант-2-развёртывание-на-vps-ubuntu--pm2)
+5. [Вариант развёртывания 2: VPS (Docker Compose, long polling)](#-вариант-2-развёртывание-на-vps-docker-compose-long-polling)
 6. [⚠️ Все скрытые опасности, риски и лимиты](#️-все-скрытые-опасности-риски-и-лимиты)
    - [1. Риски исчерпания бесплатных квот Vercel](#1-риски-исчерпания-бесплатных-квот-vercel)
    - [2. Риск бана по IP со стороны серверов AITU (LMS / Learn)](#2-риск-бана-по-ip-со-стороны-серверов-aitu-lms--learn)
@@ -74,13 +74,17 @@ GradeMaster построен на **безсерверной (Serverless) мод
 | Переменная | Обязательна? | Описание | Пример значения |
 | :--- | :---: | :--- | :--- |
 | `TELEGRAM_BOT_TOKEN` | **ДА** | API токен бота от @BotFather | `7123456789:AAFx...` |
-| `TELEGRAM_CHAT_ID` | **ДА** | Числовой ID владельца/админа бота | `1365231049` |
-| `WEBAPP_URL` | **ДА** | Публичный URL развёртывания (без слэша в конце) | `https://grademaster.vercel.app` |
-| `TELEGRAM_SECRET_TOKEN` | Рекомендуется | Секретный заголовок защиты вебхука (1-256 символов) | `gm_sec_99a8b7c6d5e4` |
-| `MAX_SUBSCRIBERS_LIMIT` | Нет | Лимит пользователей на напоминания (дефолт: `60`) | `60` |
-| `CRON_SECRET` | Рекомендуется | Секретный ключ для авторизации cron-запросов | `cron_secret_key_xyz` |
-| `KV_REST_API_URL` | Опционально | URL базы данных Vercel KV / Upstash Redis | `https://...upstash.io` |
-| `KV_REST_API_TOKEN` | Опционально | Токен доступа к Vercel KV / Upstash Redis | `AX...` |
+| `ADMIN_CHAT_ID` | **ДА** | Числовой ID админа(ов) через запятую | `1365231049` |
+| `SESSION_ENC_KEY` | **ДА** (production) | Ключ шифрования сессий студентов, `openssl rand -base64 32` | `q3J...=` |
+| `CRON_SECRET` | **ДА** (production) | Bearer-токен для `/api/cron` и `GET /api/stats` | `openssl rand -hex 32` |
+| `REDIS_URL` | Один из двух | Redis по TCP (на VPS задан в `docker-compose.yml`) | `redis://redis:6379/0` |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Один из двух | Vercel KV / Upstash Redis REST | `https://...upstash.io` / `AX...` |
+| `TELEGRAM_SECRET_TOKEN` | Вебхук | Секрет вебхука, минимум 32 символа (не нужен в режиме polling) | `gm_sec_...` |
+| `TELEGRAM_CHAT_ID` | Сайт | Чат для обратной связи с сайта; запасной ID админа | `1365231049` |
+| `WEBAPP_URL` | Нет | Публичный URL сайта (без слэша в конце) | `https://grademaster.vercel.app` |
+| `BOT_POLLING` / `ENABLE_BACKGROUND_CRON` | Нет | `true` на VPS: long polling и cron каждые 15 минут | `true` |
+
+Полный список — в [.env.example](../../.env.example).
 
 ---
 
@@ -115,97 +119,49 @@ vercel --prod
 Сделайте повторный деплой (`Redeploy`), чтобы переменные вступили в силу.
 
 ### Шаг 4. Инициализация Webhook
-Откройте в любом браузере URL:
-```text
-https://your-bot.vercel.app/api/bot?setup=1
+Секрет передаётся только заголовком (параметр `?secret=` больше не принимается):
+```bash
+curl -H "x-telegram-bot-api-secret-token: $TELEGRAM_SECRET_TOKEN" "https://your-bot.vercel.app/api/bot?setup=1"
 ```
-Вы должны получить ответ:
-```json
-{
-  "ok": true,
-  "description": "Webhook was set",
-  "url": "https://your-bot.vercel.app/api/bot"
-}
-```
-После этого бот моментально начнёт отвечать в Telegram!
+Вы должны получить ответ с `"ok": true` и адресом вебхука. После этого бот начнёт отвечать в Telegram.
+
+> Если бот уже работает на VPS в режиме long polling, не вызывайте `?setup=1`: вебхук перехватит апдейты у VPS.
 
 ---
 
-## 🖥 Вариант 2: Развёртывание на VPS (Ubuntu + PM2 / Docker)
+## 🖥 Вариант 2: Развёртывание на VPS (Docker Compose, long polling)
 
-Если вы хотите запускать бота на выделенном виртуальном сервере (DigitalOcean, Hetzner, Timeweb, Beget).
+На VPS бот сам забирает апдейты через `getUpdates` (long polling): домен, HTTPS и открытые порты не нужны. Стек `docker-compose.yml` — контейнер бота (`server.js`, без root, read-only, лимиты CPU/памяти) и собственный Redis с AOF-персистентностью. Порты наружу не публикуются: Docker-порты обходят `ufw`, а боту нужен только исходящий трафик.
 
-### Архитектура на VPS
-На VPS бот слушает локальный порт (например, `:3000`), а **Nginx** принимает внешний HTTPS трафик и проксирует его внутрь.
+### Шаг 1. Docker Engine
+Установите Docker Engine и плагин compose из официального apt-репозитория Docker (`docker-ce`, `docker-compose-plugin`).
 
-### Шаг 1. Настройка сервера
+### Шаг 2. Клонирование и `.env`
 ```bash
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y nodejs npm nginx certbot python3-certbot-nginx
-sudo npm install -y pm2 -g
+git clone https://github.com/Diasb4/Calculator.git /opt/grademaster
+cd /opt/grademaster
+cp .env.example .env && chmod 600 .env
+# TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID, SESSION_ENC_KEY (openssl rand -base64 32), CRON_SECRET (openssl rand -hex 32)
 ```
 
-### Шаг 2. Клонирование и запуск
+### Шаг 3. Перенос данных (если бот уже работал на Vercel)
 ```bash
-cd /var/www
-git clone https://github.com/Diasb4/Calculator.git grademaster
-cd grademaster
-npm install --production
-
-# Создаем файл окружения
-nano .env # вставляем все переменные из таблицы выше
+# на машине с доступом к Upstash:
+node --env-file=.env scripts/export_kv.js kv_dump.json
+# на VPS, файл положить в /opt/grademaster/import/ (владелец uid 1000, права 600):
+docker compose up -d redis
+docker compose run --rm --no-deps -v /opt/grademaster/import:/import:ro bot node scripts/import_kv.js /import/kv_dump.json
+shred -u import/kv_dump.json
 ```
+Импорт шифрует сессии ключом `SESSION_ENC_KEY` и завершится с ошибкой, если хоть одна команда не выполнилась.
 
-### Шаг 3. Запуск через PM2
-Создайте `ecosystem.config.cjs`:
-```javascript
-module.exports = {
-  apps: [{
-    name: 'grademaster-bot',
-    script: 'api/server.js', // или микро-сервер express, оборачивающий api/bot/index.js
-    instances: 1,
-    max_memory_restart: '250M',
-    env: {
-      NODE_ENV: 'production'
-    }
-  }]
-};
-```
+### Шаг 4. Запуск
 ```bash
-pm2 start ecosystem.config.cjs
-pm2 save
-pm2 startup
+docker compose up -d --build
+docker compose logs -f bot   # «Long polling started (webhook removed)» и раз в 15 минут «⏰ Cron: users=…»
+docker compose ps            # оба сервиса healthy
 ```
-
-### Шаг 4. Настройка Nginx и SSL (Let's Encrypt)
-Создайте `/etc/nginx/sites-available/grademaster`:
-```nginx
-server {
-    server_name bot.yourdomain.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-Активируйте и выпустите бесплатный SSL:
-```bash
-sudo ln -s /etc/nginx/sites-available/grademaster /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d bot.yourdomain.com
-```
-
-Установите вебхук вручную:
-```bash
-curl -F "url=https://bot.yourdomain.com/api/bot" -F "secret_token=ВАШ_СЕКРЕТ" https://api.telegram.org/bot<TOKEN>/setWebhook
-```
+При старте бот сам удаляет вебхук. Остановка (`docker compose stop bot`) корректно дожидается обработки текущих апдейтов и прогона cron.
 
 ---
 
@@ -253,7 +209,8 @@ curl -F "url=https://bot.yourdomain.com/api/bot" -F "secret_token=ВАШ_СЕК�
   - Если URL вашего бота `https://your-bot.vercel.app/api/bot` узнают, на него могут слать тысячи фальшивых POST-запросов, сжигая ваш Vercel-трафик.
   - **Решение:** Обязательно задайте `TELEGRAM_SECRET_TOKEN`. Бот проверяет заголовок `X-Telegram-Bot-Api-Secret-Token` и сбрасывает чужаков с кодом `401 Unauthorized` до выполнения тяжелого кода.
 * **Угроза 3: Утечка сессий студентов.**
-  - В логах Vercel сессии маскируются: выводятся только первые 6 и последние 4 символа (`session_12...ab`). Полные токены хранятся изолированно.
+  - Сессии Learn и ссылки календаря LMS (в них `authtoken`, производный от пароля) шифруются AES-256-GCM ключом `SESSION_ENC_KEY` перед записью в KV; старые записи перешифровываются при первом чтении. Значения сессий не пишутся в логи.
+  - Дампы KV (`scripts/export_kv.js`) содержат эти данные: никогда не коммитьте их (`backup_kv*.json` и `kv_dump*.json` в `.gitignore`).
 
 ---
 
@@ -261,8 +218,9 @@ curl -F "url=https://bot.yourdomain.com/api/bot" -F "secret_token=ВАШ_СЕК�
 > [!WARNING]
 > В Telegram Bot API действует строгое правило: **бот может работать ЛИБО через Webhook, ЛИБО через Long Polling (`getUpdates`). Одновременно они работать НЕ МОГУТ.**
 
-* Если вы включите локальный скрипт с long-polling на компьютере, вебхук Vercel автоматически отключится. Бот на Vercel перестанет отвечать!
-* Если бот не отвечает: проверьте `https://api.telegram.org/bot<TOKEN>/getWebhookInfo`. Если там ошибка или пустой URL — выполните переустановку вебхука через `?setup=1`.
+* В режиме VPS (`BOT_POLLING=true`) бот при старте сам вызывает `deleteWebhook`, а вебхук-эндпоинт отвечает `403`. Пока VPS работает, не вызывайте `?setup=1` на Vercel: вебхук перехватит апдейты.
+* В логах VPS `409 Conflict` означает, что тем же токеном пользуется второй экземпляр (например, локальный скрипт) — остановите его.
+* Чтобы вернуть бота на Vercel: `docker compose stop bot`, затем установите вебхук через `?setup=1` с заголовком секрета.
 
 ---
 
@@ -275,28 +233,13 @@ curl -F "url=https://bot.yourdomain.com/api/bot" -F "secret_token=ВАШ_СЕК�
 
 ## ⏰ Настройка фонового мониторинга (Cron)
 
-Для утренней рассылки (08:00) и экстренных сигналов тревоги (за 1 час до дедлайна) используется эндпоинт `/api/cron`.
+Для утренней сводки (окно 08:00–11:59 по Астане), вечернего чек-листа (20:00–22:59) и экстренных сигналов за 1 час до дедлайна используется `runCron()` из `api/cron.js`. Ключи дедупликации в KV гарантируют, что каждое оповещение уходит один раз, а неотправленное (ошибка Telegram) повторяется на следующем прогоне.
 
-### Вариант А: Сторонний бесплатный планировщик (cron-job.org / EasyCron)
-Так как на бесплатном Vercel доступен только 1 cron в сутки, для ежечасной проверки рекомендуется настроить бесплатный [cron-job.org](https://cron-job.org):
-1. URL: `https://your-bot.vercel.app/api/cron`
-2. Расписание: `Каждый час` (например, в минуту `00`)
-3. Метод: `GET`
-4. Заголовок (если настроен CRON_SECRET): `Authorization: Bearer <CRON_SECRET>`
+### VPS
+`server.js` запускает прогон через 60 секунд после старта и затем каждые 15 минут (`ENABLE_BACKGROUND_CRON=true`), без наложения прогонов.
 
-### Вариант Б: Vercel Cron (настройка в `vercel.json`)
-В проекте уже настроен `vercel.json`:
-```json
-{
-  "crons": [
-    {
-      "path": "/api/cron",
-      "schedule": "0 2 * * *"
-    }
-  ]
-}
-```
-*(Расписание `0 2 * * *` по UTC соответствует 08:00 утра по времени Астаны UTC+6).*
+### Вебхук-деплой (Vercel)
+Встроенные Vercel Cron убраны из `vercel.json`, чтобы два планировщика не дублировали рассылки. Если бот работает через вебхук, настройте внешний планировщик (например, [cron-job.org](https://cron-job.org)) на `GET https://your-bot.vercel.app/api/cron` раз в 15–60 минут с заголовком `Authorization: Bearer <CRON_SECRET>`.
 
 ---
 
@@ -304,12 +247,11 @@ curl -F "url=https://bot.yourdomain.com/api/bot" -F "secret_token=ВАШ_СЕК�
 
 Перед тем как давать ссылку на бота одногруппникам, пройдитесь по списку:
 
-- [ ] В `git status` нет незакоммиченных секретов или файлов `.env`.
-- [ ] Запущен `npm test` — все 80 тестов завершились со статусом `PASS`.
-- [ ] В Vercel заданы `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `WEBAPP_URL`.
-- [ ] Установлен `TELEGRAM_SECRET_TOKEN` для защиты эндпоинта от спама.
-- [ ] Вебхук успешно установлен через `https://your-bot.vercel.app/api/bot?setup=1`.
-- [ ] В `https://api.telegram.org/bot<TOKEN>/getWebhookInfo` параметр `has_custom_certificate` равен `false`, а `pending_update_count` равен `0`.
+- [ ] В `git status` нет незакоммиченных секретов, файлов `.env` или дампов KV.
+- [ ] `npm test` проходит без ошибок.
+- [ ] Заданы `TELEGRAM_BOT_TOKEN`, `ADMIN_CHAT_ID`, `SESSION_ENC_KEY`, `CRON_SECRET` и хранилище (`REDIS_URL` или Upstash).
+- [ ] Для вебхука задан `TELEGRAM_SECRET_TOKEN` (32+ символов); для VPS — `BOT_POLLING=true` (уже в `docker-compose.yml`).
+- [ ] VPS: в `docker compose logs bot` есть «Long polling started», нет повторяющихся `409`; `docker compose ps` — оба сервиса healthy.
 - [ ] Проверена команда `/cookie` и экспорт календаря LMS прямо со смартфона.
 - [ ] Проверена админ-панель: команда `/admin` работает у вас и отклоняет доступ с чужих аккаунтов.
 

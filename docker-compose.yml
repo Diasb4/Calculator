@@ -1,25 +1,44 @@
-version: '3.8'
-
+name: grademaster
 services:
-  grademaster:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: grademaster
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--save", "", "--maxmemory", "64mb", "--maxmemory-policy", "noeviction"]
+    volumes: ["redis-data:/data"]
     restart: unless-stopped
-    ports:
-      - "3000:3000"
-    environment:
-      - PORT=3000
-      - HOST=0.0.0.0
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-      - TELEGRAM_SECRET_TOKEN=${TELEGRAM_SECRET_TOKEN:-}
-      - ADMIN_CHAT_ID=${ADMIN_CHAT_ID:-}
-      - CRON_SECRET=${CRON_SECRET:-}
-      - KV_REST_API_URL=${KV_REST_API_URL:-}
-      - KV_REST_API_TOKEN=${KV_REST_API_TOKEN:-}
-      - BOT_POLLING=${BOT_POLLING:-false}
-      - ENABLE_BACKGROUND_CRON=${ENABLE_BACKGROUND_CRON:-true}
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+  bot:
+    build: .
+    init: true
+    restart: unless-stopped
     env_file:
       - path: .env
-        required: false
+        required: true
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      BOT_POLLING: "true"
+      ENABLE_BACKGROUND_CRON: "true"
+      REDIS_URL: redis://redis:6379/0
+      NODE_OPTIONS: --max-old-space-size=192
+    depends_on:
+      redis:
+        condition: service_healthy
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    stop_grace_period: 30s
+volumes:
+  redis-data:

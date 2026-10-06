@@ -1,28 +1,11 @@
-# Lightweight production Dockerfile for GradeMaster
-FROM node:20-alpine AS runner
-
+FROM node:22-alpine
 WORKDIR /app
-
-# Set production environment
-ENV NODE_ENV=production
-ENV PORT=3000
-ENV HOST=0.0.0.0
-
-# Copy dependency manifests
-COPY package.json package-lock.json* ./
-
-# Install dependencies
-RUN npm ci --omit=dev --ignore-scripts || npm install --omit=dev
-
-# Copy all application source files
+ENV NODE_ENV=production PORT=3000 HOST=0.0.0.0
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY . .
-
-# Expose server port
+USER node
 EXPOSE 3000
-
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/health || exit 1
-
-# Start server
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1:3000/health || exit 1
 CMD ["node", "server.js"]

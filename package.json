@@ -1,12 +1,17 @@
 {
+  "name": "grademaster",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node server.js",
     "test": "node --test tests/*.test.cjs"
   },
-  "devDependencies": {
-    "linkedom": "^0.18.13"
-  },
   "dependencies": {
     "redis": "^6.3.0"
+  },
+  "devDependencies": {
+    "linkedom": "^0.18.13"
   }
 }

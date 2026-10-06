@@ -201,8 +201,8 @@ flowchart TD
 ```
 
 - **Frontend:** чистый Vanilla JavaScript (ES6+), современный адаптивный CSS3 с CSS-переменными, семантический HTML5. Никаких тяжёлых фреймворков — моментальная загрузка.
-- **Backend:** Node.js (Vercel Serverless Functions).
-- **База данных / Кэш:** Vercel KV (Redis) с многоуровневым In-Memory fallback (SWR-кэширование).
+- **Backend:** Node.js. Сайт и его API — Vercel Serverless Functions; Telegram-бот — long polling и фоновый cron в Docker на VPS (`server.js`, `docker-compose.yml`).
+- **База данных / Кэш:** Redis (на VPS — собственный контейнер по `REDIS_URL`; на Vercel — Upstash REST) с In-Memory fallback (SWR-кэширование).
 - **Тестирование:** встроенный раннер `node:test`, LinkeDOM для тестирования браузерных страниц без запуска тяжелого браузера.
 
 ---
@@ -214,16 +214,18 @@ flowchart TD
 1. **SSRF-защита (Server-Side Request Forgery):**
    - Строгий allowlist: внешние запросы календаря разрешены **только** на официальный домен `lms.astanait.edu.kz`.
    - Любые сторонние хосты, URL с учётными данными (`user:pass@host`), нестандартные порты и локальные адреса немедленно блокируются до выполнения `fetch`.
-2. **Аутентификация вебхуков:**
+2. **Аутентификация вебхуков и служебных эндпоинтов:**
    - Вебхук Telegram проверяет секретный токен через заголовок `X-Telegram-Bot-Api-Secret-Token`. Запросы без валидного секрета отсекаются со статусом `401 Unauthorized`.
+   - В production без `TELEGRAM_SECRET_TOKEN` вебхук, а без `CRON_SECRET` — `/api/cron` и `GET /api/stats` отвечают `503`, а не работают без защиты. В режиме long polling вебхук отключён (`403`).
 3. **Безопасность сессий и токенов:**
    - Валидация формата `sessionid` и кук по строгому regex-шаблону перед отправкой во внутренние запросы.
    - Использование постоянных iCal-токенов вместо долгосрочного хранения паролей студентов.
+   - Сессии Learn и ссылки календаря LMS шифруются AES-256-GCM ключом `SESSION_ENC_KEY` перед записью в Redis и не попадают в логи.
 4. **Конфиденциальность (GDPR / Privacy-friendly):**
    - Аналитика не сохраняет сырые идентификаторы пользователей (`chat.id` / `user.id`).
    - Идентификаторы необратимо псевдонимизируются через `HMAC-SHA-256` с солью окружения.
 5. **Заголовки безопасности:**
-   - В [vercel.json](vercel.json) настроены `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`.
+   - В [vercel.json](vercel.json) настроены `Content-Security-Policy`, `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`; `server.js` отдаёт те же заголовки и только публичные файлы сайта.
 6. **Право на забвение (Right-to-Erasure):**
    - Команды `/del_lms` и `/logout` полностью стирают сохранённые данные сессии из базы данных и памяти.
 
@@ -236,8 +238,12 @@ GradeMaster/
 ├── index.html                   # Главная страница-навигатор по калькуляторам
 ├── manifest.json                # PWA-манифест
 ├── sw.js                        # Service Worker для кэширования и офлайн-режима
-├── vercel.json                  # Конфигурация заголовков, Cron-расписания и роутов Vercel
+├── vercel.json                  # Конфигурация функций и заголовков безопасности Vercel
 ├── package.json                 # Скрипты запуска тестов и зависимости
+├── server.js                    # HTTP-сервер для VPS: сайт, API, long polling бота и фоновый cron
+├── Dockerfile                   # Образ бота (node:22-alpine, без root)
+├── docker-compose.yml           # Стек VPS: bot + redis, без опубликованных портов
+├── scripts/                     # export_kv.js / import_kv.js — дамп и восстановление KV
 │
 ├── main/                        # Страницы калькуляторов
 │   ├── TotalCalculator.html     # Калькулятор итоговой оценки и стипендии
@@ -265,6 +271,7 @@ GradeMaster/
 │   └── modernTotal.css          # Стили TotalCalculator
 │
 ├── api/                         # Серверные функции (Vercel Serverless)
+│   ├── _lib/                    # Общие модули: util.js (секреты, шифрование), telegram.js (клиент Bot API)
 │   ├── telegram.js              # Обработка заявок обратной связи с сайта
 │   ├── cron.js                  # Фоновые проверки дедлайнов и рассылка оповещений
 │   ├── bot/                     # Модуль Telegram-бота
@@ -313,28 +320,47 @@ python -m http.server 8080
 
 ## ⚙️ Переменные окружения (.env)
 
-Для полноценной работы Telegram-бота и фоновых Cron-напоминаний настройте переменные окружения в панели Vercel или в локальном файле `.env`:
+Полный список с пояснениями — в [.env.example](.env.example). Основные переменные:
 
 ```ini
 # Токен бота от @BotFather (обязательно)
 TELEGRAM_BOT_TOKEN="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
 
-# Секретный токен для верификации вебхука Telegram (рекомендуется)
-TELEGRAM_SECRET_TOKEN="your_random_secret_token_min_32_chars"
-
 # Telegram ID администратора(ов) через запятую (для оповещений и команды /admin)
 ADMIN_CHAT_ID="123456789,987654321"
 
-# Секретный ключ для авторизации cron-запросов (защита /api/cron)
+# Ключ шифрования сессий студентов (openssl rand -base64 32). Потеря ключа = все сессии придётся подключать заново
+SESSION_ENC_KEY="base64-ключ-на-32-байта"
+
+# Секретный ключ для авторизации cron-запросов и GET /api/stats (openssl rand -hex 32)
 CRON_SECRET="your_cron_secret_key"
 
-# Vercel KV / Upstash Redis (для постоянного хранения сессий и аналитики)
-KV_REST_API_URL="https://your-kv-instance.upstash.io"
+# Хранилище — ровно один вариант:
+REDIS_URL="redis://redis:6379/0"                       # VPS (уже задан в docker-compose.yml)
+KV_REST_API_URL="https://your-kv-instance.upstash.io"  # Vercel KV / Upstash
 KV_REST_API_TOKEN="your_kv_rest_token"
 
-# Секретная соль для псевдонимизации аналитики (любая случайная строка)
+# Только для режима вебхука: секрет верификации запросов Telegram (минимум 32 символа)
+TELEGRAM_SECRET_TOKEN="your_random_secret_token_min_32_chars"
+
+# Соль псевдонимизации аналитики (по умолчанию — токен бота)
 ANALYTICS_SALT="super_secret_analytics_salt_key"
 ```
+
+В production (`NODE_ENV=production`) `server.js` не запустится без токена бота, `ADMIN_CHAT_ID`, корректного `SESSION_ENC_KEY` и хранилища.
+
+### Развёртывание бота на VPS (Docker)
+
+```bash
+git clone https://github.com/Diasb4/Calculator.git /opt/grademaster && cd /opt/grademaster
+cp .env.example .env && chmod 600 .env   # заполнить TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID, SESSION_ENC_KEY, CRON_SECRET
+docker compose up -d --build
+docker compose logs -f bot              # ждём «Long polling started (webhook removed)»
+```
+
+Перенос данных из Upstash: `node --env-file=.env scripts/export_kv.js kv_dump.json` там, где настроен Upstash, затем на VPS:
+`docker compose run --rm --no-deps -v "$PWD/import:/import:ro" bot node scripts/import_kv.js /import/kv_dump.json`.
+Дамп содержит сессии студентов — не коммитьте его и удалите после импорта.
 
 ---
 
