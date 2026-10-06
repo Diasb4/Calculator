@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  grademaster:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: grademaster
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - HOST=0.0.0.0
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_SECRET_TOKEN=${TELEGRAM_SECRET_TOKEN:-}
+      - ADMIN_CHAT_ID=${ADMIN_CHAT_ID:-}
+      - CRON_SECRET=${CRON_SECRET:-}
+      - KV_REST_API_URL=${KV_REST_API_URL:-}
+      - KV_REST_API_TOKEN=${KV_REST_API_TOKEN:-}
+    env_file:
+      - path: .env
+        required: false

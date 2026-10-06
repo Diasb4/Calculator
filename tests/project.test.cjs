@@ -3358,6 +3358,79 @@ test('AITU: formatQuizzesMessage caps upcoming semester quizzes to 15 items', ()
     assert.match(msg, /ещё 10 квизов на семестр/);
 });
 
+test('LMS Grades: parses overview courses and course gradebook tables accurately', async () => {
+    const lmsGrades = require('../api/bot/lms_grades.js');
+
+    const sampleOverviewHtml = `
+        <div class="userbutton"><span class="usertext">Nursultan Nazarbayev</span></div>
+        <table class="generaltable">
+            <tr>
+                <td><a href="https://lms.astanait.edu.kz/grade/report/user/index.php?id=1234">Probability Theory</a></td>
+            </tr>
+            <tr>
+                <td><a href="https://lms.astanait.edu.kz/grade/report/user/index.php?id=5678">Software Engineering</a></td>
+            </tr>
+        </table>
+    `;
+
+    const courses = lmsGrades.parseOverviewCourses(sampleOverviewHtml);
+    assert.strictEqual(courses.length, 2);
+    assert.strictEqual(courses[0].id, '1234');
+    assert.strictEqual(courses[0].name, 'Probability Theory');
+    assert.strictEqual(courses[1].id, '5678');
+    assert.strictEqual(courses[1].name, 'Software Engineering');
+
+    const sampleCourseHtml = `
+        <h1>Probability Theory</h1>
+        <div class="teacher-info">Teacher: Karatay Assiya</div>
+        <table class="user-grade">
+            <tr>
+                <td class="column-itemname">Register Midterm</td>
+                <td class="column-grade">85.50</td>
+            </tr>
+            <tr>
+                <td class="column-itemname">Register Endterm</td>
+                <td class="column-grade">90.00</td>
+            </tr>
+            <tr>
+                <td class="column-itemname">Register Final</td>
+                <td class="column-grade">0.00</td>
+            </tr>
+        </table>
+    `;
+
+    const gradeInfo = lmsGrades.parseCourseUserGrades(sampleCourseHtml, 'Probability Theory');
+    assert.strictEqual(gradeInfo.name, 'Probability Theory');
+    assert.strictEqual(gradeInfo.teacher, 'Karatay Assiya');
+    assert.strictEqual(gradeInfo.regmid, 85.5);
+    assert.strictEqual(gradeInfo.regend, 90.0);
+    assert.strictEqual(gradeInfo.regterm, 87.75);
+    assert.strictEqual(gradeInfo.regfinal, null);
+    assert.strictEqual(gradeInfo.foundRegisters, true);
+});
+
+test('server.js: standalone server handles health check and options preflight', async () => {
+    const server = require('../server.js');
+    await new Promise((resolve) => {
+        server.listen(0, '127.0.0.1', resolve);
+    });
+
+    const addr = server.address();
+    const port = addr.port;
+
+    try {
+        const res = await fetch(`http://127.0.0.1:${port}/health`);
+        assert.strictEqual(res.status, 200);
+        const data = await res.json();
+        assert.strictEqual(data.ok, true);
+        assert.strictEqual(data.status, 'healthy');
+
+        const optRes = await fetch(`http://127.0.0.1:${port}/health`, { method: 'OPTIONS' });
+        assert.strictEqual(optRes.status, 200);
+    } finally {
+        await new Promise((resolve) => server.close(resolve));
+    }
+});
 
 
 

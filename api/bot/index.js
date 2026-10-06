@@ -6,6 +6,7 @@
 const crypto = require('crypto');
 const aitu = require('./aitu.js');
 const lms = require('./lms.js');
+const lmsGrades = require('./lms_grades.js');
 const statsEngine = require('../stats/engine.js');
 
 function safeCompare(a, b) {
@@ -3395,6 +3396,43 @@ async function handleMessage(msg) {
         }
         const res = convertGradeReport(parts[0]);
         return sendMessage(chatId, res, { reply_markup: getMainKeyboard(chatId) });
+    }
+
+    if (/^\/sync_lms(?:\s|$)/i.test(text) || /^\/(?:tracker|stipend)\s+sync/i.test(text)) {
+        const rawArg = text.replace(/^\/sync_lms\s*/i, '').replace(/^\/(?:tracker|stipend)\s+sync\s*/i, '').trim();
+        let targetSession = rawArg;
+        if (!targetSession) {
+            const userLms = await lms.getUserLmsSession(chatId);
+            if (userLms && userLms.startsWith('MoodleSession=')) {
+                targetSession = userLms;
+            }
+        }
+
+        if (!targetSession) {
+            return sendMessage(chatId, `🔄 <b>Автономная синхронизация оценок из Moodle LMS:</b>\n\nДля прямого скачивания журнала оценок нужна сессия <code>MoodleSession</code>:\n\n1. Открой <a href="https://lms.astanait.edu.kz">lms.astanait.edu.kz</a> в браузере.\n2. Скопируй cookie <code>MoodleSession</code>.\n3. Отправь команду:\n<code>/sync_lms ВАША_КУКА</code> (или <code>/set_lms ВАША_КУКА</code>)\n\n<i>Также ты можешь просто переслать сообщение с оценками из LMS-бота прямо сюда!</i>`, { reply_markup: getMainKeyboard(chatId) });
+        }
+
+        await sendMessage(chatId, '⏳ <i>Подключаюсь к Moodle LMS и скачиваю табели по всем курсам...</i>');
+        const gradesResult = await lmsGrades.fetchMoodleStudentGrades(targetSession);
+
+        if (!gradesResult.ok) {
+            return sendMessage(chatId, `⚠️ <b>Ошибка получения оценок из LMS:</b>\n${gradesResult.error || 'Не удалось загрузить журнал.'}\n\nПопробуй обновить куку: <code>/sync_lms ВАША_НОВАЯ_КУКА</code>`, { reply_markup: getMainKeyboard(chatId) });
+        }
+
+        let synthesizedText = '';
+        gradesResult.courses.forEach(c => {
+            synthesizedText += `${c.name || 'Subject'}\n`;
+            if (c.teacher) synthesizedText += `Teacher: ${c.teacher}\n`;
+            synthesizedText += `Register Midterm -> ${(c.regmid || 0).toFixed(2)}\n`;
+            synthesizedText += `Register Endterm -> ${(c.regend || 0).toFixed(2)}\n`;
+            synthesizedText += `Register Term -> ${(c.regterm || 0).toFixed(2)}\n`;
+            synthesizedText += `Register Final -> ${c.regfinal !== null ? c.regfinal.toFixed(2) : '0.00'}\n\n`;
+        });
+
+        await statsEngine.recordCalculation({ calcType: 'tracker_lms_sync', platform: 'bot' }).catch(() => {});
+        const studentGreeting = gradesResult.studentName ? `👤 Студент: <b>${gradesResult.studentName}</b>\n\n` : '';
+        const report = calculateTrackerReport(synthesizedText, isGauharUser);
+        return sendMessage(chatId, `🔄 <b>Синхронизировано из Moodle LMS!</b>\n${studentGreeting}${report}`, { reply_markup: getMainKeyboard(chatId) });
     }
 
     if (/^\/(?:tracker|stipend)(?:\s|$)/i.test(text)) {
