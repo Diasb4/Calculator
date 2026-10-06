@@ -3326,16 +3326,12 @@ async function handleMessage(msg) {
 
     if (/^\/sync_lms(?:\s|$)/i.test(text) || /^\/(?:tracker|stipend)\s+sync/i.test(text)) {
         const rawArg = text.replace(/^\/sync_lms\s*/i, '').replace(/^\/(?:tracker|stipend)\s+sync\s*/i, '').trim();
-        let targetSession = rawArg;
-        if (!targetSession) {
-            const userLms = await lms.getUserLmsSession(chatId);
-            if (userLms && userLms.startsWith('MoodleSession=')) {
-                targetSession = userLms;
-            }
-        }
+        // Only an explicit MoodleSession works here: /set_lms stores a calendar export URL,
+        // which cannot open the grade report.
+        const targetSession = rawArg;
 
         if (!targetSession) {
-            return sendMessage(chatId, `🔄 <b>Автономная синхронизация оценок из Moodle LMS:</b>\n\nДля прямого скачивания журнала оценок нужна сессия <code>MoodleSession</code>:\n\n1. Открой <a href="https://lms.astanait.edu.kz">lms.astanait.edu.kz</a> в браузере.\n2. Скопируй cookie <code>MoodleSession</code>.\n3. Отправь команду:\n<code>/sync_lms ВАША_КУКА</code> (или <code>/set_lms ВАША_КУКА</code>)\n\n<i>Также ты можешь просто переслать сообщение с оценками из LMS-бота прямо сюда!</i>`, { reply_markup: getMainKeyboard(chatId) });
+            return sendMessage(chatId, `🔄 <b>Автономная синхронизация оценок из Moodle LMS:</b>\n\nДля прямого скачивания журнала оценок нужна сессия <code>MoodleSession</code>:\n\n1. Открой <a href="https://lms.astanait.edu.kz">lms.astanait.edu.kz</a> в браузере.\n2. Скопируй cookie <code>MoodleSession</code>.\n3. Отправь команду:\n<code>/sync_lms ВАША_КУКА</code>\n\n<i>Также ты можешь просто переслать сообщение с оценками из LMS-бота прямо сюда!</i>`, { reply_markup: getMainKeyboard(chatId) });
         }
 
         await sendMessage(chatId, '⏳ <i>Подключаюсь к Moodle LMS и скачиваю табели по всем курсам...</i>');
